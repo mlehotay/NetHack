@@ -1200,6 +1200,7 @@ extern int magic_negation(struct monst *);
 extern boolean gulp_blnd_check(void);
 extern int gazemu(struct monst *, struct attack *);
 extern void mdamageu(struct monst *, int);
+extern boolean doconsent(const char *, const unsigned);
 extern int could_seduce(struct monst *, struct monst *, struct attack *);
 extern int doseduce(struct monst *);
 
