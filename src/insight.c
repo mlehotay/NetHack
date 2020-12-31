@@ -611,7 +611,7 @@ basics_enlightenment(int mode UNUSED, int final)
     }
 
     /* consent flags */
-    Sprintf(buf, "(M:%s%s F:%s%s)",
+    Sprintf(buf, "(M:%s%s; F:%s%s)",
             orientations[0][flags.consent_given & 0x03],
             ((flags.consent_asked & 0x03) == 0x03) ? "" : "?",
             orientations[1][((flags.consent_given) & 0x0c)>>2],
