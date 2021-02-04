@@ -106,6 +106,7 @@ extern int NDECL(doidtrap);           /**/
 extern int NDECL(dopay);              /**/
 extern int NDECL(dosit);              /**/
 extern int NDECL(dotalk);             /**/
+extern int NDECL(dopet);              /**/
 extern int NDECL(docast);             /**/
 extern int NDECL(dovspell);           /**/
 extern int NDECL(dotelecmd);          /**/
@@ -1807,6 +1808,7 @@ struct ext_func_tab extcmdlist[] = {
             docallcmd, IFBURIED },
     { 'Z', "cast", "zap (cast) a spell", docast, IFBURIED },
     { M('c'), "chat", "talk to someone", dotalk, IFBURIED | AUTOCOMPLETE },
+    { '\0', "pet", "pet something", dopet, AUTOCOMPLETE },
     { 'c', "close", "close a door", doclose },
     { M('C'), "conduct", "list voluntary challenges you have maintained",
             doconduct, IFBURIED | AUTOCOMPLETE },

@@ -637,6 +637,7 @@ NetHackQtMainWindow::NetHackQtMainWindow(NetHackQtKeyBuffer& ks) :
         { act2, "Loot",              3, doloot},
         { act2, "Open door",         3, doopen},
         { act2, "Pay",               3, dopay},
+        { act2, "Pet",               3, dopet},
         // calling this "Get" was confusing to experienced players
         { act1, "Pick up (was Get)", 3, dopickup},
         { act2, "Rest",              2, donull},
