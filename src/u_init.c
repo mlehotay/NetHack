@@ -585,6 +585,11 @@ u_init(void)
     flags.female = flags.initgend;
     flags.beginner = 1;
 
+#ifdef CONSENT
+    flags.consent_asked = 0;
+    flags.consent_given = (CONSENT_SEDUCE_MF | CONSENT_SEDUCE_FM); /* vanilla */
+#endif
+
     /* zero u, including pointer values --
      * necessary when aborting from a failed restore */
     (void) memset((genericptr_t) &u, 0, sizeof(u));

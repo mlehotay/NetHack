@@ -1,0 +1,87 @@
+# readme
+
+instead of setting LGBTQ game options or maintaining conducts,
+change foocubus interactions to ask for consent
+based on players response, foocubi will learn player's gender preferences
+player can chat with foocubi at any time to change prefs
+
+if player is straight or gay, no change in headache/cancellation probability
+if player is bi, then foocubi are twice as likely to get headaches
+if player is ace, random half of foocubi have nymph-like seduction (disrobing
+  but no laying in arms), no change in headache/cancellation probability
+
+dish washers are created with compatible genders
+nymph chatting & stealing messages based on gender preferences
+
+--
+
+# test procedure
+
+test in wizard mode. wish for amulet of change and use ^G to summon
+succubus, incubus, and nymph for each gender and orientation (3*2*4 = 24 tests)
+  - ace male, gay male, straight male, bi male
+  - ace female, gay female, straight female, bi female
+
+build config #1: seduction with consent enabled
+1.1 succubi and incubi respect consent, test all gender and consent permutations
+1.2 foocubi have seduction attack, consorting leads to sex
+1.3 nymphs respect consent (and "charm" or "seduce" you accordingly)
+1.4 #chatting with nymphs w/o consent = cajoling, with consent = random replies
+1.5 can #chat with foocubi to change orientation
+1.6 orientation is reported correctly in ^X screen
+1.7 dishwashers have compatible gender with consent values
+
+build config #2: regular seduction (consent disabled)
+2.1 succubi and incubi are hetero, test with male & female heroes
+2.2 foocubi have seduction attack, consorting leads to sex
+2.3 nymphs 'seduce' males and 'charm' females when disrobing
+2.4 #chatting with same gender gets cajoling, other gender gets random replies
+2.5 but #chatting with opposite gender foocubi results in seduction
+2.6 no orientation in ^X screen
+2.7 dishwashers are opposite gender from hero
+
+build config #3: seduction & consent both disabled
+3.1 foocubi do not have different attack types for different genders (ace)
+3.2 foocubi attacks drain life, no disrobing, no sex
+3.3 nymphs 'seduce' males and 'charm' females when disrobing
+3.4 #chatting with same gender gets cajoling, other gender gets random replies
+3.5 no orientation in ^X screen
+3.6 dishwashers are opposite gender from hero
+
+build config #4: seduction disabled (runtime) but consent enabled (compile time)
+4.0 same as config #3
+
+--
+
+# test results
+
+2021-02-01 a52931d6c build config #1, result: FAIL
+gay female - nymphs say hello sailor, charm; FAIL - should seduce
+ace female - nymphs say hello sailor, charm; FAIL - should cajole
+straight female - nymphs cajole, charm; PASS
+bi female - nymphs say hello sailor, charm; FAIL - should seduce
+ace male - nymphs say hello sailor, seduce; FAIL - should cajole, charm
+gay male - nymphs cajole, seduce; FAIL - should charm
+bi male - nymphs say hello sailor, seduce; PASS
+straight male - nymphs say hello sailor, seduce; PASS
+
+2021-01-31 0516fa9e3 vanilla nh370, seduction enabled (guide for config #2)
+male - nymphs seduce, say hello sailor
+female - nymphs charm, cajole
+female - incubus uses seduction attack, #chat=seduction
+female - succubus does not use seduction, #chat=cajoling
+male - succubus uses seduction attack, #chat=seduction
+male - incubus does not use seduction attack, #chat=cajoling
+male - dishwasher is succubus
+female - dishwasher is incubus
+
+2021-01-31 0516fa9e3 vanilla nh370, seduction disabled (guide for config #3)
+male - nymphs seduce, say hello sailor
+female - nymphs charm, cajole
+female - incubus uses drain life, #chat=cajoling (*)
+female - succubus uses drain life, #chat=cajoling
+male - succubus uses drain life, #chat=hello sailor
+male - incubus uses drain life, #chat=hello sailor (*)
+male - dishwasher is succubus
+female - dishwasher is incubus
+* - foocubi chat responses seem wrong to me, will fix

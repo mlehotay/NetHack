@@ -921,13 +921,40 @@ domonnoise(register struct monst* mtmp)
         int swval;
 
         if (SYSOPT_SEDUCE) {
+#ifdef CONSENT /* consent test config #1 */
+            if (ptr->mlet != S_NYMPH) { /* ptr->mlet == S_AMOROUS_DEMON */
+                unsigned mask;
+                boolean fem;
+
+                /* ask for consent */
+                fem = (Mgender(mtmp) == FEMALE); /* otherwise incubus */
+                if (poly_gender() == FEMALE)
+                    mask = fem ? CONSENT_SEDUCE_FF : CONSENT_SEDUCE_MF;
+                else
+                    mask = fem ? CONSENT_SEDUCE_FM : CONSENT_SEDUCE_MM;
+                pline("%s comes onto you.", Monnam(mtmp));
+                Sprintf(verbuf, "Do you consent to %s affections?", noit_mhis(mtmp));
+                if(!doconsent(verbuf, mask)) {
+                    verbl_msg = "Very well, then.";
+                    break;
+                }
+
+                if (could_seduce(mtmp, &g.youmonst, (struct attack *) 0) == 1) {
+                    (void) doseduce(mtmp);
+                    break;
+                }
+            } /* S_AMOROUS_DEMON */
+
+            swval = ((could_seduce(mtmp, &g.youmonst, NULL) == 1) ? rn2(3) : 0);
+#else /* consent test config #2 */
             if (ptr->mlet != S_NYMPH
                 && could_seduce(mtmp, &g.youmonst, (struct attack *) 0) == 1) {
                 (void) doseduce(mtmp);
                 break;
             }
             swval = ((poly_gender() != (int) mtmp->female) ? rn2(3) : 0);
-        } else
+#endif
+        } else  /* consent test config #3 */
             swval = ((poly_gender() == 0) ? rn2(3) : 0);
         switch (swval) {
         case 2:
