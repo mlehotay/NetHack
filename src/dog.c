@@ -1097,4 +1097,102 @@ struct monst *mtmp;
     }
 }
 
+int
+dopet()
+{
+    struct monst *mtmp;
+    int tx, ty;
+    struct obj *otmp;
+
+    if (nohands(g.youmonst.data) || nolimbs(g.youmonst.data)) {
+        pline("Without hands, you can't pet anything!");
+        return 0;
+    }
+
+    if (!getdir("Pet what? (in what direction)")) {
+        /* decided not to pet anything */
+        return 0;
+    }
+
+    if (u.usteed && u.dz > 0) {
+        mtmp = u.usteed;
+        goto petmon;
+    }
+
+    if (u.dz) {
+        pline("There's nothing to pet %s there.", u.dz < 0 ? "up" : "down");
+        return 0;
+    }
+
+    if (u.dx == 0 && u.dy == 0) {
+        You("pat yourself on the %s for doing such a good job.",
+            mbodypart(&g.youmonst, HEAD));
+        return 1;
+    }
+
+    tx = u.ux + u.dx;
+    ty = u.uy + u.dy;
+
+    if (!isok(tx, ty))
+        return 0;
+
+    mtmp = m_at(tx, ty);
+    if (!mtmp || mtmp->mundetected) {
+        if ((otmp = vobj_at(tx, ty)) != 0 && otmp->otyp == STATUE) {
+            /* Petting a statue */
+            if (!Blind)
+                pline_The("%s seems not to notice your affections.",
+                          /* if hallucinating, you can't tell it's a statue */
+                          Hallucination ? rndmonnam((char *) 0) : "statue");
+            return 0;
+        }
+        if (IS_WALL(levl[tx][ty].typ) || levl[tx][ty].typ == SDOOR) {
+            if (Hallucination) {
+                pline("This wallpaper feels trippy, man!");
+            }
+            return 0;
+        }
+    }
+
+    if (!mtmp || mtmp->mundetected
+        || M_AP_TYPE(mtmp) == M_AP_FURNITURE
+        || M_AP_TYPE(mtmp) == M_AP_OBJECT)
+        return 0;
+
+    if (!canspotmon(mtmp))
+        map_invisible(mtmp->mx, mtmp->my);
+
+petmon:
+    if (!mtmp->mcanmove || mtmp->msleeping) {
+        pline("%s seems not to notice your affections.", Monnam(mtmp));
+        return 0;
+    }
+
+    /* if this monster is waiting for something, prod it into action */
+    mtmp->mstrategy &= ~STRAT_WAITMASK;
+
+    pline("You run your %s over the %s on %s %s.",
+          makeplural(mbodypart(&g.youmonst, HAND)), mbodypart(mtmp, HAIR),
+          s_suffix(mon_nam(mtmp)), mbodypart(mtmp, HEAD));
+
+    if (mtmp->mtame)
+        pline("%s seems to enjoy it immensely!", Monnam(mtmp));
+    else if (mtmp->mpeaceful)
+        setmangry(mtmp, FALSE);
+
+    /* petting a cockatrice with bare hands is bad news */
+    if (touch_petrifies(mtmp->data) && !uarmg) {
+        if (!Stone_resistance
+            && !(poly_when_stoned(g.youmonst.data)
+                 && polymon(PM_STONE_GOLEM))) {
+            Sprintf(g.killer.name, "petting %s", a_monnam(mtmp));
+            g.killer.format = KILLED_BY;
+            You("turn to stone.");
+            done(STONING);
+        }
+    }
+
+    return 1;
+}
+
 /*dog.c*/
