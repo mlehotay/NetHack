@@ -106,6 +106,7 @@ extern int doidtrap(void);           /**/
 extern int dopay(void);              /**/
 extern int dosit(void);              /**/
 extern int dotalk(void);             /**/
+extern int dopet(void);              /**/
 extern int docast(void);             /**/
 extern int dovspell(void);           /**/
 extern int dotelecmd(void);          /**/
@@ -1830,6 +1831,8 @@ struct ext_func_tab extcmdlist[] = {
               docast, IFBURIED, NULL },
     { M('c'), "chat", "talk to someone",
               dotalk, IFBURIED | AUTOCOMPLETE, NULL },
+    { '\0', "pet", "pet something",
+              dopet, AUTOCOMPLETE },
     { 'c',    "close", "close a door",
               doclose, 0, NULL },
     { M('C'), "conduct", "list voluntary challenges you have maintained",

@@ -514,6 +514,7 @@ extern int dogfood(struct monst *, struct obj *);
 extern boolean tamedog(struct monst *, struct obj *);
 extern void abuse_dog(struct monst *);
 extern void wary_dog(struct monst *, boolean);
+extern int dopet(void);
 
 /* ### dogmove.c ### */
 
