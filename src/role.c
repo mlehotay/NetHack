@@ -706,13 +706,11 @@ const struct Gender genders[] = {
     { "group", "they", "them", "their", "Grp", 0 },
 };
 
-#ifdef CONSENT
 /* Table of all orientations */
 const char *orientations[2][4] = {
   { "asexual", "homosexual", "heterosexual", "bisexual" },
   { "asexual", "heterosexual", "homosexual", "bisexual" }
 };
-#endif
 
 /* Table of all alignments */
 const struct Align aligns[] = {
