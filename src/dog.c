@@ -1144,6 +1144,11 @@ dopet()
     if (!canspotmon(mtmp))
         map_invisible(mtmp->mx, mtmp->my);
 
+    if (humanoid(mtmp->data)) {
+        You_cant("pet %s.", mon_nam(mtmp));
+        return 0;
+    }
+
 petmon:
     if (!mtmp->mcanmove || mtmp->msleeping) {
         pline("%s seems not to notice your affections.", Monnam(mtmp));
