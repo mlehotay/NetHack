@@ -487,7 +487,7 @@ check_misc_menu_command(char *opts, char *op UNUSED)
     const char *name_to_check;
 
     /* check for menu command mapping */
-    for (i = 0; i < SIZE(default_menu_cmd_info); i++) {
+    for (i = 0; default_menu_cmd_info[i].name; i++) {
         name_to_check = default_menu_cmd_info[i].name;
         if (match_optname(opts, name_to_check,
                           (int) strlen(name_to_check), TRUE))
@@ -6021,7 +6021,7 @@ parsebindings(char *bindings)
         return TRUE;
 
     /* is it a menu command? */
-    for (i = 0; i < SIZE(default_menu_cmd_info); i++) {
+    for (i = 0; default_menu_cmd_info[i].name; i++) {
         if (!strcmp(default_menu_cmd_info[i].name, bind)) {
             if (illegal_menu_cmd_key(key)) {
                 config_error_add("Bad menu key %s:%s", visctrl(key), bind);
@@ -7101,6 +7101,34 @@ optfn_o_status_hilites(int optidx UNUSED, int req, boolean negated UNUSED,
     return optn_ok;
 }
 #endif /*STATUS_HILITES*/
+
+/* Get string value of configuration option.
+ * Currently handles only boolean and compound options.
+ */
+char *
+get_option_value(const char *optname)
+{
+    static char retbuf[BUFSZ];
+    boolean *bool_p;
+    int i;
+
+    for (i = 0; allopt[i].name != 0; i++)
+        if (!strcmp(optname, allopt[i].name)) {
+            if (allopt[i].opttyp == BoolOpt && (bool_p = allopt[i].addr) != 0) {
+                Sprintf(retbuf, "%s", *bool_p ? "true" : "false");
+                return retbuf;
+            } else if (allopt[i].opttyp == CompOpt && allopt[i].optfn) {
+                int reslt = optn_err;
+
+                reslt = (*allopt[i].optfn)(allopt[i].idx, get_val,
+                                           FALSE, retbuf, empty_optstr);
+                if (reslt == optn_ok && retbuf[0])
+                    return retbuf;
+                return (char *) 0;
+            }
+        }
+    return (char *) 0;
+}
 
 /* the 'O' command */
 int

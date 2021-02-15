@@ -22,6 +22,10 @@ extern int vms_creat(const char *, unsigned);
 extern int vms_open(const char *, int, unsigned);
 #endif /* VMS */
 
+#ifndef nhUse
+#define nhUse(arg) (void)(arg)
+#endif
+
 int restore_savefile(char *);
 void set_levelfile_name(int);
 int open_levelfile(int);
@@ -417,6 +421,7 @@ exepath(char *str)
 
     if (!str)
         return (char *) 0;
+    nhUse(bsize);
     bsize = EXEPATHBUFSZ;
     tmp = exepathbuf;
 #if !defined(WIN32)
