@@ -74,7 +74,7 @@ SUPPORT=send email to spleen <mlehotay@gmail.com>.
 # CAUTION: changing these after people have started playing games can
 #  lead to lost high scores!
 # Maximum entries for one person.
-PERSMAX=25
+PERSMAX=10
 # Maximum entries in the record file.
 ENTRYMAX=1000
 # Minimum points to get an entry.
