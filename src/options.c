@@ -1,4 +1,4 @@
-/* NetHack 3.7	options.c	$NHDT-Date: 1612431350 2021/02/04 09:35:50 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.500 $ */
+/* NetHack 3.7	options.c	$NHDT-Date: 1613723080 2021/02/19 08:24:40 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.508 $ */
 /* Copyright (c) Stichting Mathematisch Centrum, Amsterdam, 1985. */
 /*-Copyright (c) Michael Allison, 2008. */
 /* NetHack may be freely redistributed.  See license for details. */
@@ -471,6 +471,8 @@ parseoptions(register char *opts,boolean tinitial, boolean tfrom_file)
     }
 
     if (optresult == optn_silenterr)
+        return FALSE;
+    if (got_match && optresult == optn_err)
         return FALSE;
     if (optresult == optn_ok)
         return retval;
@@ -2820,8 +2822,10 @@ optfn_runmode(int optidx, int req, boolean negated, char *opts, char *op)
                                  allopt[optidx].name, op);
                 return optn_err;
             }
-        } else
+        } else {
+            config_error_add("Value is mandatory for %s", allopt[optidx].name);
             return optn_err;
+        }
         return optn_ok;
     }
     if (req == get_val) {
@@ -3742,13 +3746,15 @@ optfn_windowborders(int optidx, int req, boolean negated, char *opts, char *op)
                 itmp = 0; /* Off */
             else if (op == empty_optstr)
                 itmp = 1; /* On */
-            else /* Value supplied; expect 0 (off), 1 (on), or 2 (auto) */
+            else /* Value supplied; expect 0 (off), 1 (on), 2 (auto)
+                  * or 3 (on for most windows, off for perm_invent)
+                  * or 4 (auto for most windows, off for perm_invent) */
                 itmp = atoi(op);
 
-            if (itmp < 0 || itmp > 2) {
-                config_error_add("Invalid %s (should be 0, 1, or 2): %s",
+            if (itmp < 0 || itmp > 4) {
+                config_error_add("Invalid %s (should be within 0 to 4): %s",
                                  allopt[optidx].name, opts);
-                retval = optn_err;
+                retval = optn_silenterr;
             } else {
                 iflags.wc2_windowborders = itmp;
             }
@@ -3762,7 +3768,11 @@ optfn_windowborders(int optidx, int req, boolean negated, char *opts, char *op)
                 (iflags.wc2_windowborders == 0) ? "0=off"
                 : (iflags.wc2_windowborders == 1) ? "1=on"
                   : (iflags.wc2_windowborders == 2) ? "2=auto"
-                    : defopt);
+                    : (iflags.wc2_windowborders == 3)
+                      ? "3=on, except off for perm_invent"
+                      : (iflags.wc2_windowborders == 4)
+                        ? "4=auto, except off for perm_invent"
+                        : defopt);
         return optn_ok;
     }
     return optn_ok;
@@ -4215,6 +4225,7 @@ optfn_boolean(int optidx, int req, boolean negated, char *opts, char *op)
             if (iflags.use_color)
                 g.opt_need_redraw = TRUE; /* darkroom refresh */
             break;
+        case opt_wizmgender:
         case opt_showrace:
         case opt_use_inverse:
         case opt_hilite_pile:
@@ -4268,6 +4279,13 @@ optfn_boolean(int optidx, int req, boolean negated, char *opts, char *op)
             iflags.prev_decor = STONE;
             break;
         }
+
+        /* boolean value has been toggled but some option changes can
+           still be pending at this point (mainly for opt_need_redraw);
+           give the toggled message now regardless */
+        pline("'%s' option toggled %s.", allopt[optidx].name,
+              !negated ? "on" : "off");
+
         return optn_ok;
     }
     if (req == get_val) {
@@ -8081,6 +8099,7 @@ static struct wc_Opt wc_options[] = {
     { "color", WC_COLOR },
     { "eight_bit_tty", WC_EIGHT_BIT_IN },
     { "hilite_pet", WC_HILITE_PET },
+    { "perm_invent", WC_PERM_INVENT },
     { "popup_dialog", WC_POPUP_DIALOG },
     { "player_selection", WC_PLAYER_SELECTION },
     { "preload_tiles", WC_PRELOAD_TILES },
@@ -8088,15 +8107,11 @@ static struct wc_Opt wc_options[] = {
     { "tile_file", WC_TILE_FILE },
     { "tile_width", WC_TILE_WIDTH },
     { "tile_height", WC_TILE_HEIGHT },
-    { "use_inverse", WC_INVERSE },
     { "align_message", WC_ALIGN_MESSAGE },
     { "align_status", WC_ALIGN_STATUS },
     { "font_map", WC_FONT_MAP },
     { "font_menu", WC_FONT_MENU },
     { "font_message", WC_FONT_MESSAGE },
-#if 0
-    {"perm_invent", WC_PERM_INVENT},
-#endif
     { "font_size_map", WC_FONTSIZ_MAP },
     { "font_size_menu", WC_FONTSIZ_MENU },
     { "font_size_message", WC_FONTSIZ_MESSAGE },
@@ -8108,6 +8123,7 @@ static struct wc_Opt wc_options[] = {
     { "scroll_amount", WC_SCROLL_AMOUNT },
     { "scroll_margin", WC_SCROLL_MARGIN },
     { "splash_screen", WC_SPLASH_SCREEN },
+    { "use_inverse", WC_INVERSE },
     { "vary_msgcount", WC_VARY_MSGCOUNT },
     { "windowcolors", WC_WINDOWCOLORS },
     { "mouse_support", WC_MOUSE_SUPPORT },
