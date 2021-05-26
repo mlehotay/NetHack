@@ -5,7 +5,8 @@ back to the main window.
 
 More focus:  although the menu window gets focus, the menu inside that
 window does not accept focus, so scrolling persistent inventory via
-keyboard won't work.
+keyboard won't work.  [Does not affect the new '|' command which takes
+input via yn_function() rather than directly from the perm_invent menu.]
 
 When persistent inventory window is displayed, an update that ought to
 make it grow won't do so even if there is room on the screen for that.
@@ -16,11 +17,6 @@ If the permsistent inventory window is manually made taller, it will
 fill that space immediately.  But if it is made wider, handling of the
 extra space seems to be erratic and it is sometimes left blank until
 window is dismissed and re-created via 'i' or toggling 'perm_invent'.
-
-When the 'slow' resource is off, popup yn_function sometimes doesn't
-resize to fit the prompt properly.  There's a hack to set the label
-text twice with comment suggesting that it's there to deal with this,
-but it isn't adequate to fix the problem.
 
 When the map is clipped, sometimes panning leaves a gap in the display.
 Test case was with the map manually resized to avoid overlap with the
@@ -35,4 +31,9 @@ shown there with a vertical strip of unrendered background that was
 approximately half the width of the vertical scrollbar.  It wasn't
 inserted space in between two sides of map; it was undrawn map.  If it
 had been drawn, the map would have been normal.
+
+Menus which have entries that are too wide to display have their wide
+lines truncated rather than adding a horizontal scrollbar.  Resizing
+larger doesn't recover truncated text and resizing smaller truncates
+even more.
 
