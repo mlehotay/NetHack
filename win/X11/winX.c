@@ -1,10 +1,10 @@
-/* NetHack 3.7	winX.c	$NHDT-Date: 1613985000 2021/02/22 09:10:00 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.102 $ */
+/* NetHack 3.7	winX.c	$NHDT-Date: 1643491577 2022/01/29 21:26:17 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.110 $ */
 /* Copyright (c) Dean Luick, 1992                                 */
 /* NetHack may be freely redistributed.  See license for details. */
 
 /*
  * "Main" file for the X window-port.  This contains most of the interface
- * routines.  Please see doc/window.doc for an description of the window
+ * routines.  Please see doc/window.txt for an description of the window
  * interface.
  */
 
@@ -86,6 +86,9 @@ int click_x, click_y, click_button; /* Click position on a map window   */
                                     /* (filled by set_button_values()). */
 int updated_inventory; /* used to indicate perm_invent updating */
 
+static void X11_error_handler(String) NORETURN;
+static int X11_io_error_handler(Display *);
+
 static int (*old_error_handler) (Display *, XErrorEvent *);
 
 #if !defined(NO_SIGNAL) && defined(SAFERHANGUP)
@@ -97,7 +100,7 @@ static XtSignalId X11_sig_id;
 
 /* Interface definition, for windows.c */
 struct window_procs X11_procs = {
-    "X11",
+    WPID(X11),
     ( WC_COLOR | WC_INVERSE | WC_HILITE_PET | WC_ASCII_MAP | WC_TILED_MAP
      | WC_PLAYER_SELECTION | WC_PERM_INVENT | WC_MOUSE_SUPPORT ),
     /* status requires VIA_WINDOWPORT(); WC2_FLUSH_STATUS ensures that */
@@ -114,7 +117,7 @@ struct window_procs X11_procs = {
     X11_putstr, genl_putmixed, X11_display_file, X11_start_menu, X11_add_menu,
     X11_end_menu, X11_select_menu,
     genl_message_menu, /* no need for X-specific handling */
-    X11_update_inventory, X11_mark_synch, X11_wait_synch,
+    X11_mark_synch, X11_wait_synch,
 #ifdef CLIPPING
     X11_cliparound,
 #endif
@@ -138,6 +141,8 @@ struct window_procs X11_procs = {
     X11_status_init, X11_status_finish, X11_status_enablefield,
     X11_status_update,
     genl_can_suspend_no, /* XXX may not always be correct */
+    X11_update_inventory,
+    X11_ctrl_nhwindow,
 };
 
 /*
@@ -578,7 +583,7 @@ get_window_frame_extents(Widget w,
         /*
          * FIXME!
          */
-#ifdef MACOSX
+#ifdef MACOS
         /*
          * Default window manager doesn't support _NET_FRAME_EXTENTS.
          * Without this position tweak, the persistent inventory window
@@ -984,7 +989,7 @@ X11_nhgetch(void)
 }
 
 int
-X11_nh_poskey(int *x, int *y, int *mod)
+X11_nh_poskey(coordxy *x, coordxy *y, int *mod)
 {
     int val = input_event(EXIT_ON_KEY_OR_BUTTON_PRESS);
 
@@ -1267,6 +1272,15 @@ X11_update_inventory(int arg)
     return;
 }
 
+win_request_info *
+X11_ctrl_nhwindow(
+    winid window UNUSED,
+    int request UNUSED,
+    win_request_info *wri UNUSED)
+{
+    return (win_request_info *) 0;
+}
+
 /* The current implementation has all of the saved lines on the screen. */
 int
 X11_doprev_message(void)
@@ -1479,6 +1493,8 @@ X11_error_handler(String str)
 {
     nhUse(str);
     hangup(1);
+    nh_terminate(EXIT_FAILURE);
+    /*NOTREACHED*/
 }
 
 static int
@@ -1500,6 +1516,12 @@ X11_init_nhwindows(int *argcp, char **argv)
     /* Init windows to nothing. */
     for (i = 0; i < MAX_WINDOWS; i++)
         window_list[i].type = NHW_NONE;
+
+    /* force high scores display to be shown in a window, and don't allow
+       that to be toggled off via 'O' (note: 'nethack -s' won't reach here;
+       its output goes to stdout and could be redirected into a file) */
+    iflags.toptenwin = TRUE;
+    set_option_mod_status("toptenwin", set_in_config);
 
     /* add another option that can be set */
     set_wc_option_mod_status(WC_TILED_MAP, set_in_game);
@@ -1987,6 +2009,7 @@ X11_display_file(const char *str, boolean complain)
     menu_item *menu_list;
 #define LLEN 128
     char line[LLEN];
+    int clr = 0;
 
     /* Use the port-independent file opener to see if the file exists. */
     fp = dlb_fopen(str, RDTMODE);
@@ -2003,7 +2026,7 @@ X11_display_file(const char *str, boolean complain)
     any = cg.zeroany;
     while (dlb_fgets(line, LLEN, fp)) {
         X11_add_menu(newwin, &nul_glyphinfo, &any, 0, 0, ATR_NONE,
-                     line, MENU_ITEMFLAGS_NONE);
+                     clr, line, MENU_ITEMFLAGS_NONE);
     }
     (void) dlb_fclose(fp);
 

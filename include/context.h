@@ -1,4 +1,4 @@
-/* NetHack 3.7	context.h	$NHDT-Date: 1596498530 2020/08/03 23:48:50 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.41 $ */
+/* NetHack 3.7	context.h	$NHDT-Date: 1646428003 2022/03/04 21:06:43 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.45 $ */
 /* Copyright (c) Stichting Mathematisch Centrum, Amsterdam, 1985. */
 /*-Copyright (c) Michael Allison, 2006. */
 /* NetHack may be freely redistributed.  See license for details. */
@@ -70,7 +70,7 @@ struct engrave_info {
                            the possible mutations of this */
     char *nextc;        /* next character(s) in text[] to engrave */
     struct obj *stylus; /* object doing the writing */
-    xchar type;         /* type of engraving (DUST, MARK, etc) */
+    xint8 type;         /* type of engraving (DUST, MARK, etc) */
     coord pos;          /* location the engraving is being placed on */
     int actionct;       /* nth turn spent engraving */
 };
@@ -104,7 +104,7 @@ struct tribute_info {
 struct novel_tracking { /* for choosing random passage when reading novel */
     unsigned id;        /* novel oid from previous passage selection */
     int count;          /* number of passage indices available in pasg[] */
-    xchar pasg[30];     /* pasg[0..count-1] are passage indices */
+    xint8 pasg[30];     /* pasg[0..count-1] are passage indices */
     /* tribute file is allowed to have more than 30 passages for a novel;
        if it does, reading will first choose a random subset of 30 of them;
        reading all 30 or switching to a different novel and then back again
@@ -116,10 +116,14 @@ struct novel_tracking { /* for choosing random passage when reading novel */
 };
 
 struct achievement_tracking {
-    unsigned mines_prize_oid,  /* luckstone->o_id */
-             soko_prize_oid,   /* {bag or amulet}->o_id */
-             castle_prize_old; /* wand->o_id; not yet implemented */
-    boolean minetn_reached;    /* avoid redundant checking for town entry */
+    unsigned mines_prize_oid,   /* luckstone->o_id */
+             soko_prize_oid,    /* {bag or amulet}->o_id */
+             castle_prize_old;  /* wand->o_id; not yet implemented */
+    /* record_achievement() wants the item type for livelog() event */
+    short    mines_prize_otyp,  /* luckstone */
+             soko_prize_otyp,   /* bag of holding or amulet of reflection */
+             castle_prize_otyp; /* strange object (someday wand of wishing) */
+    boolean minetn_reached;     /* avoid redundant checking for town entry */
 };
 
 struct context_info {
@@ -135,8 +139,8 @@ struct context_info {
     int warnlevel;          /* threshold (digit) to warn about unseen mons */
     long next_attrib_check; /* next attribute check */
     long seer_turn;         /* when random clairvoyance will next kick in */
-    long stethoscope_move;  /* when a stethoscope was last used */
-    short stethoscope_movement; /* to track multiple moves on same turn */
+    long stethoscope_seq;   /* when a stethoscope was last used; first use
+                             * during a move takes no time, second uses move */
     boolean travel;  /* find way automatically to u.tx,u.ty */
     boolean travel1; /* first travel step */
     boolean forcefight;
@@ -150,6 +154,7 @@ struct context_info {
     boolean botlx;       /* print an entirely new bottom line */
     boolean door_opened; /* set to true if door was opened during test_move */
     boolean enhance_tip; /* player is informed about #enhance */
+    boolean swim_tip;    /* player was informed about walking into water */
     struct dig_info digging;
     struct victual_info victual;
     struct engrave_info engraving;

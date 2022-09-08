@@ -26,7 +26,7 @@ static struct rnglist_t rnglist[] = {
     { rn2_on_display_rng, FALSE, { 0 } },       /* DISP */
 };
 
-int
+static int
 whichrng(int (*fn)(int))
 {
     int i;
@@ -165,6 +165,12 @@ rnd(register int x)
 #endif
     x = RND(x) + 1;
     return x;
+}
+
+int
+rnd_on_display_rng(register int x)
+{
+    return rn2_on_display_rng(x) + 1;
 }
 
 /* d(N,X) == NdX == dX+dX+...+dX N times; n <= d(n,x) <= (n*x) */

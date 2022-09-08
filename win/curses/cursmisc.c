@@ -12,6 +12,10 @@
 
 #include <ctype.h>
 
+#ifndef A_ITALIC
+#define A_ITALIC A_UNDERLINE
+#endif
+
 /* Misc. curses interface functions */
 
 /* Private declarations */
@@ -65,7 +69,7 @@ curses_read_char(void)
     }
 #endif
 
-    if (counting && !isdigit(ch)) { /* Dismiss count window if necissary */
+    if (counting && !isdigit(ch)) { /* dismiss count window if necessary */
         curses_count_window(NULL);
         curses_refresh_nethack_windows();
     }
@@ -100,7 +104,7 @@ curses_toggle_color_attr(WINDOW *win, int color, int attr, int onoff)
     if (color == 0) {           /* make black fg visible */
 # ifdef USE_DARKGRAY
         if (iflags.wc2_darkgray) {
-            if (can_change_color() && (COLORS > 16)) {
+            if (COLORS > 16) {
                 /* colorpair for black is already darkgray */
             } else {            /* Use bold for a bright black */
                 wattron(win, A_BOLD);
@@ -135,7 +139,7 @@ curses_toggle_color_attr(WINDOW *win, int color, int attr, int onoff)
                 wattroff(win, A_BOLD);
             }
 # ifdef USE_DARKGRAY
-            if ((color == 0) && (!can_change_color() || (COLORS <= 16))) {
+            if ((color == 0) && (COLORS <= 16)) {
                 wattroff(win, A_BOLD);
             }
 # else
@@ -650,6 +654,7 @@ curses_view_file(const char *filename, boolean must_exist)
     char buf[BUFSZ];
     menu_item *selected = NULL;
     dlb *fp = dlb_fopen(filename, "r");
+    int clr = 0;
 
     if (fp == NULL) {
         if (must_exist)
@@ -663,7 +668,7 @@ curses_view_file(const char *filename, boolean must_exist)
 
     while (dlb_fgets(buf, BUFSZ, fp) != NULL) {
         curses_add_menu(wid, &nul_glyphinfo, &Id, 0, 0,
-                        A_NORMAL, buf, FALSE);
+                        A_NORMAL, clr, buf, FALSE);
     }
 
     dlb_fclose(fp);
@@ -691,30 +696,27 @@ curses_rtrim(char *str)
 /* Read numbers until non-digit is encountered, and return number
 in int form. */
 
-int
+long
 curses_get_count(int first_digit)
 {
-    long current_count = first_digit;
     int current_char;
+    long current_count = 0L;
 
-    current_char = curses_read_char();
-
-    while (isdigit(current_char)) {
-        current_count = (current_count * 10) + (current_char - '0');
-        if (current_count > LARGEST_INT) {
-            current_count = LARGEST_INT;
-        }
-
-        custompline(SUPPRESS_HISTORY, "Count: %ld", current_count);
-        current_char = curses_read_char();
-    }
+    /* use core's count routine; we have the first digit; if any more
+       are typed, get_count() will send "Count:123" to the message window;
+       curses's message window will display that in count window instead */
+    current_char = get_count(NULL, (char) first_digit,
+                             /* 0L => no limit on value unless it wraps
+                                to negative */
+                             0L, &current_count,
+                             /* default: don't put into message history,
+                                don't echo until second digit entered */
+                             GC_NOFLAGS);
 
     ungetch(current_char);
-
     if (current_char == '\033') {     /* Cancelled with escape */
         current_count = -1;
     }
-
     return current_count;
 }
 
@@ -749,6 +751,9 @@ curses_convert_attr(int attr)
         break;
     case ATR_INVERSE:
         curses_attr = A_REVERSE;
+        break;
+    case ATR_ITALIC:
+        curses_attr = A_ITALIC;
         break;
     default:
         curses_attr = A_NORMAL;
@@ -976,7 +981,7 @@ event, or the first non-mouse key event in the case of mouse
 movement. */
 
 int
-curses_get_mouse(int *mousex, int *mousey, int *mod)
+curses_get_mouse(coordxy *mousex, coordxy *mousey, int *mod)
 {
     int key = '\033';
 

@@ -93,10 +93,12 @@
 /*
  * Define DEF_PAGER as your default pager, e.g. "/bin/cat" or "/usr/ucb/more"
  * If defined, it can be overridden by the environment variable PAGER.
- * Hack will use its internal pager if DEF_PAGER is not defined.
- * (This might be preferable for security reasons.)
+ * NetHack will use its internal pager if DEF_PAGER is not defined _or_
+ * if DLB is defined since an external pager won't know how to access the
+ * contents of the dlb container file.
+ * (Note: leaving DEF_PAGER undefined is preferable for security reasons.)
  */
-/* #define DEF_PAGER ".../mydir/mypager" */
+/* #define DEF_PAGER "/usr/bin/less" */
 
 /*
  * Define PORT_HELP to be the name of the port-specfic help file.
@@ -117,7 +119,7 @@
  */
 /* #define TIMED_DELAY */ /* usleep() */
 #endif
-#if defined(MACOSX) && !defined(TIMED_DELAY)
+#if defined(MACOS) && !defined(TIMED_DELAY)
 #define TIMED_DELAY
 #endif
 
@@ -294,6 +296,16 @@
 #include <time.h>
 #endif
 
+/* these might be needed for include/system.h;
+   default comes from system's time.h */
+/* #define NEED_TIME_DECL 1 */
+/* #define NEED_LOCALTIME_DECL 1 */
+/* #define NEED_CTIME_DECL 1 */
+/* these might be needed for src/hacklib.c;
+   default is 'time_t *' */
+/* #define TIME_type long * */
+/* #define LOCALTIME_type long * */
+
 #define HLOCK "perm" /* an empty file used for locking purposes */
 
 #define tgetch getchar
@@ -335,7 +347,7 @@
 /* the high quality random number routines */
 #ifndef USE_ISAAC64
 # if defined(BSD) || defined(LINUX) || defined(ULTRIX) || defined(CYGWIN32) \
-    || defined(RANDOM) || defined(MACOSX)
+    || defined(RANDOM) || defined(MACOS)
 #  define Rand() random()
 # else
 #  define Rand() lrand48()
@@ -392,7 +404,7 @@
 #endif /* LINUX */
 #endif /* GNOME_GRAPHICS */
 
-#if defined(MACOSX) && !defined(LIBNH)
+#if defined(MACOS) && !defined(LIBNH)
 # define RUNTIME_PASTEBUF_SUPPORT
 #endif
 
@@ -405,7 +417,7 @@
 #ifdef LINUX
 # define DEV_RANDOM "/dev/urandom"
 #else
-# if defined(BSD) || defined(MACOSX)
+# if defined(BSD) || defined(MACOS)
 #  define DEV_RANDOM "/dev/random"
 # endif
 #endif

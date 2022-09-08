@@ -1,4 +1,4 @@
-/* NetHack 3.7	flag.h	$NHDT-Date: 1600933440 2020/09/24 07:44:00 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.185 $ */
+/* NetHack 3.7	flag.h	$NHDT-Date: 1655161560 2022/06/13 23:06:00 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.201 $ */
 /* Copyright (c) Stichting Mathematisch Centrum, Amsterdam, 1985. */
 /*-Copyright (c) Michael Allison, 2006. */
 /* NetHack may be freely redistributed.  See license for details. */
@@ -20,7 +20,6 @@ struct flag {
     boolean autodig;         /* MRKR: Automatically dig */
     boolean autoquiver;      /* Automatically fill quiver */
     boolean autoopen;        /* open doors by walking into them */
-    boolean autounlock;      /* automatically apply unlocking tools */
     boolean beginner;        /* True early in each game; affects feedback */
     boolean biff;            /* enable checking for mail */
     boolean bones;           /* allow saving/loading bones */
@@ -71,6 +70,11 @@ struct flag {
     boolean tombstone;       /* print tombstone */
     boolean verbose;         /* max battle info */
     int end_top, end_around; /* describe desired score list */
+    unsigned autounlock;     /* locked door/chest action */
+#define AUTOUNLOCK_UNTRAP    1
+#define AUTOUNLOCK_APPLY_KEY 2
+#define AUTOUNLOCK_KICK      4
+#define AUTOUNLOCK_FORCE     8
     unsigned moonphase;
     unsigned long suppress_alert;
 #define NEW_MOON 0
@@ -86,6 +90,7 @@ struct flag {
 #define PARANOID_BREAKWAND  0x0080
 #define PARANOID_WERECHANGE 0x0100
 #define PARANOID_EATING     0x0200
+#define PARANOID_SWIM       0x0400
     int pickup_burden; /* maximum burden before prompt */
     int pile_limit;    /* controls feedback when walking over objects */
     char discosort;    /* order of dodiscovery/doclassdisco output: o,s,c,a */
@@ -165,6 +170,15 @@ enum getloc_filters {
     NUM_GFILTER
 };
 
+#ifdef WIN32
+enum windows_key_handling {
+    no_keyhandling,
+    default_keyhandling,
+    ray_keyhandling,
+    nh340_keyhandling
+};
+#endif
+
 struct debug_flags {
     boolean test;
 #ifdef TTY_GRAPHICS
@@ -175,17 +189,21 @@ struct debug_flags {
 #endif
 };
 
+/*
+ * Stuff that really isn't option or platform related and does not
+ * get saved and restored.  They are set and cleared during the game
+ * to control the internal behaviour of various NetHack functions
+ * and probably warrant a structure of their own elsewhere some day.
+ */
 struct instance_flags {
-    /* stuff that really isn't option or platform related. They are
-     * set and cleared during the game to control the internal
-     * behaviour of various NetHack functions and probably warrant
-     * a structure of their own elsewhere some day.
-     */
     boolean debug_fuzzer;  /* fuzz testing */
-    boolean in_lua;        /* executing a lua script */
     boolean defer_plname;  /* X11 hack: askname() might not set g.plname */
     boolean herecmd_menu;  /* use menu when mouseclick on yourself */
     boolean invis_goldsym; /* gold symbol is ' '? */
+    boolean in_lua;        /* executing a lua script */
+    boolean lua_testing;   /* doing lua tests */
+    boolean partly_eaten_hack; /* extra flag for xname() used when it's called
+                                * indirectly so we can't use xname_flags() */
     boolean sad_feeling;   /* unseen pet is dying */
     int at_midnight;       /* only valid during end of game disclosure */
     int at_night;          /* also only valid during end of game disclosure */
@@ -202,15 +220,22 @@ struct instance_flags {
 #define TER_OBJ    0x04
 #define TER_MON    0x08
 #define TER_DETECT 0x10    /* detect_foo magic rather than #terrain */
-    boolean getloc_travelmode;
+    int getdir_click;      /* as input to getdir(): non-zero, accept simulated
+                            * click that's not adjacent to or on hero;
+                            * as output from getdir(): simulated button used
+                            * 0 (none) or CLICK_1 (left) or CLICK_2 (right) */
     int getloc_filter;     /* GFILTER_foo */
-    boolean getloc_usemenu;
     boolean getloc_moveskip;
+    boolean getloc_travelmode;
+    boolean getloc_usemenu;
     coord travelcc;        /* coordinates for travel_cache */
     boolean trav_debug;    /* display travel path (#if DEBUG only) */
     boolean window_inited; /* true if init_nhwindows() completed */
     boolean vision_inited; /* true if vision is ready */
     boolean sanity_check;  /* run sanity checks */
+    boolean debug_overwrite_stairs; /* debug: allow overwriting stairs */
+    boolean debug_mongen;  /* debug: prevent monster generation */
+    boolean debug_hunger;  /* debug: prevent hunger */
     boolean mon_polycontrol; /* debug: control monster polymorphs */
     boolean in_dumplog;    /* doing the dumplog right now? */
     boolean in_parse;      /* is a command being parsed? */
@@ -224,6 +249,8 @@ struct instance_flags {
     int menuinvertmode;  /* 0 = invert toggles every item;
                             1 = invert skips 'all items' item */
     int menu_headings;    /* ATR for menu headings */
+    uint32_t colorcount;    /* store how many colors terminal is capable of */
+    boolean use_truecolor;  /* force use of truecolor */
 #ifdef ALTMETA
     boolean altmeta;      /* Alt-c sends ESC c rather than M-c */
 #endif
@@ -299,8 +326,8 @@ struct instance_flags {
 #ifdef TTY_SOUND_ESCCODES
     boolean vt_sounddata;    /* output console codes for sound support in TTY*/
 #endif
-    boolean clicklook;       /* allow right-clicking for look */
     boolean cmdassist;       /* provide detailed assistance for some comnds */
+    boolean fireassist;      /* autowield launcher when using fire-command */
     boolean time_botl;       /* context.botl for 'time' (moves) only */
     boolean wizweight;       /* display weight of everything in wizard mode */
     boolean wizmgender;      /* test gender info from core in window port */
@@ -364,8 +391,9 @@ struct instance_flags {
     int wc2_windowborders;	/* display borders on NetHack windows */
     int wc2_petattr;            /* text attributes for pet */
 #ifdef WIN32
-#define MAX_ALTKEYHANDLER 25
-    char altkeyhandler[MAX_ALTKEYHANDLER];
+#define MAX_ALTKEYHANDLING 25
+    char altkeyhandling[MAX_ALTKEYHANDLING];
+    enum windows_key_handling key_handling;
 #endif
     /* copies of values in struct u, used during detection when the
        originals are temporarily cleared; kept here rather than
@@ -374,7 +402,7 @@ struct instance_flags {
     Bitfield(save_uinwater, 1);
     Bitfield(save_uburied, 1);
     struct debug_flags debug;
-    boolean windowtype_locked;  /* windowtype can't change from configfile */
+    boolean windowtype_locked;   /* windowtype can't change from configfile */
     boolean windowtype_deferred; /* pick a windowport and store it in
                                     chosen_windowport[], but do not switch to
                                     it in the midst of options processing */
@@ -456,6 +484,8 @@ enum runmode_types {
 /* continue eating: prompt given _after_first_bite_ when eating something
    while satiated */
 #define ParanoidEating ((flags.paranoia_bits & PARANOID_EATING) != 0)
+/* Prevent going into lava or water without explicitly forcing it */
+#define ParanoidSwim ((flags.paranoia_bits & PARANOID_SWIM) != 0)
 
 /* command parsing, mainly dealing with number_pad handling;
    not saved and restored */

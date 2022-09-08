@@ -17,6 +17,9 @@ static char *e_atr2str(int);
 
 void cmov(int, int);
 void nocmov(int, int);
+void term_start_24bitcolor(struct unicode_representation *);
+void term_end_24bitcolor(void);
+
 #if defined(TEXTCOLOR) && defined(TERMLIB)
 #if (!defined(UNIX) || !defined(TERMINFO)) && !defined(TOS)
 static void analyze_seq(char *, int *, int *);
@@ -33,6 +36,7 @@ struct tc_lcl_data tc_lcl_data = { 0, 0, 0, 0, 0, 0, 0, FALSE };
 static char *HO, *CL, *CE, *UP, *XD, *BC, *SO, *SE, *TI, *TE;
 static char *VS, *VE;
 static char *ME, *MR, *MB, *MH, *MD;
+static char *ZH, *ZR;
 
 #ifdef TERMLIB
 boolean dynamic_HIHE = FALSE;
@@ -64,6 +68,9 @@ static char tgotobuf[20];
 #define tgoto(fmt, x, y) (Sprintf(tgotobuf, fmt, y + 1, x + 1), tgotobuf)
 #endif
 #endif /* TERMLIB */
+
+/* these don't need to be part of 'struct instance_globals g' */
+static char tty_standout_on[16], tty_standout_off[16];
 
 void
 tty_startup(int *wid, int *hgt)
@@ -227,34 +234,36 @@ tty_startup(int *wid, int *hgt)
     if (CO < COLNO || LI < ROWNO + 3)
         setclipped();
 #endif
-    nh_ND = Tgetstr("nd");
-    if (tgetflag("os"))
+    nh_ND = Tgetstr("nd"); /* move cursor right 1 column */
+    if (tgetflag("os")) /* term can overstrike */
         error("NetHack can't have OS.");
-    if (tgetflag("ul"))
+    if (tgetflag("ul")) /* underline by overstrike w/ underscore */
         ul_hack = TRUE;
-    CE = Tgetstr("ce");
-    UP = Tgetstr("up");
+    CE = Tgetstr("ce"); /* clear line from cursor to eol */
+    UP = Tgetstr("up"); /* move cursor up 1 line */
     /* It seems that xd is no longer supported, and we should use
        a linefeed instead; unfortunately this requires resetting
        CRMOD, and many output routines will have to be modified
        slightly. Let's leave that till the next release. */
     XD = Tgetstr("xd");
     /* not:             XD = Tgetstr("do"); */
-    if (!(nh_CM = Tgetstr("cm"))) {
+    if (!(nh_CM = Tgetstr("cm"))) { /* cm: move cursor */
         if (!UP && !HO)
             error("NetHack needs CM or UP or HO.");
         tty_raw_print("Playing NetHack on terminals without CM is suspect.");
         tty_wait_synch();
     }
-    SO = Tgetstr("so");
-    SE = Tgetstr("se");
-    nh_US = Tgetstr("us");
-    nh_UE = Tgetstr("ue");
+    SO = Tgetstr("so"); /* standout start */
+    SE = Tgetstr("se"); /* standout end */
+    nh_US = Tgetstr("us"); /* underline start */
+    nh_UE = Tgetstr("ue"); /* underline end */
+    ZH = Tgetstr("ZH"); /* italic start */
+    ZR = Tgetstr("ZR"); /* italic end */
     SG = tgetnum("sg"); /* -1: not fnd; else # of spaces left by so */
     if (!SO || !SE || (SG > 0))
         SO = SE = nh_US = nh_UE = nullstr;
-    TI = Tgetstr("ti");
-    TE = Tgetstr("te");
+    TI = Tgetstr("ti"); /* nonconsequential cursor movement start */
+    TE = Tgetstr("te"); /* nonconsequential cursor movement end */
     VS = VE = nullstr;
 #ifdef TERMINFO
     VS = Tgetstr("eA"); /* enable graphics */
@@ -264,6 +273,8 @@ tty_startup(int *wid, int *hgt)
     MR = Tgetstr("mr"); /* reverse */
     MB = Tgetstr("mb"); /* blink */
     MD = Tgetstr("md"); /* boldface */
+    if (!SO)
+        SO = MD;
     MH = Tgetstr("mh"); /* dim */
     ME = Tgetstr("me"); /* turn off all attributes */
     if (!ME)
@@ -282,9 +293,9 @@ tty_startup(int *wid, int *hgt)
     nh_HE = dupstr(&ME[i]);
     dynamic_HIHE = TRUE;
 
-    AS = Tgetstr("as");
-    AE = Tgetstr("ae");
-    nh_CD = Tgetstr("cd");
+    AS = Tgetstr("as"); /* alt charset start */
+    AE = Tgetstr("ae"); /* alt charset end */
+    nh_CD = Tgetstr("cd"); /* clear lines from cursor and down */
 #ifdef TEXTCOLOR
 #if defined(TOS) && defined(__GNUC__)
     if (!strcmp(term, "builtin") || !strcmp(term, "tw52")
@@ -297,12 +308,20 @@ tty_startup(int *wid, int *hgt)
 #endif
     *wid = CO;
     *hgt = LI;
+    /* cl: clear screen, set cursor to upper left */
     if (!(CL = Tgetstr("cl"))) /* last thing set */
         error("NetHack needs CL.");
     if ((int) (tbufptr - tbuf) > (int) (sizeof tbuf))
         error("TERMCAP entry too big...\n");
     free((genericptr_t) tptr);
 #endif /* TERMLIB */
+    /* keep static copies of these so that raw_print_bold() will work
+       after exit_nhwindows(); if the sequences are too long, then bold
+       won't work after that--it will be rendered as ordinary text */
+    if (nh_HI && strlen(nh_HI) < sizeof tty_standout_on)
+        Strcpy(tty_standout_on, nh_HI);
+    if (nh_HE && strlen(nh_HE) < sizeof tty_standout_off)
+        Strcpy(tty_standout_off, nh_HE);
 }
 
 /* note: at present, this routine is not part of the formal window interface
@@ -417,11 +436,12 @@ tty_decgraphics_termcap_fixup(void)
 #endif /* TERMLIB */
 
 #if defined(ASCIIGRAPH) && defined(PC9800)
-extern void (*ibmgraphics_mode_callback)(void); /* defined in drawing.c */
+extern void (*ibmgraphics_mode_callback)(void); /* defined in symbols.c */
 #endif
+extern void (*utf8graphics_mode_callback)(void); /* defined in symbols.c */
 
 #ifdef PC9800
-extern void (*ascgraphics_mode_callback)(void); /* defined in drawing.c */
+extern void (*ascgraphics_mode_callback)(void); /* defined in symbols.c */
 static void tty_ascgraphics_hilite_fixup(void);
 
 static void
@@ -465,6 +485,10 @@ tty_start_screen(void)
     /* set up callback in case option is not set yet but toggled later */
     decgraphics_mode_callback = tty_decgraphics_termcap_fixup;
 #endif
+#ifdef ENHANCED_SYMBOLS
+    utf8graphics_mode_callback = tty_utf8graphics_fixup;
+#endif
+
     if (g.Cmd.num_pad)
         tty_number_pad(1); /* make keypad send digits */
 }
@@ -857,16 +881,23 @@ const struct {
                 { COLOR_MAGENTA, CLR_MAGENTA, CLR_BRIGHT_MAGENTA },
                 { COLOR_CYAN, CLR_CYAN, CLR_BRIGHT_CYAN } };
 
+typedef struct {
+    unsigned char r, g, b;
+} RGB;
+
 static char nilstring[] = "";
 
 static void
 init_hilite(void)
 {
-    register int c;
+    int c, colors;
     char *setf, *scratch;
-    int md_len;
 
-    if (tgetnum("Co") < 8 || (MD == NULL) || (strlen(MD) == 0)
+    colors = tgetnum("Co");
+    iflags.colorcount = colors;
+    int md_len = 0;
+
+    if (colors < 8 || (MD == NULL) || (strlen(MD) == 0)
         || ((setf = tgetstr("AF", (char **) 0)) == (char *) 0
             && (setf = tgetstr("Sf", (char **) 0)) == (char *) 0)) {
         /* Fallback when colors not available
@@ -892,39 +923,70 @@ init_hilite(void)
         return;
     }
 
-    md_len = strlen(MD);
+    if (colors >= 16) {
+        for (c = 0; c < SIZE(ti_map); c++) {
+            char *work;
 
-    c = 6;
-    while (c--) {
-        char *work;
+            /* system colors */
+            scratch = tparm(setf, ti_map[c].nh_color);
+            work = (char *) alloc(strlen(scratch) + 1);
+            Strcpy(work, scratch);
+            hilites[ti_map[c].nh_color] = work;
 
-        scratch = tparm(setf, ti_map[c].ti_color);
-        work = (char *) alloc(strlen(scratch) + md_len + 1);
-        Strcpy(work, MD);
-        hilites[ti_map[c].nh_bright_color] = work;
-        work += md_len;
-        Strcpy(work, scratch);
-        hilites[ti_map[c].nh_color] = work;
+            /* bright colors */
+            scratch = tparm(setf, ti_map[c].nh_bright_color);
+            work = (char *) alloc(strlen(scratch) + 1);
+            Strcpy(work, scratch);
+            hilites[ti_map[c].nh_bright_color] = work;
+        }
+    } else {
+        /* 8 system colors */
+        md_len = strlen(MD);
+
+        c = 6;
+        while (c--) {
+            char *work;
+
+            scratch = tparm(setf, ti_map[c].ti_color);
+            work = (char *) alloc(strlen(scratch) + md_len + 1);
+            Strcpy(work, MD);
+            hilites[ti_map[c].nh_bright_color] = work;
+            work += md_len;
+            Strcpy(work, scratch);
+            hilites[ti_map[c].nh_color] = work;
+        }
     }
 
-    scratch = tparm(setf, COLOR_WHITE);
-    hilites[CLR_WHITE] = (char *) alloc(strlen(scratch) + md_len + 1);
-    Strcpy(hilites[CLR_WHITE], MD);
-    Strcat(hilites[CLR_WHITE], scratch);
+    if (colors >= 16) {
+        scratch = tparm(setf, COLOR_WHITE|BRIGHT);
+        hilites[CLR_WHITE] = (char *) alloc(strlen(scratch) + 1);
+        Strcpy(hilites[CLR_WHITE], scratch);
+    } else {
+        scratch = tparm(setf, COLOR_WHITE);
+        hilites[CLR_WHITE] = (char *) alloc(strlen(scratch) + md_len + 1);
+        Strcpy(hilites[CLR_WHITE], MD);
+        Strcat(hilites[CLR_WHITE], scratch);
+    }
 
     hilites[CLR_GRAY] = nilstring;
     hilites[NO_COLOR] = nilstring;
 
     if (iflags.wc2_darkgray) {
-        /* On many terminals, esp. those using classic PC CGA/EGA/VGA
-         * textmode, specifying "hilight" and "black" simultaneously
-         * produces a dark shade of gray that is visible against a
-         * black background.  We can use it to represent black objects.
-         */
-        scratch = tparm(setf, COLOR_BLACK);
-        hilites[CLR_BLACK] = (char *) alloc(strlen(scratch) + md_len + 1);
-        Strcpy(hilites[CLR_BLACK], MD);
-        Strcat(hilites[CLR_BLACK], scratch);
+        if (colors >= 16) {
+            scratch = tparm(setf, COLOR_BLACK|BRIGHT);
+            hilites[CLR_BLACK] = (char *) alloc(strlen(scratch) + 1);
+            Strcpy(hilites[CLR_BLACK], scratch);
+        } else {
+            /* On many terminals, esp. those using classic PC CGA/EGA/VGA
+            * textmode, specifying "hilight" and "black" simultaneously
+            * produces a dark shade of gray that is visible against a
+            * black background.  We can use it to represent black objects.
+            */
+            scratch = tparm(setf, COLOR_BLACK);
+            hilites[CLR_BLACK] = (char *) alloc(strlen(scratch) + md_len + 1);
+            Strcpy(hilites[CLR_BLACK], MD);
+            Strcat(hilites[CLR_BLACK], scratch);
+        }
     } else {
         /* But it's concievable that hilighted black-on-black could
          * still be invisible on many others.  We substitute blue for
@@ -937,6 +999,8 @@ init_hilite(void)
 static void
 kill_hilite(void)
 {
+    int c;
+
     /* if colors weren't available, no freeing needed */
     if (hilites[CLR_BLACK] == nh_HI)
         return;
@@ -944,37 +1008,47 @@ kill_hilite(void)
     if (hilites[CLR_BLACK]) {
         if (hilites[CLR_BLACK] != hilites[CLR_BLUE])
             free(hilites[CLR_BLACK]);
-        hilites[CLR_BLACK] = 0;
     }
-    /* CLR_BLUE overlaps CLR_BRIGHT_BLUE, do not free */
-    /* CLR_GREEN overlaps CLR_BRIGHT_GREEN, do not free */
-    /* CLR_CYAN overlaps CLR_BRIGHT_CYAN, do not free */
-    /* CLR_MAGENTA overlaps CLR_BRIGHT_MAGENTA, do not free */
-    /* CLR_RED overlaps CLR_ORANGE, do not free */
-    /* CLR_BROWN overlaps CLR_YELLOW, do not free */
+    if (tgetnum("Co") >= 16) {
+        if (hilites[CLR_BLUE])
+            free(hilites[CLR_BLUE]);
+        if (hilites[CLR_GREEN])
+            free(hilites[CLR_GREEN]);
+        if (hilites[CLR_CYAN])
+            free(hilites[CLR_CYAN]);
+        if (hilites[CLR_MAGENTA])
+            free(hilites[CLR_MAGENTA]);
+        if (hilites[CLR_RED])
+            free(hilites[CLR_RED]);
+        if (hilites[CLR_BROWN])
+            free(hilites[CLR_BROWN]);
+    } else {
+        /* CLR_BLUE overlaps CLR_BRIGHT_BLUE, do not free */
+        /* CLR_GREEN overlaps CLR_BRIGHT_GREEN, do not free */
+        /* CLR_CYAN overlaps CLR_BRIGHT_CYAN, do not free */
+        /* CLR_MAGENTA overlaps CLR_BRIGHT_MAGENTA, do not free */
+        /* CLR_RED overlaps CLR_ORANGE, do not free */
+        /* CLR_BROWN overlaps CLR_YELLOW, do not free */
+    }
     /* CLR_GRAY is static 'nilstring', do not free */
     /* NO_COLOR is static 'nilstring', do not free */
     if (hilites[CLR_BRIGHT_BLUE])
-        free(hilites[CLR_BRIGHT_BLUE]),
-            hilites[CLR_BRIGHT_BLUE] = hilites[CLR_BLUE] = 0;
+        free(hilites[CLR_BRIGHT_BLUE]);
     if (hilites[CLR_BRIGHT_GREEN])
-        free(hilites[CLR_BRIGHT_GREEN]),
-            hilites[CLR_BRIGHT_GREEN] = hilites[CLR_GREEN] = 0;
+        free(hilites[CLR_BRIGHT_GREEN]);
     if (hilites[CLR_BRIGHT_CYAN])
-        free(hilites[CLR_BRIGHT_CYAN]),
-            hilites[CLR_BRIGHT_CYAN] = hilites[CLR_CYAN] = 0;
+        free(hilites[CLR_BRIGHT_CYAN]);
     if (hilites[CLR_BRIGHT_MAGENTA])
-        free(hilites[CLR_BRIGHT_MAGENTA]),
-            hilites[CLR_BRIGHT_MAGENTA] = hilites[CLR_MAGENTA] = 0;
+        free(hilites[CLR_BRIGHT_MAGENTA]);
     if (hilites[CLR_ORANGE])
-        free(hilites[CLR_ORANGE]),
-            hilites[CLR_ORANGE] = hilites[CLR_RED] = 0;
+        free(hilites[CLR_ORANGE]);
     if (hilites[CLR_YELLOW])
-        free(hilites[CLR_YELLOW]),
-            hilites[CLR_YELLOW] = hilites[CLR_BROWN] = 0;
+        free(hilites[CLR_YELLOW]);
     if (hilites[CLR_WHITE])
-        free(hilites[CLR_WHITE]), hilites[CLR_WHITE] = 0;
-    hilites[CLR_GRAY] = hilites[NO_COLOR] = 0;
+        free(hilites[CLR_WHITE]);
+
+    for (c = 0; c < CLR_MAX; c++)
+        hilites[c] = 0;
 }
 
 #else /* UNIX && TERMINFO */
@@ -1179,6 +1253,16 @@ init_hilite(void)
             Sprintf(hilites[c], "\033[0;3%dm", c);
         }
     }
+
+    /* See TEXTCOLOR && TERMLIB && UNIX && TERMINFO code above. */
+    if (iflags.wc2_darkgray) {
+        /* Bright black is dark gray. */
+        hilites[CLR_BLACK] = (char *) alloc(sizeof "\033[1;30m");
+        Sprintf(hilites[CLR_BLACK], "\033[1;30m");
+    } else {
+        /* Use blue for black. */
+        hilites[CLR_BLACK] = hilites[CLR_BLUE];
+    }
 }
 
 static void
@@ -1200,7 +1284,12 @@ kill_hilite(void)
         if (hilites[c | BRIGHT] && hilites[c | BRIGHT] != nh_HI)
             free((genericptr_t) hilites[c | BRIGHT]), hilites[c | BRIGHT] = 0;
     }
-    return;
+
+    if (hilites[CLR_BLACK]) {
+        if (hilites[CLR_BLACK] != hilites[CLR_BLUE])
+            free(hilites[CLR_BLACK]);
+        hilites[CLR_BLACK] = 0;
+    }
 }
 #endif /* TEXTCOLOR && !TERMLIB && ANSI_DEFAULT */
 
@@ -1234,6 +1323,10 @@ s_atr2str(int n)
         if (MH && *MH)
             return MH;
         break;
+    case ATR_ITALIC:
+        if (ZH && *ZH)
+            return ZH;
+        break;
     }
     return nulstr;
 }
@@ -1255,6 +1348,10 @@ e_atr2str(int n)
     case ATR_INVERSE:
         if (ME && *ME)
             return ME;
+        break;
+    case ATR_ITALIC:
+        if (ZR && *ZR)
+            return ZR;
         break;
     }
     return nulstr;
@@ -1304,16 +1401,25 @@ term_end_attr(int attr)
     }
 }
 
+/* this is called 'start bold' but HI is derived from SO (standout) rather
+   than from MD (start bold attribute) */
 void
 term_start_raw_bold(void)
 {
-    xputs(nh_HI);
+    const char *soOn = nh_HI ? nh_HI : tty_standout_on;
+
+    if (*soOn)
+        xputs(soOn);
 }
 
+/* this is called 'end bold' but HE is derived from ME (end all attributes) */
 void
 term_end_raw_bold(void)
 {
-    xputs(nh_HE);
+    const char *soOff = nh_HE ? nh_HE : tty_standout_off;
+
+    if (*soOff)
+        xputs(soOff);
 }
 
 #ifdef TEXTCOLOR
@@ -1330,9 +1436,66 @@ term_start_color(int color)
     if (color < CLR_MAX && hilites[color] && *hilites[color])
         xputs(hilites[color]);
 }
-
 #endif /* TEXTCOLOR */
 
-#endif /* TTY_GRAPHICS && !NO_TERMS */
+#ifdef ENHANCED_SYMBOLS
+
+#ifndef SEP2
+#define tcfmtstr "\033[38;2;%ld;%ld;%ldm"
+#ifdef UNIX
+#define tcfmtstr24bit "\033[38;2;%u;%u;%um"
+#define tcfmtstr256 "\033[38;5;%dm"
+#else
+#define tcfmtstr "\033[38:2:%ld:%ld:%ldm"
+#define tcfmtstr24bit "\033[38;2;%lu;%lu;%lum"
+#define tcfmtstr256 "\033[38:5:%ldm"
+#endif
+#endif
+
+static void emit24bit(long mcolor);
+static void emit256(int u256coloridx);
+
+static void emit24bit(long mcolor)
+{
+    static char tcolorbuf[QBUFSZ];
+
+    Snprintf(tcolorbuf, sizeof tcolorbuf, tcfmtstr,
+             ((mcolor >> 16) & 0xFF),   /* red */
+             ((mcolor >>  8) & 0xFF),   /* green */
+             ((mcolor >>  0) & 0xFF));  /* blue */
+    xputs(tcolorbuf);
+}
+
+static void emit256(int u256coloridx)
+{
+    static char tcolorbuf[QBUFSZ];
+
+    Snprintf(tcolorbuf, sizeof tcolorbuf, tcfmtstr256,
+             u256coloridx);
+    xputs(tcolorbuf);
+}
+
+void
+term_start_24bitcolor(struct unicode_representation *urep)
+{
+    if (urep && SYMHANDLING(H_UTF8)) {
+        /* color 0 has bit 0x1000000 set */
+        long mcolor = (urep->ucolor & 0xFFFFFF);
+        if (iflags.colorcount == 256)
+            emit256(urep->u256coloridx);
+        else
+            emit24bit(mcolor);
+    }
+}
+
+void
+term_end_24bitcolor(void)
+{
+    if (SYMHANDLING(H_UTF8)) {
+        xputs("\033[0m");
+    }
+}
+#endif /* ENHANCED_SYMBOLS */
+#endif /* TTY_GRAPHICS && !NO_TERMS  */
 
 /*termcap.c*/

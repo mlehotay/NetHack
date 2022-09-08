@@ -73,8 +73,6 @@ typedef struct mswin_nethack_menu_window {
     BOOL is_active;
 } NHMenuWindow, *PNHMenuWindow;
 
-extern short glyph2tile[];
-
 static WNDPROC wndProcListViewOrig = NULL;
 static WNDPROC editControlWndProc = NULL;
 
@@ -627,7 +625,7 @@ onMSNHCommand(HWND hWnd, WPARAM wParam, LPARAM lParam)
         data->menui.menu.items[new_item].attr = msg_data->attr;
         strncpy(data->menui.menu.items[new_item].str, msg_data->str,
                 NHMENU_STR_SIZE);
-	/* prevent & being interpreted as a mnemonic start */
+        /* prevent & being interpreted as a mnemonic start */
         strNsubst(data->menui.menu.items[new_item].str, "&", "&&", 0);
         data->menui.menu.items[new_item].presel = msg_data->presel;
         data->menui.menu.items[new_item].itemflags = msg_data->itemflags;
@@ -692,10 +690,10 @@ onMSNHCommand(HWND hWnd, WPARAM wParam, LPARAM lParam)
         }
     } break;
 
-	case MSNH_MSG_RANDOM_INPUT: {
-        PostMessage(GetMenuControl(hWnd),
-            WM_MSNH_COMMAND, MSNH_MSG_RANDOM_INPUT, 0);
-	} break;
+        case MSNH_MSG_RANDOM_INPUT: {
+            PostMessage(GetMenuControl(hWnd),
+                        WM_MSNH_COMMAND, MSNH_MSG_RANDOM_INPUT, 0);
+        } break;
 
     }
 }
@@ -917,10 +915,10 @@ GetMenuControl(HWND hWnd)
 
     data = (PNHMenuWindow) GetWindowLongPtr(hWnd, GWLP_USERDATA);
 
-	/* We may continue getting window messages after a window's WM_DESTROY is
-	   called.  We need to handle the case that USERDATA has been freed. */
-	if (data == NULL)
-		return NULL;
+        /* We may continue getting window messages after a window's WM_DESTROY is
+           called.  We need to handle the case that USERDATA has been freed. */
+    if (data == NULL)
+        return NULL;
 
     if (data->type == MENU_TYPE_TEXT) {
         return GetDlgItem(hWnd, IDC_MENU_TEXT);
@@ -1087,7 +1085,7 @@ onDrawItem(HWND hWnd, WPARAM wParam, LPARAM lParam)
             monitorScale2 = win10_monitor_scale(hWnd);
 
             saveBmp = SelectObject(tileDC, GetNHApp()->bmpMapTiles);
-            ntile = glyph2tile[item->glyphinfo.glyph];
+            ntile = item->glyphinfo.gm.tileidx;
             t_x =
                 (ntile % GetNHApp()->mapTilesPerLine) * GetNHApp()->mapTile_X;
             t_y =
@@ -1291,6 +1289,9 @@ onListChar(HWND hWnd, HWND hwndList, WORD ch)
         if (data->how == PICK_ANY) {
             reset_menu_count(hwndList, data);
             for (i = 0; i < data->menui.menu.size; i++) {
+                if (!menuitem_invert_test(1, data->menui.menu.items[i].itemflags,
+                                NHMENU_IS_SELECTED(data->menui.menu.items[i])))
+                    continue;
                 SelectMenuItem(hwndList, data, i, -1);
             }
             return -2;
@@ -1301,6 +1302,9 @@ onListChar(HWND hWnd, HWND hwndList, WORD ch)
         if (data->how == PICK_ANY) {
             reset_menu_count(hwndList, data);
             for (i = 0; i < data->menui.menu.size; i++) {
+                if (!menuitem_invert_test(2, data->menui.menu.items[i].itemflags,
+                                NHMENU_IS_SELECTED(data->menui.menu.items[i])))
+                    continue;
                 SelectMenuItem(hwndList, data, i, 0);
             }
             return -2;
@@ -1311,9 +1315,10 @@ onListChar(HWND hWnd, HWND hwndList, WORD ch)
         if (data->how == PICK_ANY) {
             reset_menu_count(hwndList, data);
             for (i = 0; i < data->menui.menu.size; i++) {
-                if (menuitem_invert_test(0, data->menui.menu.items[i].itemflags,
-                                         NHMENU_IS_SELECTED(data->menui.menu.items[i])))
-                    SelectMenuItem(hwndList, data, i,
+                if (!menuitem_invert_test(0, data->menui.menu.items[i].itemflags,
+                                NHMENU_IS_SELECTED(data->menui.menu.items[i])))
+                    continue;
+                SelectMenuItem(hwndList, data, i,
                                NHMENU_IS_SELECTED(data->menui.menu.items[i]) ? 0
                                                                        : -1);
             }
@@ -1330,6 +1335,9 @@ onListChar(HWND hWnd, HWND hwndList, WORD ch)
             from = max(0, topIndex);
             to = min(data->menui.menu.size, from + pageSize);
             for (i = from; i < to; i++) {
+                if (!menuitem_invert_test(1, data->menui.menu.items[i].itemflags,
+                                NHMENU_IS_SELECTED(data->menui.menu.items[i])))
+                    continue;
                 SelectMenuItem(hwndList, data, i, -1);
             }
             return -2;
@@ -1345,6 +1353,9 @@ onListChar(HWND hWnd, HWND hwndList, WORD ch)
             from = max(0, topIndex);
             to = min(data->menui.menu.size, from + pageSize);
             for (i = from; i < to; i++) {
+                if (!menuitem_invert_test(2, data->menui.menu.items[i].itemflags,
+                                NHMENU_IS_SELECTED(data->menui.menu.items[i])))
+                    continue;
                 SelectMenuItem(hwndList, data, i, 0);
             }
             return -2;
@@ -1360,9 +1371,10 @@ onListChar(HWND hWnd, HWND hwndList, WORD ch)
             from = max(0, topIndex);
             to = min(data->menui.menu.size, from + pageSize);
             for (i = from; i < to; i++) {
-                if (menuitem_invert_test(0, data->menui.menu.items[i].itemflags,
-                                         NHMENU_IS_SELECTED(data->menui.menu.items[i])))                    
-                    SelectMenuItem(hwndList, data, i,
+                if (!menuitem_invert_test(0, data->menui.menu.items[i].itemflags,
+                                NHMENU_IS_SELECTED(data->menui.menu.items[i])))
+                    continue;
+                SelectMenuItem(hwndList, data, i,
                                NHMENU_IS_SELECTED(data->menui.menu.items[i]) ? 0
                                                                        : -1);
             }

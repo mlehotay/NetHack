@@ -1,4 +1,4 @@
-/* NetHack 3.7	insight.c	$NHDT-Date: 1619640466 2021/04/28 20:07:46 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.35 $ */
+/* NetHack 3.7	insight.c	$NHDT-Date: 1650875487 2022/04/25 08:31:27 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.60 $ */
 /* Copyright (c) Stichting Mathematisch Centrum, Amsterdam, 1985. */
 /* NetHack may be freely redistributed.  See license for details. */
 
@@ -22,6 +22,7 @@ static void enlght_halfdmg(int, int);
 static boolean walking_on_water(void);
 static boolean cause_known(int);
 static char *attrval(int, int, char *);
+static char *fmt_elapsed_time(char *, int);
 static void background_enlightenment(int, int);
 static void basics_enlightenment(int, int);
 static void characteristics_enlightenment(int, int);
@@ -43,6 +44,61 @@ static const char You_[] = "You ", are[] = "are ", were[] = "were ",
 static const char have_been[] = "have been ", have_never[] = "have never ",
                   never[] = "never ";
 
+/* for livelogging: */
+struct ll_achieve_msg {
+    long llflag;
+    const char *msg;
+};
+/* ordered per 'enum achievements' in you.h */
+/* take care to keep them in sync! */
+static struct ll_achieve_msg achieve_msg [] = {
+    { 0, "" }, /* actual achievements are numbered from 1 */
+    { LL_ACHIEVE, "acquired the Bell of Opening" },
+    { LL_ACHIEVE, "entered Gehennom" },
+    { LL_ACHIEVE, "acquired the Candelabrum of Invocation" },
+    { LL_ACHIEVE, "acquired the Book of the Dead" },
+    { LL_ACHIEVE, "performed the invocation" },
+    { LL_ACHIEVE, "acquired The Amulet of Yendor" },
+    { LL_ACHIEVE, "entered the Elemental Planes" },
+    { LL_ACHIEVE, "entered the Astral Plane" },
+    { LL_ACHIEVE, "ascended" },
+    /* if the type of item isn't discovered yet, disclosing the event
+       via #chronicle would be a spoiler (particularly for gray stone);
+       the ID'd name for the type of item will be appended to the next
+       two messages, for display via livelog and/or dumplog */
+    { LL_ACHIEVE | LL_SPOILER, "acquired the Mines' End" }, /* " luckstone" */
+    { LL_ACHIEVE | LL_SPOILER, "acquired the Sokoban" }, /* " <item>" */
+    { LL_ACHIEVE | LL_UMONST, "killed Medusa" },
+     /* these two are not logged */
+    { 0, "hero was always blond, no, blind" },
+    { 0, "hero never wore armor" },
+     /* */
+    { LL_MINORAC | LL_DUMP, "entered the Gnomish Mines" },
+    { LL_ACHIEVE, "reached Mine Town" }, /* probably minor, but dnh logs it */
+    { LL_MINORAC, "entered a shop" },
+    { LL_MINORAC, "entered a temple" },
+    { LL_ACHIEVE, "consulted the Oracle" }, /* minor, but rare enough */
+    { LL_MINORAC | LL_DUMP, "read a Discworld novel" }, /* even more so */
+    { LL_ACHIEVE, "entered Sokoban" }, /* keep as major for turn comparison
+                                        * with completed sokoban */
+    { LL_ACHIEVE, "entered the Bigroom" },
+    /* The following 8 are for advancing through the ranks
+       and messages differ by role so are created on the fly;
+       rank 0 (Xp 1 and 2) isn't an achievement */
+    { LL_MINORAC | LL_DUMP, "" }, /* Xp 3 */
+    { LL_MINORAC | LL_DUMP, "" }, /* Xp 6 */
+    { LL_MINORAC | LL_DUMP, "" }, /* Xp 10 */
+    { LL_ACHIEVE, "" }, /* Xp 14, so able to attempt the quest */
+    { LL_ACHIEVE, "" }, /* Xp 18 */
+    { LL_ACHIEVE, "" }, /* Xp 22 */
+    { LL_ACHIEVE, "" }, /* Xp 26 */
+    { LL_ACHIEVE, "" }, /* Xp 30 */
+    { LL_MINORAC, "learned castle drawbridge's tune" }, /* achievement #31 */
+    { 0, "" } /* keep this one at the end */
+};
+
+/* macros to simplify output of enlightenment messages; also used by
+   conduct and achievements */
 #define enl_msg(prefix, present, past, suffix, ps) \
     enlght_line(prefix, final ? past : present, suffix, ps)
 #define you_are(attr, ps) enl_msg(You_, are, were, attr, ps)
@@ -57,11 +113,13 @@ static const char have_been[] = "have been ", have_never[] = "have never ",
 static void
 enlght_out(const char *buf)
 {
+    int clr = 0;
+
     if (g.en_via_menu) {
         anything any;
 
         any = cg.zeroany;
-        add_menu(g.en_win, &nul_glyphinfo, &any, 0, 0, ATR_NONE, buf,
+        add_menu(g.en_win, &nul_glyphinfo, &any, 0, 0, ATR_NONE, clr, buf,
                  MENU_ITEMFLAGS_NONE);
     } else
         putstr(g.en_win, 0, buf);
@@ -143,8 +201,7 @@ walking_on_water(void)
 {
     if (u.uinwater || Levitation || Flying)
         return FALSE;
-    return (boolean) (Wwalking
-                      && (is_pool(u.ux, u.uy) || is_lava(u.ux, u.uy)));
+    return (boolean) (Wwalking && is_pool_or_lava(u.ux, u.uy));
 }
 
 /* describe u.utraptype; used by status_enlightenment() and self_lookat() */
@@ -183,7 +240,8 @@ trap_predicament(char *outbuf, int final, boolean wizxtra)
    confers the target property; item must have been seen and its type
    discovered but it doesn't necessarily have to be fully identified */
 static boolean
-cause_known(int propindx) /* index of a property which can be conveyed by worn item */
+cause_known(
+    int propindx) /* index of a property which can be conveyed by worn item */
 {
     register struct obj *o;
     long mask = W_ARMOR | W_AMUL | W_RING | W_TOOL;
@@ -214,10 +272,69 @@ attrval(int attrindx, int attrvalue,
     return resultbuf;
 }
 
+/* format urealtime.realtime as
+      " D days, H hours, M minutes and S seconds"
+   with any fields having a value of 0 omitted:
+      0-00:00:20 => " 20 seconds"
+      0-00:15:05 => " 15 minutes and 5 seconds"
+      0-00:16:00 => " 16 minutes"
+      0-01:15:10 => " 1 hour, 15 minutes and 10 seconds"
+      0-02:00:01 => " 2 hours and 1 second"
+      3-00:25:40 => " 3 days, 25 minutes and 40 seconds"
+   (note: for a list of more than two entries, nethack usually includes the
+   [style-wise] optional comma before "and" but in this instance it does not)
+ */
+static char *
+fmt_elapsed_time(char *outbuf, int final)
+{
+    int fieldcnt;
+    long edays, ehours, eminutes, eseconds;
+    /* for a game that's over, reallydone() has updated urealtime.realtime
+       to its final value before calling us during end of game disclosure;
+       for a game that's still in progress, it holds the amount of elapsed
+       game time from previous sessions up through most recent save/restore
+       (or up through latest level change when 'checkpoint' is On);
+       '.start_timing' has a non-zero value even if '.realtime' is 0 */
+    long etim = urealtime.realtime;
+
+    if (!final)
+        etim += timet_delta(getnow(), urealtime.start_timing);
+    /* we could use localtime() to convert the value into a 'struct tm'
+       to get date and time fields but this is simple and straightforward */
+    eseconds = etim % 60L, etim /= 60L;
+    eminutes = etim % 60L, etim /= 60L;
+    ehours = etim % 24L;
+    edays = etim / 24L;
+    fieldcnt = !!edays + !!ehours + !!eminutes + !!eseconds;
+
+    Strcpy(outbuf, fieldcnt ? "" : " none"); /* 'none' should never happen */
+    if (edays) {
+        Sprintf(eos(outbuf), " %ld day%s", edays, plur(edays));
+        if (fieldcnt > 1) /* hours and/or minutes and/or seconds to follow */
+            Strcat(outbuf, (fieldcnt == 2) ? " and" : ",");
+        --fieldcnt; /* edays has been processed */
+    }
+    if (ehours) {
+        Sprintf(eos(outbuf), " %ld hour%s", ehours, plur(ehours));
+        if (fieldcnt > 1) /* minutes and/or seconds to follow */
+            Strcat(outbuf, (fieldcnt == 2) ? " and" : ",");
+        --fieldcnt; /* ehours has been processed */
+    }
+    if (eminutes) {
+        Sprintf(eos(outbuf), " %ld minute%s", eminutes, plur(eminutes));
+        if (fieldcnt > 1) /* seconds to follow */
+            Strcat(outbuf, " and");
+        /* eminutes has been processed but no need to decrement fieldcnt */
+    }
+    if (eseconds)
+        Sprintf(eos(outbuf), " %ld second%s", eseconds, plur(eseconds));
+    return outbuf;
+}
+
 void
-enlightenment(int mode,  /* BASICENLIGHTENMENT | MAGICENLIGHTENMENT (| both) */
-              int final) /* ENL_GAMEINPROGRESS:0, ENL_GAMEOVERALIVE,
-                            ENL_GAMEOVERDEAD */
+enlightenment(
+    int mode,  /* BASICENLIGHTENMENT | MAGICENLIGHTENMENT (| both) */
+    int final) /* ENL_GAMEINPROGRESS:0, ENL_GAMEOVERALIVE, ENL_GAMEOVERDEAD */
 {
     char buf[BUFSZ], tmpbuf[BUFSZ];
 
@@ -256,10 +373,11 @@ enlightenment(int mode,  /* BASICENLIGHTENMENT | MAGICENLIGHTENMENT (| both) */
         /* intrinsics and other traditional enlightenment feedback */
         attributes_enlightenment(mode, final);
     }
+
+    enlght_out(""); /* separator */
+    enlght_out("Miscellaneous:");
     /* reminder to player and/or information for dumplog */
     if ((mode & BASICENLIGHTENMENT) != 0 && (wizard || discover || final)) {
-        enlght_out(""); /* separator */
-        enlght_out("Miscellaneous:");
         if (wizard || discover) {
             Sprintf(buf, "running in %s mode", wizard ? "debug" : "explore");
             you_are(buf, "");
@@ -275,6 +393,8 @@ enlightenment(int mode,  /* BASICENLIGHTENMENT | MAGICENLIGHTENMENT (| both) */
             you_have_X(buf);
         }
     }
+    (void) fmt_elapsed_time(buf, final);
+    enl_msg("Total elapsed playing time ", "is", "was", buf, "");
 
     if (!g.en_via_menu) {
         display_nhwindow(g.en_win, TRUE);
@@ -689,7 +809,7 @@ one_characteristic(int mode, int final, int attrindx)
     case A_DEX:
         break;
     case A_CON:
-        if (uwep && uwep->oartifact == ART_OGRESMASHER && uwep->cursed)
+        if (u_wield_art(ART_OGRESMASHER) && uwep->cursed)
             hide_innate_value = TRUE;
         break;
     case A_INT:
@@ -924,7 +1044,7 @@ status_enlightenment(int mode, int final)
     }
     if (u.uswallow) { /* implies u.ustuck is non-Null */
         Snprintf(buf, sizeof buf, "%s by %s",
-                is_animal(u.ustuck->data) ? "swallowed" : "engulfed",
+                digests(u.ustuck->data) ? "swallowed" : "engulfed",
                 heldmon);
         if (dmgtype(u.ustuck->data, AD_DGST)) {
             /* if final, death via digestion can be deduced by u.uswallow
@@ -957,21 +1077,31 @@ status_enlightenment(int mode, int final)
         }
     }
     if (Wounded_legs) {
+        /* EWounded_legs is used to track left/right/both rather than some
+           form of extrinsic impairment; HWounded_legs is used for timeout;
+           both apply to steed instead of hero when mounted */
+        long whichleg = (EWounded_legs & BOTH_SIDES);
+        const char *bp = u.usteed ? mbodypart(u.usteed, LEG) : body_part(LEG),
+            *article = "a ", /* precedes "wounded", so never "an " */
+            *leftright = "";
+
+        if (whichleg == BOTH_SIDES)
+            bp = makeplural(bp), article = "";
+        else
+            leftright = (whichleg == LEFT_SIDE) ? "left " : "right ";
+        Sprintf(buf, "%swounded %s%s", article, leftright, bp);
+
         /* when mounted, Wounded_legs applies to steed rather than to
            hero; we only report steed's wounded legs in wizard mode */
         if (u.usteed) { /* not `Riding' here */
             if (wizard && steedname) {
-                Strcpy(buf, steedname);
-                *buf = highc(*buf);
-                enl_msg(buf, " has", " had", " wounded legs", "");
+                char steednambuf[BUFSZ];
+
+                Strcpy(steednambuf, steedname);
+                *steednambuf = highc(*steednambuf);
+                enl_msg(steednambuf, " has ", " had ", buf, "");
             }
         } else {
-            long wl = (EWounded_legs & BOTH_SIDES);
-            const char *bp = body_part(LEG), *article = "a ";
-
-            if (wl == BOTH_SIDES)
-                bp = makeplural(bp), article = "";
-            Sprintf(buf, "%swounded %s", article, bp);
             you_have(buf, "");
         }
     }
@@ -1082,13 +1212,7 @@ weapon_insight(int final)
     /* report being weaponless; distinguish whether gloves are worn
        [perhaps mention silver ring(s) when not wearning gloves?] */
     if (!uwep) {
-        you_are(uarmg ? "empty handed" /* gloves imply hands */
-                      : humanoid(g.youmonst.data)
-                         /* hands but no weapon and no gloves */
-                         ? "bare handed"
-                         /* alternate phrasing for paws or lack of hands */
-                         : "not wielding anything",
-                "");
+        you_are(empty_handed(), "");
 
     /* two-weaponing implies hands and
        a weapon or wep-tool (not other odd stuff) in each hand */
@@ -1215,7 +1339,7 @@ weapon_insight(int final)
                     Strcpy(pfx, "Your two weapon skill ");
                     Sprintf(sfx, " %slimited by ", also2);
                     if (sklvl2 > P_ISRESTRICTED)
-                        Sprintf(eos(sfx), "being %s with", sklvlbuf2);
+                        Sprintf(eos(sfx), "being %s", sklvlbuf2);
                     else
                         Strcat(eos(sfx), "having no skill");
                     Sprintf(eos(sfx), " with %s", sknambuf2);
@@ -1281,8 +1405,8 @@ weapon_insight(int final)
 static void
 attributes_enlightenment(int unused_mode UNUSED, int final)
 {
-    static NEARDATA const char if_surroundings_permitted[] =
-        " if surroundings permitted";
+    static NEARDATA const char
+        if_surroundings_permitted[] = " if surroundings permitted";
     int ltmp, armpro;
     char buf[BUFSZ];
 
@@ -1317,24 +1441,47 @@ attributes_enlightenment(int unused_mode UNUSED, int final)
         you_are("magic-protected", from_what(ANTIMAGIC));
     if (Fire_resistance)
         you_are("fire resistant", from_what(FIRE_RES));
+    if (u_adtyp_resistance_obj(AD_FIRE))
+        enl_msg("Your items ", "are", "were", " protected from fire",
+                item_what(AD_FIRE));
     if (Cold_resistance)
         you_are("cold resistant", from_what(COLD_RES));
+    if (u_adtyp_resistance_obj(AD_COLD))
+        enl_msg("Your items ", "are", "were", " protected from cold",
+                item_what(AD_COLD));
     if (Sleep_resistance)
         you_are("sleep resistant", from_what(SLEEP_RES));
     if (Disint_resistance)
         you_are("disintegration-resistant", from_what(DISINT_RES));
+    if (u_adtyp_resistance_obj(AD_DISN))
+        enl_msg("Your items ", "are", "were",
+                " protected from disintegration", item_what(AD_DISN));
     if (Shock_resistance)
         you_are("shock resistant", from_what(SHOCK_RES));
+    if (u_adtyp_resistance_obj(AD_ELEC))
+        enl_msg("Your items ", "are", "were",
+                " protected from electric shocks", item_what(AD_ELEC));
     if (Poison_resistance)
         you_are("poison resistant", from_what(POISON_RES));
-    if (Acid_resistance)
-        you_are("acid resistant", from_what(ACID_RES));
+    if (Acid_resistance) {
+        Sprintf(buf, "%.20s%.30s",
+                temp_resist(ACID_RES) ? "temporarily " : "",
+                "acid resistant");
+        you_are(buf, from_what(ACID_RES));
+    }
+    if (u_adtyp_resistance_obj(AD_ACID))
+        enl_msg("Your items ", "are", "were", " protected from acid",
+                item_what(AD_ACID));
     if (Drain_resistance)
         you_are("level-drain resistant", from_what(DRAIN_RES));
     if (Sick_resistance)
         you_are("immune to sickness", from_what(SICK_RES));
-    if (Stone_resistance)
-        you_are("petrification resistant", from_what(STONE_RES));
+    if (Stone_resistance) {
+        Sprintf(buf, "%.20s%.30s",
+                temp_resist(STONE_RES) ? "temporarily " : "",
+                "petrification resistant");
+        you_are(buf, from_what(STONE_RES));
+    }
     if (Halluc_resistance)
         enl_msg(You_, "resist", "resisted", " hallucinations",
                 from_what(HALLUC_RES));
@@ -1387,21 +1534,35 @@ attributes_enlightenment(int unused_mode UNUSED, int final)
         you_are("warned of undead", from_what(WARN_UNDEAD));
     if (Searching)
         you_have("automatic searching", from_what(SEARCHING));
-    if (Clairvoyant)
+    if (Clairvoyant) {
         you_are("clairvoyant", from_what(CLAIRVOYANT));
-    else if ((HClairvoyant || EClairvoyant) && BClairvoyant) {
+    } else if ((HClairvoyant || EClairvoyant) && BClairvoyant) {
         Strcpy(buf, from_what(-CLAIRVOYANT));
-        if (!strncmp(buf, " because of ", 12))
-            /* overwrite substring */
-            memcpy(buf, " if not for ", 12);
+        (void) strsubst(buf, " because of ", " if not for ");
         enl_msg(You_, "could be", "could have been", " clairvoyant", buf);
     }
     if (Infravision)
         you_have("infravision", from_what(INFRAVISION));
-    if (Detect_monsters)
-        you_are("sensing the presence of monsters", "");
-    if (u.umconf)
-        you_are("going to confuse monsters", "");
+    if (Detect_monsters) {
+        Strcpy(buf, "sensing the presence of monsters");
+        if (wizard) {
+            long detectmon_timeout = (HDetect_monsters & TIMEOUT);
+
+            if (detectmon_timeout)
+                Sprintf(eos(buf), " (%ld)", detectmon_timeout);
+        }
+        you_are(buf, "");
+    }
+    if (u.umconf) { /* 'u.umconf' is a counter rather than a timeout */
+        Strcpy(buf, " monsters when hitting them");
+        if (wizard && !final) {
+            if (u.umconf == 1)
+                Strcat(buf, " (next hit only)");
+            else /* u.umconf > 1 */
+                Sprintf(eos(buf), " (next %u hits)", u.umconf);
+        }
+        enl_msg(You_, "will confuse", "would have confused", buf, "");
+    }
 
     /*** Appearance and behavior ***/
     if (Adornment) {
@@ -1490,6 +1651,23 @@ attributes_enlightenment(int unused_mode UNUSED, int final)
                     "");
         }
         BFlying = save_BFly;
+    }
+    /* including this might bring attention to the fact that ceiling
+       clinging has inconsistencies... */
+    if (is_clinger(g.youmonst.data)) {
+        boolean has_lid = has_ceiling(&u.uz);
+
+        if (has_lid && !u.uinwater) {
+            you_can("cling to the ceiling", "");
+        } else {
+            Sprintf(buf, " to the ceiling if %s%s%s",
+                    !has_lid ? "there was one" : "",
+                    (!has_lid && u.uinwater) ? " and " : "",
+                    u.uinwater ? (Underwater ? "you weren't underwater"
+                                  : "you weren't in the water") : "");
+            /* past tense is applicable for death while Unchanging */
+            enl_msg(You_, "could cling", "could have clung", buf, "");
+        }
     }
     /* actively walking on water handled earlier as a status condition */
     if (Wwalking && !walking_on_water())
@@ -1749,7 +1927,7 @@ doattributes(void)
         mode |= MAGICENLIGHTENMENT;
 
     enlightenment(mode, ENL_GAMEINPROGRESS);
-    return 0;
+    return ECMD_OK;
 }
 
 void
@@ -1814,8 +1992,8 @@ youhiding(boolean via_enlghtmt, /* englightment line vs topl message */
 int
 doconduct(void)
 {
-    show_conduct(0);
-    return 0;
+    show_conduct(ENL_GAMEINPROGRESS);
+    return ECMD_OK;
 }
 
 /* display conducts; for doconduct(), also disclose() and dump_everything() */
@@ -1848,8 +2026,8 @@ show_conduct(int final)
     if (!u.uconduct.weaphit) {
         you_have_never("hit with a wielded weapon");
     } else if (wizard) {
-        Sprintf(buf, "used a wielded weapon %ld time%s", u.uconduct.weaphit,
-                plur(u.uconduct.weaphit));
+        Sprintf(buf, "hit with a wielded weapon %ld time%s",
+                u.uconduct.weaphit, plur(u.uconduct.weaphit));
         you_have_X(buf);
     }
     if (!u.uconduct.killer)
@@ -1960,7 +2138,8 @@ show_conduct(int final)
  */
 
 static void
-show_achievements(int final) /* used "behind the curtain" by enl_foo() macros */
+show_achievements(
+    int final) /* 'final' is used "behind the curtain" by enl_foo() macros */
 {
     int i, achidx, absidx, acnt;
     char title[QBUFSZ], buf[QBUFSZ];
@@ -2044,6 +2223,10 @@ show_achievements(int final) /* used "behind the curtain" by enl_foo() macros */
             break;
         case ACH_MEDU:
             you_have_X("defeated Medusa");
+            break;
+        case ACH_TUNE:
+            you_have_X(
+                "learned the tune to open and close the Castle's drawbridge");
             break;
         case ACH_BELL:
             /* alternate phrasing for present vs past and also for
@@ -2138,10 +2321,38 @@ record_achievement(schar achidx)
        an attempt to duplicate an achievement can happen if any of Bell,
        Candelabrum, Book, or Amulet is dropped then picked up again */
     for (i = 0; u.uachieved[i]; ++i)
-        if (abs(u.uachieved[i]) == abs(achidx))
+        if (abs(u.uachieved[i]) == absidx)
             return; /* already recorded, don't duplicate it */
     u.uachieved[i] = achidx;
-    return;
+
+    /* avoid livelog for achievements recorded during final disclosure:
+       nudist and blind-from-birth; also ascension which is suppressed
+       by this gets logged separately in really_done() */
+    if (g.program_state.gameover)
+        return;
+
+    if (absidx >= ACH_RNK1 && absidx <= ACH_RNK8) {
+        livelog_printf(achieve_msg[absidx].llflag,
+                       "attained the rank of %s (level %d)",
+                       rank_of(rank_to_xlev(absidx - (ACH_RNK1 - 1)),
+                               Role_switch, (achidx < 0) ? TRUE : FALSE),
+                       u.ulevel);
+    } else if (achidx == ACH_SOKO_PRIZE
+               || achidx == ACH_MINE_PRIZE) {
+        /* need to supply extra information for these two */
+        short otyp = ((achidx == ACH_SOKO_PRIZE)
+                      ? g.context.achieveo.soko_prize_otyp
+                      : g.context.achieveo.mines_prize_otyp);
+
+        /* note: OBJ_NAME() works here because both "bag of holding" and
+           "amulet of reflection" are fully named in their objects[] entry
+           but that's not true in the general case */
+        livelog_printf(achieve_msg[achidx].llflag, "%s %s",
+                       achieve_msg[achidx].msg, OBJ_NAME(objects[otyp]));
+    } else {
+        livelog_printf(achieve_msg[absidx].llflag, "%s",
+                       achieve_msg[absidx].msg);
+    }
 }
 
 /* discard a recorded achievement; return True if removed, False otherwise */
@@ -2198,6 +2409,71 @@ sokoban_in_play(void)
         if (u.uachieved[achidx] == ACH_SOKO)
             return TRUE;
     return FALSE;
+}
+
+/* #chronicle command */
+int
+do_gamelog(void)
+{
+#ifdef CHRONICLE
+    if (g.gamelog) {
+        show_gamelog(ENL_GAMEINPROGRESS);
+    } else {
+        pline("No chronicled events.");
+    }
+#else
+    pline("Chronicle was turned off during compile-time.");
+#endif /* !CHRONICLE */
+    return ECMD_OK;
+}
+
+/* 'major' events for dumplog; inclusion or exclusion here may need tuning */
+#define LL_majors (0L \
+                   | LL_WISH            \
+                   | LL_ACHIEVE         \
+                   | LL_UMONST          \
+                   | LL_DIVINEGIFT      \
+                   | LL_LIFESAVE        \
+                   | LL_ARTIFACT        \
+                   | LL_GENOCIDE        \
+                   | LL_DUMP) /* explicitly for dumplog */
+#define majorevent(llmsg) (((llmsg)->flags & LL_majors) != 0)
+#define spoilerevent(llmsg) (((llmsg)->flags & LL_SPOILER) != 0)
+
+/* #chronicle details */
+void
+show_gamelog(int final)
+{
+#ifdef CHRONICLE
+    struct gamelog_line *llmsg;
+    winid win;
+    char buf[BUFSZ];
+    int eventcnt = 0;
+
+    win = create_nhwindow(NHW_TEXT);
+    Sprintf(buf, "%s events:", final ? "Major" : "Logged");
+    putstr(win, 0, buf);
+    for (llmsg = g.gamelog; llmsg; llmsg = llmsg->next) {
+        if (final && !majorevent(llmsg))
+            continue;
+        if (!final && !wizard && spoilerevent(llmsg))
+            continue;
+        if (!eventcnt++)
+            putstr(win, 0, " Turn");
+        Sprintf(buf, "%5ld: %s", llmsg->turn, llmsg->text);
+        putstr(win, 0, buf);
+    }
+    /* since start of game is logged as a major event, 'eventcnt' should
+       never end up as 0; for 'final', end of game is a major event too */
+    if (!eventcnt)
+        putstr(win, 0, " none");
+
+    display_nhwindow(win, TRUE);
+    destroy_nhwindow(win);
+#else
+    nhUse(final);
+#endif /* !CHRONICLE */
+    return;
 }
 
 /*
@@ -2301,7 +2577,8 @@ set_vanq_order(void)
     winid tmpwin;
     menu_item *selected;
     anything any;
-    int i, n, choice;
+    int i, n, choice,
+        clr = 0;
 
     tmpwin = create_nhwindow(NHW_MENU);
     start_menu(tmpwin, MENU_BEHAVE_STANDARD);
@@ -2310,7 +2587,7 @@ set_vanq_order(void)
         if (i == VANQ_ALPHA_MIX || i == VANQ_MCLS_HTOL) /* skip these */
             continue;
         any.a_int = i + 1;
-        add_menu(tmpwin, &nul_glyphinfo, &any, 0, 0, ATR_NONE,
+        add_menu(tmpwin, &nul_glyphinfo, &any, 0, 0, ATR_NONE, clr,
                  vanqorders[i],
                  (i == g.vanq_sortmode)
                     ? MENU_ITEMFLAGS_SELECTED : MENU_ITEMFLAGS_NONE);
@@ -2335,7 +2612,7 @@ int
 dovanquished(void)
 {
     list_vanquished('a', FALSE);
-    return 0;
+    return ECMD_OK;
 }
 
 DISABLE_WARNING_FORMAT_NONLITERAL
@@ -2370,7 +2647,7 @@ doborn(void)
     display_nhwindow(datawin, FALSE);
     destroy_nhwindow(datawin);
 
-    return 0;
+    return ECMD_OK;
 }
 
 RESTORE_WARNING_FORMAT_NONLITERAL
@@ -2415,7 +2692,7 @@ list_vanquished(char defquery, boolean ask)
 
         c = ask ? yn_function(
                             "Do you want an account of creatures vanquished?",
-                              ynaqchars, defquery)
+                             ynaqchars, defquery, TRUE)
                 : defquery;
         if (c == 'q')
             done_stopprint++;
@@ -2478,7 +2755,7 @@ list_vanquished(char defquery, boolean ask)
                                 makeplural(mons[i].pmnames[NEUTRAL]));
                 }
                 /* number of leading spaces to match 3 digit prefix */
-                pfx = !strncmpi(buf, "the ", 3) ? 0
+                pfx = !strncmpi(buf, "the ", 4) ? 0
                       : !strncmpi(buf, "an ", 3) ? 1
                         : !strncmpi(buf, "a ", 2) ? 2
                           : !digit(buf[2]) ? 4 : 0;
@@ -2564,7 +2841,7 @@ list_genocided(char defquery, boolean ask)
                 (nextinct && !ngenocided) ? "extinct " : "",
                 (ngenocided) ? " genocided" : "",
                 (nextinct && ngenocided) ? " and extinct" : "");
-        c = ask ? yn_function(buf, ynqchars, defquery) : defquery;
+        c = ask ? yn_function(buf, ynqchars, defquery, TRUE) : defquery;
         if (c == 'q')
             done_stopprint++;
         if (c == 'y') {
@@ -2733,8 +3010,8 @@ mstatusline(struct monst *mtmp)
         Strcat(info, ", stunned");
     if (mtmp->msleeping)
         Strcat(info, ", asleep");
-#if 0 /* unfortunately mfrozen covers temporary sleep and being busy \
-         (donning armor, for instance) as well as paralysis */
+#if 0 /* unfortunately mfrozen covers temporary sleep and being busy
+       * (donning armor, for instance) as well as paralysis */
     else if (mtmp->mfrozen)
         Strcat(info, ", paralyzed");
 #else
@@ -2754,15 +3031,42 @@ mstatusline(struct monst *mtmp)
                          : ", [? speed]");
     if (mtmp->minvis)
         Strcat(info, ", invisible");
-    if (mtmp == u.ustuck)
-        Strcat(info, sticks(g.youmonst.data) ? ", held by you"
-                      : !u.uswallow ? ", holding you"
-                         : attacktype_fordmg(u.ustuck->data, AT_ENGL, AD_DGST)
-                            ? ", digesting you"
-                            : is_animal(u.ustuck->data) ? ", swallowing you"
-                               : ", engulfing you");
-    if (mtmp == u.usteed)
+    if (mtmp == u.ustuck) {
+        struct permonst *pm = u.ustuck->data;
+
+        /* being swallowed/engulfed takes priority over sticks(youmonst);
+           this used to have that backwards and checked sticks() first */
+        Strcat(info, u.uswallow ? (digests(pm)
+                                   ? ", digesting you"
+                                   /* note: the "swallowing you" case won't
+                                      happen because all animal engulfers
+                                      either digest their victims (purple
+                                      worm) or enfold them (trappers and
+                                      lurkers above) */
+                                   : (is_animal(pm) && !enfolds(pm))
+                                     ? ", swallowing you"
+                                     : ", engulfing you")
+                     /* !u.uswallow; if both youmonst and ustuck are holders,
+                        youmonst wins */
+                     : (!sticks(g.youmonst.data) ? ", holding you"
+                                                 : ", held by you"));
+    }
+    if (mtmp == u.usteed) {
         Strcat(info, ", carrying you");
+        if (Wounded_legs) {
+            /* EWounded_legs is used to track left/right/both rather than
+               some form of extrinsic impairment; HWounded_legs is used for
+               timeout; both apply to steed instead of hero when mounted */
+            long legs = (EWounded_legs & BOTH_SIDES);
+            const char *what = mbodypart(mtmp, LEG);
+
+            if (legs == BOTH_SIDES)
+                what = makeplural(what);
+            Sprintf(eos(info), ", injured %s", what);
+        }
+    }
+    if (mtmp->mleashed)
+        Strcat(info, ", leashed");
 
     /* avoid "Status of the invisible newt ..., invisible" */
     /* and unlike a normal mon_nam, use "saddled" even if it has a name */
@@ -2812,14 +3116,21 @@ ustatusline(void)
     }
     if (Stunned)
         Strcat(info, ", stunned");
-    if (!u.usteed && Wounded_legs) {
+    if (Wounded_legs && !u.usteed) {
+        /* EWounded_legs is used to track left/right/both rather than some
+           form of extrinsic impairment; HWounded_legs is used for timeout;
+           both apply to steed instead of hero when mounted */
+        long legs = (EWounded_legs & BOTH_SIDES);
         const char *what = body_part(LEG);
-        if ((Wounded_legs & BOTH_SIDES) == BOTH_SIDES)
+
+        if (legs == BOTH_SIDES)
             what = makeplural(what);
+        /* when it's just one leg, ^X reports which, left or right;
+           ustatusline() doesn't, in order to keep the output a bit shorter */
         Sprintf(eos(info), ", injured %s", what);
     }
     if (Glib)
-        Sprintf(eos(info), ", slippery %s", makeplural(body_part(HAND)));
+        Sprintf(eos(info), ", slippery %s", fingers_or_gloves(TRUE));
     if (u.utrap)
         Strcat(info, ", trapped");
     if (Fast)

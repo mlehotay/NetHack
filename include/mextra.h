@@ -69,16 +69,18 @@
 #define GD_DESTROYGOLD 0x02
 
 struct fakecorridor {
-    xchar fx, fy, ftyp;
+    coordxy fx, fy;
+    schar ftyp; /* from struct rm's typ */
+    uchar flags; /* also from struct rm; an unsigned 5-bit field there */
 };
 
 struct egd {
     int fcbeg, fcend;     /* fcend: first unused pos */
     int vroom;            /* room number of the vault */
-    xchar gdx, gdy;       /* goal of guard's walk */
-    xchar ogx, ogy;       /* guard's last position */
+    coordxy gdx, gdy;     /* goal of guard's walk */
+    coordxy ogx, ogy;     /* guard's last position */
     d_level gdlevel;      /* level (& dungeon) guard was created in */
-    xchar warncnt;        /* number of warnings to follow */
+    xint16 warncnt;       /* number of warnings to follow */
     Bitfield(gddone, 1);  /* true iff guard has released player */
     Bitfield(witness, 2); /* the guard saw you do something */
     Bitfield(unused, 5);
@@ -130,7 +132,9 @@ struct eshk {
     d_level shoplevel;    /* level (& dungeon) of his shop */
     int billct;           /* no. of entries of bill[] in use */
     struct bill_x bill[BILLSZ];
-    struct bill_x *bill_p;
+    struct bill_x *bill_p;  /* &(ESHK(shkp)->bill[0]) */
+    long break_seq;         /* hero_seq value at time of object breakage */
+    boolean seq_peaceful;   /* shkp->mpeaceful at start of break_seq */
     int visitct;            /* nr of visits by most recent customer */
     char customer[PL_NSIZ]; /* most recent customer */
     char shknam[PL_NSIZ];

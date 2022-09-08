@@ -6,11 +6,16 @@
 
 extern "C" {
 #include "hack.h"
+#define CTRL(c) (0x1f & (c)) // substitute for C() from global.h, for ^V hack
 }
 
 #include "qt_pre.h"
 #include <QtGui/QtGui>
+#if QT_VERSION >= 0x060000
+#include <QtGui/QShortcut>
+#else
 #include <QtWidgets/QShortcut>
+#endif
 
 #if QT_VERSION >= 0x050000
 #include <QtWidgets/QtWidgets>
@@ -454,12 +459,11 @@ aboutMsg()
     char *p, vbuf[BUFSZ];
     /* nethack's getversionstring() includes a final period
        but we're using it mid-sentence so strip period off */
-    if ((p = strrchr(getversionstring(vbuf), '.')) != 0 && *(p + 1) == '\0')
+    if ((p = strrchr(::getversionstring(vbuf, sizeof vbuf), '.')) != 0 && *(p + 1) == '\0')
         *p = '\0';
     /* it's also long; break it into two pieces */
     (void) strsubst(vbuf, " - ", "\n- ");
-    QString msg;
-    msg.sprintf(
+    QString msg = QString::asprintf(
         // format
         "NetHack-Qt is a version of NetHack built using" // no newline
 #ifdef KDE
@@ -467,7 +471,7 @@ aboutMsg()
 #endif
         " the Qt %d GUI toolkit.\n"                      // short Qt version
         "\n"
-        "This is %s%s.\n"       // long nethack version and full Qt version
+        "This is %s%s and Lua %s.\n" // long nethack version, Qt & Lua versions
         "\n"
         "NetHack's Qt interface originally developed by Warwick Allison.\n"
         "\n"
@@ -482,6 +486,7 @@ aboutMsg()
 #else
         "Qt:\n     http://www.troll.no/\n"      // obsolete
 #endif
+        "Lua:\n     https://lua.org/\n"
         "NetHack:\n     %s\n", // DEVTEAM_URL
         // arguments
 #ifdef QT_VERSION_MAJOR
@@ -495,6 +500,7 @@ aboutMsg()
 #else
         "",
 #endif
+        ::get_lua_version(),
         DEVTEAM_URL);
     return msg;
 }
@@ -534,10 +540,10 @@ NetHackQtMainWindow::NetHackQtMainWindow(NetHackQtKeyBuffer& ks) :
     setWindowTitle("NetHack-Qt");
     setWindowIcon(QIcon(QPixmap(qt_compact_mode ? nh_icon_small : nh_icon)));
 
-#ifdef MACOSX
+#ifdef MACOS
     /*
-     * OSX Note:
-     *  The toolbar on OSX starts with a system menu labeled with the
+     * MacOS Note:
+     *  The toolbar on MacOS starts with a system menu labeled with the
      *  Apple logo and an application menu labeled with the application's
      *  name (taken from Info.plist if present, otherwise the base name
      *  of the running program).  After that, application-specific menus
@@ -574,18 +580,20 @@ NetHackQtMainWindow::NetHackQtMainWindow(NetHackQtKeyBuffer& ks) :
 
     enum { OnDesktop=1, OnHandhelds=2 };
     struct Macro {
-	QMenu* menu;
-	const char* name;
-	int flags;
+        QMenu *menu;
+        const char *name;
+        int flags;         // 1 desktop, 2 handheld, 3 either/both
         int (*funct)(void);
     } item[] = {
-        { game,    0, 3},
+        { game,    0, 3, (int (*)(void)) 0},
+        { game,    "Extended-commands",  3, doextcmd },
+        { game,    0, 3, (int (*)(void)) 0},
         { game,    "Version",            3, doversion},
         { game,    "Compilation",        3, doextversion},
         { game,    "History",            3, dohistory},
         { game,    "Redraw",             0, doredraw}, // useless
         { game,
-#ifdef MACOSX
+#ifdef MACOS
             /* Qt on OSX would rename "Options" to "Preferences..." and
                move it from intended destination to the application menu;
                the ampersand produces &O which makes Alt+O into a keyboard
@@ -594,10 +602,10 @@ NetHackQtMainWindow::NetHackQtMainWindow(NetHackQtKeyBuffer& ks) :
 #endif
                    "Options",            3, doset},
         { game,    "Explore mode",       3, enter_explore_mode},
-        { game,    0, 3},
+        { game,    0, 3, (int (*)(void)) 0},
         { game,    "Save-and-exit",      3, dosave},
         { game,
-#ifdef MACOSX
+#ifdef MACOS
             /* need something to prevent matching leading "quit" so that it
                isn't hijacked for the application menu; the ampersand is to
                make &Q be a keyboard shortcut (but see Options above) */
@@ -607,15 +615,15 @@ NetHackQtMainWindow::NetHackQtMainWindow(NetHackQtKeyBuffer& ks) :
 
         { apparel, "Apparel off",        2, doddoremarm},
         { apparel, "Remove many",        1, doddoremarm},
-        { apparel, 0, 3},
+        { apparel, 0, 3, (int (*)(void)) 0},
         { apparel, "Wield weapon",       3, dowield},
         { apparel, "Exchange weapons",   3, doswapweapon},
         { apparel, "Two weapon combat",  3, dotwoweapon},
         { apparel, "Load quiver",        3, dowieldquiver},
-        { apparel, 0, 3},
+        { apparel, 0, 3, (int (*)(void)) 0},
         { apparel, "Wear armor",         3, dowear},
         { apparel, "Take off armor",     3, dotakeoff},
-        { apparel, 0, 3},
+        { apparel, 0, 3, (int (*)(void)) 0},
         { apparel, "Put on accessories", 3, doputon},
         { apparel, "Remove accessories", 3, doremring},
 
@@ -656,20 +664,20 @@ NetHackQtMainWindow::NetHackQtMainWindow(NetHackQtKeyBuffer& ks) :
         { magic, "Dip",              3, dodip},
         { magic, "Rub",              3, dorub},
         { magic, "Invoke",           3, doinvoke},
-        { magic, 0, 3},
+        { magic, 0, 3, (int (*)(void)) 0},
         { magic, "Offer",            3, dosacrifice},
         { magic, "Pray",             3, dopray},
-        { magic, 0, 3},
+        { magic, 0, 3, (int (*)(void)) 0},
         { magic, "Teleport",         3, dotelecmd},
         { magic, "Monster action",   3, domonability},
         { magic, "Turn undead",      3, doturn},
 
         { help,  "Help",             3, dohelp},
-        { help,  0, 3},
+        { help,  0, 3, (int (*)(void)) 0},
         { help,  "What is here",     3, dolook},
         { help,  "What is there",    3, doquickwhatis},
         { help,  "What is...",       2, dowhatis},
-        { help,  0, 1},
+        { help,  0, 1, (int (*)(void)) 0},
 
         { info,  "Inventory",        3, ddoinv},
         { info,  "Attributes (extended status)", 3, doattributes },
@@ -678,17 +686,17 @@ NetHackQtMainWindow::NetHackQtMainWindow(NetHackQtKeyBuffer& ks) :
         { info,  "Discoveries",      3, dodiscovered},
         { info,  "List/reorder spells",  3, dovspell},
         { info,  "Adjust inventory letters", 3, doorganize },
-        { info,  0, 3},
+        { info,  0, 3, (int (*)(void)) 0},
         { info,  "Name object or creature", 3, docallcmd},
         { info,  "Annotate level",   3, donamelevel },
-        { info,  0, 3},
+        { info,  0, 3, (int (*)(void)) 0},
         { info,  "Skills",  3, enhance_weapon_skill},
 
-	{ 0, 0, 0 }
+	{ 0, 0, 0, (int (*)(void)) 0 }
     };
 
     QAction *actn;
-#ifndef MACOSX
+#ifndef MACOS
     (void) game->addAction("Qt settings...", this, SLOT(doQtSettings(bool)));
 #else
     /* on OSX, put this in the application menu instead of the game menu;
@@ -708,7 +716,7 @@ NetHackQtMainWindow::NetHackQtMainWindow(NetHackQtKeyBuffer& ks) :
 #endif
 
     actn = help->addAction("About NetHack-Qt", this, SLOT(doAbout(bool)));
-#ifdef MACOSX
+#ifdef MACOS
     actn->setMenuRole(QWidgetAction::AboutRole);
     /* for OSX, the preceding "About" went into the application menu;
        now add another duplicate one to the Help dropdown menu */
@@ -794,7 +802,7 @@ NetHackQtMainWindow::NetHackQtMainWindow(NetHackQtKeyBuffer& ks) :
 	info->setTitle("Info");
 	menubar->addMenu(info);
 	menubar->addSeparator();
-#ifndef MACOSX
+#ifndef MACOS
 	help->setTitle("Help");
 #else
         // On OSX, an entry in the menubar called "Help" will get an
@@ -824,9 +832,7 @@ NetHackQtMainWindow::NetHackQtMainWindow(NetHackQtKeyBuffer& ks) :
     QSignalMapper* sm = new QSignalMapper(this);
     connect(sm, SIGNAL(mapped(const QString&)),
             this, SLOT(doKeys(const QString&)));
-    // 'donull' is a placeholder here; AddToolButton() will fix it up;
-    // button will be omitted if DOAGAIN is bound to '\0'
-    AddToolButton(toolbar, sm, "Again", donull, QPixmap(again_xpm));
+    AddToolButton(toolbar, sm, "Again", do_repeat, QPixmap(again_xpm));
     // this used to be called "Get" which is confusing to experienced players
     AddToolButton(toolbar, sm, "Pick up", dopickup, QPixmap(pickup_xpm));
     AddToolButton(toolbar, sm, "Drop", doddrop, QPixmap(drop_xpm));
@@ -857,9 +863,14 @@ NetHackQtMainWindow::NetHackQtMainWindow(NetHackQtKeyBuffer& ks) :
     setMenu (menubar);
 #endif
 
+#if QT_VERSION < 0x060000
+    QSize screensize = QApplication::desktop()->size();
+#else
+    QSize screensize = screen()->size();
+#endif
     int x=0,y=0;
-    int w=QApplication::desktop()->width()-10; // XXX arbitrary extra space for frame
-    int h=QApplication::desktop()->height()-50;
+    int w=screensize.width()-10; // XXX arbitrary extra space for frame
+    int h=screensize.height()-50;
 
     int maxwn;
     int maxhn;
@@ -904,7 +915,7 @@ NetHackQtMainWindow::NetHackQtMainWindow(NetHackQtKeyBuffer& ks) :
 // all other control characters go through NetHackQtBind::notify()
 void NetHackQtMainWindow::CtrlV()
 {
-    static const char cV[] = { C('V'), '\0' };
+    static const char cV[] = { CTRL('V'), '\0' };
     doKeys(cV);
 }
 #endif
@@ -917,11 +928,7 @@ void NetHackQtMainWindow::AddToolButton(QToolBar *toolbar, QSignalMapper *sm,
     char actchar[2];
     uchar key;
 
-    // the ^A command is just a keystroke, not a full blown command function
-    if (!strcmp(name, "Again")) {
-        key = ::g.Cmd.spkeys[NHKF_DOAGAIN];
-    } else
-        key = (uchar) cmd_from_func(func);
+    key = (uchar) cmd_from_func(func);
 
     // if key is valid, add a button for it; otherwise omit the command
     // (won't work as intended if a different command is bound to same key)
@@ -1022,9 +1029,8 @@ void NetHackQtMainWindow::doQuit(bool)
     // either one, other implementations only have that other one (plus
     // nethack's #quit command itself) but this routine is unconditional
     // in case someone wants to change that
-#ifdef MACOSX
-    QString info;
-    info.sprintf("This will end your NetHack session.%s",
+#ifdef MACOS
+    QString info = QString::asprintf("This will end your NetHack session.%s",
                  !g.program_state.something_worth_saving ? ""
                  : "\n(Cancel quitting and use the Save command"
                    "\nto save your current game.)");

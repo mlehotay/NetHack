@@ -3,7 +3,7 @@
 -- reset_level is only needed here, not in normal special level scripts.
 
 function is_map_at(x,y, mapch, lit)
-   local rm = nh.getmap(x + 1, y); -- + 1 == g.xstart
+   local rm = nh.getmap(x, y);
    if rm.mapchr ~= mapch then
       error("Terrain at (" .. x .. "," .. y .. ") is not \"" .. mapch .. "\", but \"" .. rm.mapchr .. "\"");
    end
@@ -29,7 +29,7 @@ function check_loc_flag(x, y, flag, value)
 end
 
 function check_trap_at(x,y, name)
-   local t = nh.gettrap(x + 1, y); -- + 1 == g.xstart
+   local t = nh.gettrap(x, y);
    if (t.ttyp_name ~= name) then
       error("Trap at " .. x .. "," .. y .. " is " .. t.ttyp_name .. ", not " .. name);
    end
@@ -44,6 +44,9 @@ function test_level_init()
 
    des.reset_level();
    des.level_init({ style = "solidfill", fg = " " });
+
+   des.reset_level();
+   des.level_init({ style = "solidfill", fg = " ", lit = false });
 
    des.reset_level();
    des.level_init({ style = "mazegrid", bg ="-" });
@@ -64,7 +67,13 @@ function test_level_init()
    des.level_init({ style = "mines", fg = ".", bg = "L", smoothed = true, joined = true, lit = 0 });
 
    des.reset_level();
+   des.level_init({ style = "mines", fg = ".", bg = "L", smoothed = true, joined = true, lit = true });
+
+   des.reset_level();
    des.level_init({ style = "mines", fg = ".", bg = " ", smoothed = true, joined = true, walled = true });
+   des.reset_level();
+   des.level_init({ style = "swamp", fg = " ", lit = false });
+
 
    des.reset_level();
    des.level_init({ style = "solidfill", fg = ".", lit = 1 });
@@ -86,12 +95,14 @@ function test_monster()
    des.monster({ id = "ogre", x = 10, y = 15 })
    des.monster({ class = "D", coord = {11,16} })
    des.monster({ x = 73, y = 16 });
+   des.monster({ id = "watchman", peaceful = true })
    des.monster({ id = "watchman", peaceful = 1 })
    des.monster({ class = "H", peaceful = 0 })
    des.monster({ id = "giant mimic", appear_as = "obj:boulder" });
    des.monster({ id = "giant mimic", appear_as = "ter:altar" });
    des.monster({ id = "chameleon", appear_as = "mon:bat" });
-   des.monster({ class = "H", asleep = 1, female = 1, invisible = 1, cancelled = 1, revived = 1, avenge = 1, fleeing = 20, blinded = 20, paralyzed = 20, stunned = 20, confused = 20 })
+   des.monster({ class = "H", asleep = 1, female = 1, invisible = 1, cancelled = 1, revived = 1, avenge = 1, stunned = 1, confused = 1, fleeing = 20, blinded = 20, paralyzed = 20 })
+   des.monster({ class = "H", asleep = true, female = true, invisible = true, cancelled = true, revived = true, avenge = true, stunned = true, confused = true });
    des.monster({ id = "ogre", x = 10, y = 15, name = "Fred",
                  inventory = function()
                    des.object();
@@ -100,6 +111,11 @@ function test_monster()
                    des.object({ id = "statue", contents=0 })
                  end
    });
+   des.monster({ id = "long worm", tail = false });
+   des.monster({ id = "hill orc", group = false });
+   des.monster({ id = "lurker above", adjacentok = true });
+   des.monster({ id = "gnome", ignorewater = true });
+   des.monster({ id = "xan", countbirth = false });
    des.reset_level();
    des.level_init();
 end
@@ -195,10 +211,10 @@ LTL]])
 FFF
 F.F
 FFF]] })
-   for x = 60, 62 do
-      for y = 5, 7 do
+   for x = 0,2 do
+      for y = 0,2 do
          local nam = "iron bars";
-         if (x == 61 and y == 6) then
+         if (x == 1 and y == 1) then
              nam = "room";
          end
          check_loc_name(x, y, nam);
@@ -208,10 +224,10 @@ FFF]] })
 ...
 .T.
 ...]] })
-   for x = 60, 62 do
-      for y = 5, 7 do
+   for x = 0, 2 do
+      for y = 0, 2 do
          local nam = "room";
-         if (x == 61 and y == 6) then
+         if (x == 1 and y == 1) then
              nam = "tree";
          end
          check_loc_name(x, y, nam);
@@ -228,50 +244,50 @@ III]] })
                 des.terrain(0,0, "L");
                 des.terrain(map.width-1,map.height-1, "T");
    end});
-   check_loc_name(30, 5, "lava pool");
-   check_loc_name(32, 7, "tree");
+   check_loc_name(0, 0, "lava pool");
+   check_loc_name(2, 2, "tree");
 end
 
 function test_feature()
    des.reset_level();
    des.level_init({ style = "solidfill", fg = ".", lit = 1 });
    des.feature("fountain", 40, 08);
-   check_loc_name(40 + 1, 08, "fountain");
+   check_loc_name(40, 08, "fountain");
    des.feature("sink", {41, 08});
-   check_loc_name(41 + 1, 08, "sink");
+   check_loc_name(41, 08, "sink");
    des.feature({ type = "pool", x = 42, y = 08 });
-   check_loc_name(42 + 1, 08, "pool");
+   check_loc_name(42, 08, "pool");
    des.feature({ type = "sink", coord = {43, 08} });
-   check_loc_name(43 + 1, 08, "sink");
+   check_loc_name(43, 08, "sink");
 
    des.feature({ type = "throne", coord = {44, 08}, looted=true });
-   check_loc_name(44 + 1, 08, "throne");
-   check_loc_flag(44 + 1, 08, "looted", true);
+   check_loc_name(44, 08, "throne");
+   check_loc_flag(44, 08, "looted", true);
 
    des.feature({ type = "throne", coord = {44, 08}, looted=false });
-   check_loc_name(44 + 1, 08, "throne");
-   check_loc_flag(44 + 1, 08, "looted", false);
+   check_loc_name(44, 08, "throne");
+   check_loc_flag(44, 08, "looted", false);
 
    des.feature({ type = "tree", coord = {45, 08}, looted=true, swarm=false });
-   check_loc_name(45 + 1, 08, "tree");
-   check_loc_flag(45 + 1, 08, "looted", true);
-   check_loc_flag(45 + 1, 08, "swarm", false);
+   check_loc_name(45, 08, "tree");
+   check_loc_flag(45, 08, "looted", true);
+   check_loc_flag(45, 08, "swarm", false);
 
    des.feature({ type = "tree", coord = {45, 08}, looted=false, swarm=true });
-   check_loc_name(45 + 1, 08, "tree");
-   check_loc_flag(45 + 1, 08, "looted", false);
-   check_loc_flag(45 + 1, 08, "swarm", true);
+   check_loc_name(45, 08, "tree");
+   check_loc_flag(45, 08, "looted", false);
+   check_loc_flag(45, 08, "swarm", true);
 
    des.feature({ type = "fountain", coord = {46, 08}, looted=false, warned=true });
-   check_loc_name(46 + 1, 08, "fountain");
-   check_loc_flag(46 + 1, 08, "looted", false);
-   check_loc_flag(46 + 1, 08, "warned", true);
+   check_loc_name(46, 08, "fountain");
+   check_loc_flag(46, 08, "looted", false);
+   check_loc_flag(46, 08, "warned", true);
 
    des.feature({ type = "sink", coord = {47, 08}, pudding=false, dishwasher=true, ring=true });
-   check_loc_name(47 + 1, 08, "sink");
-   check_loc_flag(47 + 1, 08, "pudding", false);
-   check_loc_flag(47 + 1, 08, "dishwasher", true);
-   check_loc_flag(47 + 1, 08, "ring", true);
+   check_loc_name(47, 08, "sink");
+   check_loc_flag(47, 08, "pudding", false);
+   check_loc_flag(47, 08, "dishwasher", true);
+   check_loc_flag(47, 08, "ring", true);
 end
 
 function test_gold()
@@ -384,8 +400,10 @@ function test_stair()
    des.reset_level();
    des.level_init();
 
+   des.stair();
    des.stair("up");
    des.stair("down", 4, 7);
+   des.stair("down", {7, 7});
    des.stair({ dir = "down", x = 5,  y = 7 });
    des.stair({ dir = "down", coord = {6, 7} });
 end
@@ -394,8 +412,10 @@ function test_ladder()
    des.reset_level();
    des.level_init();
 
+   des.ladder();
    des.ladder("up");
    des.ladder("down", 4, 7);
+   des.ladder("down", {7, 7});
    des.ladder({ dir = "down", x = 5,  y = 7 });
    des.ladder({ dir = "down", coord = {6, 7} });
 end
@@ -442,6 +462,22 @@ function test_terrain()
 end
 
 function test_replace_terrain()
+   des.reset_level();
+   des.replace_terrain({ x1=2, y1=3, x2=4,y2=5, fromterrain=" ", toterrain="I", lit=1 });
+   for x = 2,4 do
+      for y = 3,5 do
+         is_map_at(x,y, "I", true);
+      end
+   end
+   for x = 1,5 do
+      is_map_at(x,2, " ", false);
+      is_map_at(x,6, " ", false);
+   end
+   for y = 2,6 do
+      is_map_at(1, y, " ", false);
+      is_map_at(5, y, " ", false);
+   end
+
    des.replace_terrain({ x1=1, y1=1, x2=70,y2=19, fromterrain=".", toterrain="I", lit=1 });
    des.replace_terrain({ x1=1, y1=1, x2=70,y2=19, fromterrain=".", toterrain="I", chance=50 });
    des.replace_terrain({ region={1,1, 70,19}, fromterrain=".", toterrain="L", chance=25 });
@@ -489,4 +525,5 @@ function run_tests()
    des.level_init();
 end
 
+nh.debug_flags({mongen = false, hunger = false, overwrite_stairs = true });
 run_tests();

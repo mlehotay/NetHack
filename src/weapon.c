@@ -1,4 +1,4 @@
-/* NetHack 3.7	weapon.c	$NHDT-Date: 1607811730 2020/12/12 22:22:10 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.89 $ */
+/* NetHack 3.7	weapon.c	$NHDT-Date: 1646688071 2022/03/07 21:21:11 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.100 $ */
 /* Copyright (c) Stichting Mathematisch Centrum, Amsterdam, 1985. */
 /*-Copyright (c) Robert Patrick Rankin, 2011. */
 /* NetHack may be freely redistributed.  See license for details. */
@@ -35,12 +35,15 @@ static void skill_advance(int);
 #define PN_MATTER_SPELL (-14)
 
 static NEARDATA const short skill_names_indices[P_NUM_SKILLS] = {
+    /* Weapon */
     0, DAGGER, KNIFE, AXE, PICK_AXE, SHORT_SWORD, BROADSWORD, LONG_SWORD,
-    TWO_HANDED_SWORD, SCIMITAR, PN_SABER, CLUB, MACE, MORNING_STAR, FLAIL,
-    PN_HAMMER, QUARTERSTAFF, PN_POLEARMS, SPEAR, TRIDENT, LANCE, BOW, SLING,
-    CROSSBOW, DART, SHURIKEN, BOOMERANG, PN_WHIP, UNICORN_HORN,
+    TWO_HANDED_SWORD, PN_SABER, CLUB, MACE, MORNING_STAR, FLAIL, PN_HAMMER,
+    QUARTERSTAFF, PN_POLEARMS, SPEAR, TRIDENT, LANCE, BOW, SLING, CROSSBOW,
+    DART, SHURIKEN, BOOMERANG, PN_WHIP, UNICORN_HORN,
+    /* Spell */
     PN_ATTACK_SPELL, PN_HEALING_SPELL, PN_DIVINATION_SPELL,
     PN_ENCHANTMENT_SPELL, PN_CLERIC_SPELL, PN_ESCAPE_SPELL, PN_MATTER_SPELL,
+    /* Other */
     PN_BARE_HANDED, PN_TWO_WEAPONS, PN_RIDING
 };
 
@@ -159,8 +162,7 @@ hitval(struct obj *otmp, struct monst *mon)
     /* Put weapon vs. monster type "to hit" bonuses in below: */
 
     /* Blessed weapons used against undead or demons */
-    if (Is_weapon && otmp->blessed
-        && (is_demon(ptr) || is_undead(ptr) || is_vampshifter(mon)))
+    if (Is_weapon && otmp->blessed && mon_hates_blessings(mon))
         tmp += 2;
 
     if (is_spear(otmp) && index(kebabable, ptr->mlet))
@@ -322,8 +324,7 @@ dmgval(struct obj *otmp, struct monst *mon)
         || otmp->oclass == CHAIN_CLASS) {
         int bonus = 0;
 
-        if (otmp->blessed
-            && (is_undead(ptr) || is_demon(ptr) || is_vampshifter(mon)))
+        if (otmp->blessed && mon_hates_blessings(mon))
             bonus += rnd(4);
         if (is_axe(otmp) && is_wooden(ptr))
             bonus += rnd(4);
@@ -357,15 +358,15 @@ dmgval(struct obj *otmp, struct monst *mon)
 /* check whether blessed and/or silver damage applies for *non-weapon* hit;
    return value is the amount of the extra damage */
 int
-special_dmgval(struct monst *magr,
-               struct monst *mdef,
-               long armask,       /* armor mask, multiple bits accepted for
-                                     W_ARMC|W_ARM|W_ARMU or
-                                     W_ARMG|W_RINGL|W_RINGR only */
-               long *silverhit_p) /* output flag mask for silver bonus */
+special_dmgval(
+    struct monst *magr, /* attacker */
+    struct monst *mdef, /* defender */
+    long armask,        /* armor mask, multiple bits accepted for
+                         * W_ARMC|W_ARM|W_ARMU or
+                         * W_ARMG|W_RINGL|W_RINGR only */
+    long *silverhit_p)  /* output flag mask for silver bonus */
 {
     struct obj *obj;
-    struct permonst *ptr = mdef->data;
     boolean left_ring = (armask & W_RINGL) ? TRUE : FALSE,
             right_ring = (armask & W_RINGR) ? TRUE : FALSE;
     long silverhit = 0L;
@@ -391,8 +392,7 @@ special_dmgval(struct monst *magr,
     }
 
     if (obj) {
-        if (obj->blessed
-            && (is_undead(ptr) || is_demon(ptr) || is_vampshifter(mdef)))
+        if (obj->blessed && mon_hates_blessings(mdef))
             bonus += rnd(4);
         /* the only silver armor is shield of reflection (silver dragon
            scales refer to color, not material) and the only way to hit
@@ -465,9 +465,11 @@ silver_sears(struct monst *magr UNUSED, struct monst *mdef,
 }
 
 static struct obj *oselect(struct monst *, int);
-#define Oselect(x)                      \
-    if ((otmp = oselect(mtmp, x)) != 0) \
-        return otmp;
+#define Oselect(x) \
+    do {                                        \
+        if ((otmp = oselect(mtmp, x)) != 0)     \
+            return otmp;                        \
+    } while (0)
 
 static struct obj *
 oselect(struct monst *mtmp, int x)
@@ -704,11 +706,12 @@ possibly_unwield(struct monst *mon, boolean polyspot)
     if (!attacktype(mon->data, AT_WEAP)) {
         setmnotwielded(mon, mw_tmp);
         mon->weapon_check = NO_WEAPON_WANTED;
-        obj_extract_self(obj);
+        /* if we're going to call distant_name(), do so before extract_self */
         if (cansee(mon->mx, mon->my)) {
             pline("%s drops %s.", Monnam(mon), distant_name(obj, doname));
             newsym(mon->mx, mon->my);
         }
+        obj_extract_self(obj);
         /* might be dropping object into water or lava */
         if (!flooreffects(obj, mon->mx, mon->my, "drop")) {
             if (polyspot)
@@ -743,6 +746,7 @@ int
 mon_wield_item(struct monst *mon)
 {
     struct obj *obj;
+    boolean exclaim = TRUE; /* assume mon is planning to attack */
 
     /* This case actually should never happen */
     if (mon->weapon_check == NO_WEAPON_WANTED)
@@ -760,12 +764,14 @@ mon_wield_item(struct monst *mon)
         /* KMH -- allow other picks */
         if (!obj && !which_armor(mon, W_ARMS))
             obj = m_carrying(mon, DWARVISH_MATTOCK);
+        exclaim = FALSE; /* mon is just planning to dig */
         break;
     case NEED_AXE:
         /* currently, only 2 types of axe */
         obj = m_carrying(mon, BATTLE_AXE);
         if (!obj || which_armor(mon, W_ARMS))
             obj = m_carrying(mon, AXE);
+        exclaim = FALSE;
         break;
     case NEED_PICK_OR_AXE:
         /* prefer pick for fewer switches on most levels */
@@ -777,6 +783,7 @@ mon_wield_item(struct monst *mon)
             if (!obj)
                 obj = m_carrying(mon, AXE);
         }
+        exclaim = FALSE;
         break;
     default:
         impossible("weapon_check %d for %s?", mon->weapon_check,
@@ -826,7 +833,8 @@ mon_wield_item(struct monst *mon)
         if (canseemon(mon)) {
             boolean newly_welded;
 
-            pline("%s wields %s!", Monnam(mon), doname(obj));
+            pline("%s wields %s%c", Monnam(mon), doname(obj),
+                  exclaim ? '!' : '.');
             /* 3.6.3: mwelded() predicate expects the object to have its
                W_WEP bit set in owormmask, but the pline here and for
                artifact_light don't want that because they'd have '(weapon
@@ -836,9 +844,13 @@ mon_wield_item(struct monst *mon)
             newly_welded = mwelded(obj);
             obj->owornmask &= ~W_WEP;
             if (newly_welded) {
+                const char *mon_hand = mbodypart(mon, HAND);
+
+                if (bimanual(obj))
+                    mon_hand = makeplural(mon_hand);
                 pline("%s %s to %s %s!", Tobjnam(obj, "weld"),
                       is_plural(obj) ? "themselves" : "itself",
-                      s_suffix(mon_nam(mon)), mbodypart(mon, HAND));
+                      s_suffix(mon_nam(mon)), mon_hand);
                 obj->bknown = 1;
             }
         }
@@ -988,10 +1000,10 @@ wet_a_towel(struct obj *obj,
 
 /* decrease a towel's wetness; unlike when wetting, 0 is not a no-op */
 void
-dry_a_towel(struct obj *obj,
-            int amt, /* positive or zero: new value;
-                        negative: decrement by abs(amt) */
-            boolean verbose)
+dry_a_towel(
+    struct obj *obj,
+    int amt, /* positive or zero: new value; negative: decrement by abs(amt) */
+    boolean verbose)
 {
     int newspe = (amt < 0) ? obj->spe + amt : amt;
 
@@ -1002,7 +1014,7 @@ dry_a_towel(struct obj *obj,
                 pline("%s dries%s.", Yobjnam2(obj, (const char *) 0),
                       !newspe ? " out" : "");
             else if (mcarried(obj) && canseemon(obj->ocarry))
-                pline("%s %s drie%s.", s_suffix(Monnam(obj->ocarry)),
+                pline("%s %s dries%s.", s_suffix(Monnam(obj->ocarry)),
                       xname(obj), !newspe ? " out" : "");
         }
     }
@@ -1157,6 +1169,7 @@ enhance_weapon_skill(void)
     anything any;
     winid win;
     boolean speedy = FALSE;
+    int clr = 0;
 
     /* player knows about #enhance, don't show tip anymore */
     g.context.enhance_tip = TRUE;
@@ -1170,7 +1183,7 @@ enhance_weapon_skill(void)
         for (longest = 0, i = 0; i < P_NUM_SKILLS; i++) {
             if (P_RESTRICTED(i))
                 continue;
-            if ((len = strlen(P_NAME(i))) > longest)
+            if ((len = Strlen(P_NAME(i))) > longest)
                 longest = len;
             if (can_advance(i, speedy))
                 to_advance++;
@@ -1194,17 +1207,17 @@ enhance_weapon_skill(void)
                             ? "when you're more experienced"
                             : "if skill slots become available");
                 add_menu(win, &nul_glyphinfo, &any, 0, 0,
-                         ATR_NONE, buf, MENU_ITEMFLAGS_NONE);
+                         ATR_NONE, clr, buf, MENU_ITEMFLAGS_NONE);
             }
             if (maxxed_cnt > 0) {
                 Sprintf(buf,
                  "(Skill%s flagged by \"#\" cannot be enhanced any further.)",
                         plur(maxxed_cnt));
                 add_menu(win, &nul_glyphinfo, &any, 0, 0,
-                         ATR_NONE, buf, MENU_ITEMFLAGS_NONE);
+                         ATR_NONE, clr, buf, MENU_ITEMFLAGS_NONE);
             }
             add_menu(win, &nul_glyphinfo, &any, 0, 0,
-                     ATR_NONE, "", MENU_ITEMFLAGS_NONE);
+                     ATR_NONE, clr, "", MENU_ITEMFLAGS_NONE);
         }
 
         /* List the skills, making ones that could be advanced
@@ -1218,7 +1231,7 @@ enhance_weapon_skill(void)
                 any = cg.zeroany;
                 if (i == skill_ranges[pass].first)
                     add_menu(win, &nul_glyphinfo, &any, 0, 0,
-                             iflags.menu_headings,
+                             iflags.menu_headings, clr,
                              skill_ranges[pass].name, MENU_ITEMFLAGS_NONE);
 
                 if (P_RESTRICTED(i))
@@ -1261,7 +1274,7 @@ enhance_weapon_skill(void)
                 }
                 any.a_int = can_advance(i, speedy) ? i + 1 : 0;
                 add_menu(win, &nul_glyphinfo, &any, 0, 0,
-                         ATR_NONE, buf, MENU_ITEMFLAGS_NONE);
+                         ATR_NONE, clr, buf, MENU_ITEMFLAGS_NONE);
             }
 
         Strcpy(buf, (to_advance > 0) ? "Pick a skill to advance:"
@@ -1287,7 +1300,7 @@ enhance_weapon_skill(void)
             }
         }
     } while (speedy && n > 0);
-    return 0;
+    return ECMD_OK;
 }
 
 /*
@@ -1361,6 +1374,8 @@ drain_weapon_skill(int n) /* number of skills to drain */
 {
     int skill;
     int i;
+    int curradv;
+    int prevadv;
     int tmpskills[P_NUM_SKILLS];
 
     (void) memset((genericptr_t) tmpskills, 0, sizeof(tmpskills));
@@ -1380,9 +1395,11 @@ drain_weapon_skill(int n) /* number of skills to drain */
             P_SKILL(skill)--;   /* drop skill one level */
             /* refund slots used for skill */
             u.weapon_slots += slots_required(skill);
-            /* drain a random proportion of skill training */
-            if (P_ADVANCE(skill))
-                P_ADVANCE(skill) = rn2(P_ADVANCE(skill));
+            /* drain skill training to a value appropriate for new level */
+            curradv = practice_needed_to_advance(P_SKILL(skill));
+            prevadv = practice_needed_to_advance(P_SKILL(skill) - 1);
+            if (P_ADVANCE(skill) >= curradv)
+                P_ADVANCE(skill) = prevadv + rn2(curradv - prevadv);
         }
     }
 

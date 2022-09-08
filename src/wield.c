@@ -1,4 +1,4 @@
-/* NetHack 3.7	wield.c	$NHDT-Date: 1607200367 2020/12/05 20:32:47 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.78 $ */
+/* NetHack 3.7	wield.c	$NHDT-Date: 1650875488 2022/04/25 08:31:28 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.90 $ */
 /* Copyright (c) Stichting Mathematisch Centrum, Amsterdam, 1985. */
 /*-Copyright (c) Robert Patrick Rankin, 2009. */
 /* NetHack may be freely redistributed.  See license for details. */
@@ -112,8 +112,8 @@ setuwep(struct obj *obj)
             pline("%s shining.", Tobjnam(olduwep, "stop"));
     }
     if (uwep == obj
-        && ((uwep && uwep->oartifact == ART_OGRESMASHER)
-            || (olduwep && olduwep->oartifact == ART_OGRESMASHER)))
+        && (u_wield_art(ART_OGRESMASHER)
+            || is_art(olduwep, ART_OGRESMASHER)))
         g.context.botl = 1;
     /* Note: Explicitly wielding a pick-axe will not give a "bashing"
      * message.  Wielding one via 'a'pplying it will.
@@ -146,33 +146,47 @@ cant_wield_corpse(struct obj *obj)
     return TRUE;
 }
 
+/* description of hands when not wielding anything; also used
+   by #seeweapon (')'), #attributes (^X), and #takeoffall ('A') */
+const char *
+empty_handed(void)
+{
+    return uarmg ? "empty handed" /* gloves imply hands */
+           : humanoid(g.youmonst.data)
+             /* hands but no weapon and no gloves */
+             ? "bare handed"
+               /* alternate phrasing for paws or lack of hands */
+               : "not wielding anything";
+}
+
 static int
 ready_weapon(struct obj *wep)
 {
     /* Separated function so swapping works easily */
-    int res = 0;
+    int res = ECMD_OK;
     boolean was_twoweap = u.twoweap, had_wep = (uwep != 0);
 
     if (!wep) {
         /* No weapon */
         if (uwep) {
-            You("are empty %s.", body_part(HANDED));
+            You("are %s.", empty_handed());
             setuwep((struct obj *) 0);
-            res++;
+            res = ECMD_TIME;
         } else
-            You("are already empty %s.", body_part(HANDED));
+            You("are already %s.", empty_handed());
     } else if (wep->otyp == CORPSE && cant_wield_corpse(wep)) {
         /* hero must have been life-saved to get here; use a turn */
-        res++; /* corpse won't be wielded */
+        res = ECMD_TIME; /* corpse won't be wielded */
     } else if (uarms && bimanual(wep)) {
         You("cannot wield a two-handed %s while wearing a shield.",
             is_sword(wep) ? "sword" : wep->otyp == BATTLE_AXE ? "axe"
                                                               : "weapon");
+        res = ECMD_FAIL;
     } else if (!retouch_object(&wep, FALSE)) {
-        res++; /* takes a turn even though it doesn't get wielded */
+        res = ECMD_TIME; /* takes a turn even though it doesn't get wielded */
     } else {
         /* Weapon WILL be wielded after this point */
-        res++;
+        res = ECMD_TIME;
         if (will_weld(wep)) {
             const char *tmp = xname(wep), *thestr = "The ";
 
@@ -206,7 +220,7 @@ ready_weapon(struct obj *wep)
         }
 
         setuwep(wep);
-        if (was_twoweap && !u.twoweap && flags.verbose) {
+        if (was_twoweap && !u.twoweap && Verbose(1, ready_weapon)) {
             /* skip this message if we already got "empty handed" one above;
                also, Null is not safe for neither TWOWEAPOK() or bimanual() */
             if (uwep)
@@ -264,29 +278,40 @@ setuswapwep(struct obj *obj)
     return;
 }
 
-/* getobj callback for object to ready for throwing/shooting */
+/* getobj callback for object to ready for throwing/shooting;
+   this filter lets worn items through so that caller can reject them */
 static int
 ready_ok(struct obj *obj)
 {
     if (!obj)
-        return GETOBJ_SUGGEST;
+        return GETOBJ_SUGGEST; /* '-', will empty quiver slot if chosen */
 
-    /* exclude when wielded... */
-    if ((obj == uwep || (obj == uswapwep && u.twoweap))
-        && obj->quan == 1) /* ...unless more than one */
-        return GETOBJ_EXCLUDE_INACCESS;
+    /* downplay when wielded, unless more than one */
+    if (obj == uwep || (obj == uswapwep && u.twoweap))
+        return (obj->quan == 1) ? GETOBJ_DOWNPLAY : GETOBJ_SUGGEST;
 
-    if (obj->oclass == WEAPON_CLASS || obj->oclass == COIN_CLASS)
-        return GETOBJ_SUGGEST;
-    /* Possible extension: exclude weapons that make no sense to throw, such as
-     * whips, bows, slings, rubber hoses. */
+    if (is_ammo(obj)) {
+        return ((uwep && ammo_and_launcher(obj, uwep))
+                || (uswapwep && ammo_and_launcher(obj, uswapwep)))
+                ? GETOBJ_SUGGEST
+                : GETOBJ_DOWNPLAY;
+    } else if (is_launcher(obj)) { /* part of 'possible extension' below */
+        return GETOBJ_DOWNPLAY;
+    } else {
+        if (obj->oclass == WEAPON_CLASS || obj->oclass == COIN_CLASS)
+            return GETOBJ_SUGGEST;
+        /* Possible extension: exclude weapons that make no sense to throw,
+           such as whips, bows, slings, rubber hoses. */
+    }
 
+#if 0   /* superseded by ammo_and_launcher handling above */
     /* Include gems/stones as likely candidates if either primary
        or secondary weapon is a sling. */
     if (obj->oclass == GEM_CLASS
         && (uslinging()
             || (uswapwep && objects[uswapwep->otyp].oc_skill == P_SLING)))
         return GETOBJ_SUGGEST;
+#endif
 
     return GETOBJ_DOWNPLAY;
 }
@@ -301,13 +326,13 @@ wield_ok(struct obj *obj)
     if (obj->oclass == COIN_CLASS)
         return GETOBJ_EXCLUDE;
 
-    if (obj->oclass == WEAPON_CLASS
-        || (obj->oclass == TOOL_CLASS && is_weptool(obj)))
+    if (obj->oclass == WEAPON_CLASS || is_weptool(obj))
         return GETOBJ_SUGGEST;
 
     return GETOBJ_DOWNPLAY;
 }
 
+/* the #wield command - wield a weapon */
 int
 dowield(void)
 {
@@ -320,20 +345,20 @@ dowield(void)
     g.multi = 0;
     if (cantwield(g.youmonst.data)) {
         pline("Don't be ridiculous!");
-        return 0;
+        return ECMD_FAIL;
     }
 
     /* Prompt for a new weapon */
     clear_splitobjs();
     if (!(wep = getobj("wield", wield_ok, GETOBJ_PROMPT | GETOBJ_ALLOWCNT))) {
         /* Cancelled */
-        return 0;
+        return ECMD_CANCEL;
     } else if (wep == uwep) {
  already_wielded:
         You("are already wielding that!");
         if (is_weptool(wep) || is_wet_towel(wep))
             g.unweapon = FALSE; /* [see setuwep()] */
-        return 0;
+        return ECMD_FAIL;
     } else if (welded(uwep)) {
         weldmsg(uwep);
         /* previously interrupted armor removal mustn't be resumed */
@@ -341,7 +366,7 @@ dowield(void)
         /* if player chose a partial stack but can't wield it, undo split */
         if (wep->o_id && wep->o_id == g.context.objsplit.child_oid)
             unsplitobj(wep);
-        return 0;
+        return ECMD_FAIL;
     } else if (wep->o_id && wep->o_id == g.context.objsplit.child_oid) {
         /* if wep is the result of supplying a count to getobj()
            we don't want to split something already wielded; for
@@ -368,7 +393,7 @@ dowield(void)
                     uquiver->quan, simpleonames(uquiver));
             switch (ynq(qbuf)) {
             case 'q':
-                return 0;
+                return ECMD_OK;
             case 'y':
                 /* leave N-1 quivered, split off 1 to wield */
                 wep = splitobj(uquiver, 1L);
@@ -390,13 +415,13 @@ dowield(void)
             (void) Shk_Your(qbuf, uquiver); /* replace qbuf[] contents */
             pline("%s%s %s readied.", qbuf,
                   simpleonames(uquiver), otense(uquiver, "remain"));
-            return 0;
+            return ECMD_OK;
         }
         /* wielding whole readied stack, so no longer quivered */
         setuqwep((struct obj *) 0);
     } else if (wep->owornmask & (W_ARMOR | W_ACCESSORY | W_SADDLE)) {
         You("cannot wield that!");
-        return 0;
+        return ECMD_FAIL;
     }
 
  wielding:
@@ -418,6 +443,7 @@ dowield(void)
     return result;
 }
 
+/* the #swap command - swap wielded and secondary weapons */
 int
 doswapweapon(void)
 {
@@ -428,11 +454,11 @@ doswapweapon(void)
     g.multi = 0;
     if (cantwield(g.youmonst.data)) {
         pline("Don't be ridiculous!");
-        return 0;
+        return ECMD_FAIL;
     }
     if (welded(uwep)) {
         weldmsg(uwep);
-        return 0;
+        return ECMD_FAIL;
     }
 
     /* Unwield your current secondary weapon */
@@ -461,8 +487,16 @@ doswapweapon(void)
     return result;
 }
 
+/* the #quiver command */
 int
 dowieldquiver(void)
+{
+    return doquiver_core("ready");
+}
+
+/* guts of #quiver command; also used by #fire when refilling empty quiver */
+int
+doquiver_core(const char *verb) /* "ready" or "fire" */
 {
     char qbuf[QBUFSZ];
     struct obj *newquiver;
@@ -476,12 +510,12 @@ dowieldquiver(void)
     /* forget last splitobj() before calling getobj() with GETOBJ_ALLOWCNT */
     clear_splitobjs();
 
-    /* Prompt for a new quiver: "What do you want to ready?" */
-    newquiver = getobj("ready", ready_ok, GETOBJ_PROMPT | GETOBJ_ALLOWCNT);
+    /* Prompt for a new quiver: "What do you want to {ready|fire}?" */
+    newquiver = getobj(verb, ready_ok, GETOBJ_PROMPT | GETOBJ_ALLOWCNT);
 
     if (!newquiver) {
         /* Cancelled */
-        return 0;
+        return ECMD_CANCEL;
     } else if (newquiver == &cg.zeroobj) { /* no object */
         /* Explicitly nothing */
         if (uquiver) {
@@ -491,7 +525,7 @@ dowieldquiver(void)
         } else {
             You("already have no ammunition readied!");
         }
-        return 0;
+        return ECMD_OK;
     } else if (newquiver->o_id == g.context.objsplit.child_oid) {
         /* if newquiver is the result of supplying a count to getobj()
            we don't want to split something already in the quiver;
@@ -503,23 +537,23 @@ dowieldquiver(void)
             /* don't allow splitting a stack of coins into quiver */
             You("can't ready only part of your gold.");
             unsplitobj(newquiver);
-            return 0;
+            return ECMD_OK;
         }
         finish_splitting = TRUE;
     } else if (newquiver == uquiver) {
  already_quivered:
         pline("That ammunition is already readied!");
-        return 0;
+        return ECMD_OK;
     } else if (newquiver->owornmask & (W_ARMOR | W_ACCESSORY | W_SADDLE)) {
-        You("cannot ready that!");
-        return 0;
+        You("cannot %s that!", verb);
+        return ECMD_OK;
     } else if (newquiver == uwep) {
         int weld_res = !uwep->bknown;
 
         if (welded(uwep)) {
             weldmsg(uwep);
             reset_remarm(); /* same as dowield() */
-            return weld_res;
+            return weld_res ? ECMD_TIME : ECMD_OK;
         }
         /* offer to split stack if wielding more than 1 */
         if (uwep->quan > 1L && inv_cnt(FALSE) < 52 && splittable(uwep)) {
@@ -527,7 +561,7 @@ dowieldquiver(void)
                     uwep->quan, simpleonames(uwep), uwep->quan - 1L);
             switch (ynq(qbuf)) {
             case 'q':
-                return 0;
+                return ECMD_OK;
             case 'y':
                 /* leave 1 wielded, split rest off and put into quiver */
                 newquiver = splitobj(uwep, uwep->quan - 1L);
@@ -549,7 +583,7 @@ dowieldquiver(void)
             (void) Shk_Your(qbuf, uwep); /* replace qbuf[] contents */
             pline("%s%s %s wielded.", qbuf,
                   simpleonames(uwep), otense(uwep, "remain"));
-            return 0;
+            return ECMD_OK;
         }
         /* quivering main weapon, so no longer wielding it */
         setuwep((struct obj *) 0);
@@ -565,7 +599,7 @@ dowieldquiver(void)
                     uswapwep->quan - 1L);
             switch (ynq(qbuf)) {
             case 'q':
-                return 0;
+                return ECMD_OK;
             case 'y':
                 /* leave 1 alt-wielded, split rest off and put into quiver */
                 newquiver = splitobj(uswapwep, uswapwep->quan - 1L);
@@ -589,7 +623,7 @@ dowieldquiver(void)
             pline("%s%s %s %s.", qbuf,
                   simpleonames(uswapwep), otense(uswapwep, "remain"),
                   u.twoweap ? "wielded" : "as secondary weapon");
-            return 0;
+            return ECMD_OK;
         }
         /* quivering alternate weapon, so no more uswapwep */
         setuswapwep((struct obj *) 0);
@@ -603,10 +637,18 @@ dowieldquiver(void)
         addinv(newquiver);
         newquiver->nomerge = 0;
     }
-    /* place item in quiver before printing so that inventory feedback
-       includes "(at the ready)" */
-    setuqwep(newquiver);
-    prinv((char *) 0, newquiver, 0L);
+
+    if (!strcmp(verb, "ready")) {
+        /* place item in quiver before printing so that inventory feedback
+           includes "(at the ready)" */
+        setuqwep(newquiver);
+        prinv((char *) 0, newquiver, 0L);
+    } else { /* verb=="fire", manually refilling quiver during 'f'ire */
+        /* prefix item with description of action, so don't want that to
+           include "(at the ready)" */
+        prinv("You ready:", newquiver, 0L);
+        setuqwep(newquiver);
+    }
 
     /* quiver is a convenience slot and manipulating it ordinarily
        consumes no time, but unwielding primary or secondary weapon
@@ -615,13 +657,13 @@ dowieldquiver(void)
        something we're wielding that's vulnerable to its damage) */
     res = 0;
     if (was_uwep) {
-        You("are now empty %s.", body_part(HANDED));
+        You("are now %s.", empty_handed());
         res = 1;
     } else if (was_twoweap && !u.twoweap) {
         You("%s.", are_no_longer_twoweap);
         res = 1;
     }
-    return res;
+    return res ? ECMD_TIME : ECMD_OK;
 }
 
 /* used for #rub and for applying pick-axe, whip, grappling hook or polearm */
@@ -647,7 +689,7 @@ wield_tool(struct obj *obj,
         return FALSE;
     }
     if (welded(uwep)) {
-        if (flags.verbose) {
+        if (Verbose(1, wield_tool)) {
             const char *hand = body_part(HAND);
 
             if (bimanual(uwep))
@@ -767,6 +809,7 @@ set_twoweap(boolean on_off)
     u.twoweap = on_off;
 }
 
+/* the #twoweapon command */
 int
 dotwoweapon(void)
 {
@@ -775,7 +818,7 @@ dotwoweapon(void)
         You("switch to your primary weapon.");
         set_twoweap(FALSE); /* u.twoweap = FALSE */
         update_inventory();
-        return 0;
+        return ECMD_OK;
     }
 
     /* May we use two weapons? */
@@ -784,9 +827,9 @@ dotwoweapon(void)
         You("begin two-weapon combat.");
         set_twoweap(TRUE); /* u.twoweap = TRUE */
         update_inventory();
-        return (rnd(20) > ACURR(A_DEX));
+        return (rnd(20) > ACURR(A_DEX)) ? ECMD_TIME : ECMD_OK;
     }
-    return 0;
+    return ECMD_OK;
 }
 
 /*** Functions to empty a given slot ***/
@@ -839,6 +882,7 @@ untwoweapon(void)
     return;
 }
 
+/* enchant wielded weapon */
 int
 chwepon(struct obj *otmp, int amount)
 {
@@ -892,7 +936,7 @@ chwepon(struct obj *otmp, int amount)
         if (otyp != STRANGE_OBJECT)
             makeknown(otyp);
         if (multiple)
-            encumber_msg();
+            (void) encumber_msg();
         return 1;
     } else if (uwep->otyp == CRYSKNIFE && amount < 0) {
         multiple = (uwep->quan > 1L);
@@ -909,7 +953,7 @@ chwepon(struct obj *otmp, int amount)
         if (otyp != STRANGE_OBJECT && otmp->bknown)
             makeknown(otyp);
         if (multiple)
-            encumber_msg();
+            (void) encumber_msg();
         return 1;
     }
 
@@ -958,7 +1002,7 @@ chwepon(struct obj *otmp, int amount)
      * addition adverse reaction on Magicbane whose effects are
      * spe dependent.  Give an obscure clue here.
      */
-    if (uwep->oartifact == ART_MAGICBANE && uwep->spe >= 0) {
+    if (u_wield_art(ART_MAGICBANE) && uwep->spe >= 0) {
         Your("right %s %sches!", body_part(HAND),
              (((amount > 1) && (uwep->spe > 1)) ? "flin" : "it"));
     }

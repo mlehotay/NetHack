@@ -1,4 +1,4 @@
-/* NetHack 3.7	priest.c	$NHDT-Date: 1597931337 2020/08/20 13:48:57 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.63 $ */
+/* NetHack 3.7	priest.c	$NHDT-Date: 1624322670 2021/06/22 00:44:30 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.70 $ */
 /* Copyright (c) Izchak Miller, Steve Linhart, 1989.              */
 /* NetHack may be freely redistributed.  See license for details. */
 
@@ -9,7 +9,7 @@
 #define ALGN_SINNED (-4) /* worse than strayed (-1..-3) */
 #define ALGN_PIOUS 14    /* better than fervent (9..13) */
 
-static boolean histemple_at(struct monst *, xchar, xchar);
+static boolean histemple_at(struct monst *, coordxy, coordxy);
 static boolean has_shrine(struct monst *);
 
 void
@@ -40,9 +40,9 @@ free_epri(struct monst *mtmp)
 int
 move_special(struct monst *mtmp, boolean in_his_shop, schar appr,
              boolean uondoor, boolean avoid,
-             xchar omx, xchar omy, xchar gx, xchar gy)
+             coordxy omx, coordxy omy, coordxy gx, coordxy gy)
 {
-    register xchar nx, ny, nix, niy;
+    register coordxy nx, ny, nix, niy;
     register schar i;
     schar chcnt, cnt;
     coord poss[9];
@@ -73,7 +73,7 @@ move_special(struct monst *mtmp, boolean in_his_shop, schar appr,
     }
 
 #define GDIST(x, y) (dist2(x, y, gx, gy))
-pick_move:
+ pick_move:
     chcnt = 0;
     for (i = 0; i < cnt; i++) {
         nx = poss[i].x;
@@ -146,7 +146,7 @@ temple_occupied(char *array)
 }
 
 static boolean
-histemple_at(struct monst *priest, xchar x, xchar y)
+histemple_at(struct monst *priest, coordxy x, coordxy y)
 {
     return (boolean) (priest && priest->ispriest
                       && (EPRI(priest)->shroom == *in_rooms(x, y, TEMPLE))
@@ -172,7 +172,7 @@ inhistemple(struct monst *priest)
 int
 pri_move(struct monst *priest)
 {
-    register xchar gx, gy, omx, omy;
+    register coordxy gx, gy, omx, omy;
     schar temple;
     boolean avoid = TRUE;
 
@@ -213,26 +213,30 @@ pri_move(struct monst *priest)
 
 /* exclusively for mktemple() */
 void
-priestini(d_level *lvl, struct mkroom *sroom, int sx, int sy,
-          boolean sanctum) /* is it the seat of the high priest? */
+priestini(
+    d_level *lvl,
+    struct mkroom *sroom,
+    int sx, int sy,
+    boolean sanctum) /* is it the seat of the high priest? */
 {
     struct monst *priest;
     struct obj *otmp;
     int cnt;
-    int px = 0, py = 0, i, si = rn2(8);
-    struct permonst *prim = &mons[sanctum ? PM_HIGH_CLERIC : PM_ALIGNED_CLERIC];
+    int px = 0, py = 0, i, si = rn2(N_DIRS);
+    struct permonst *prim = &mons[sanctum ? PM_HIGH_CLERIC
+                                          : PM_ALIGNED_CLERIC];
 
-    for (i = 0; i < 8; i++) {
-        px = sx + xdir[(i+si) % 8];
-        py = sy + ydir[(i+si) % 8];
+    for (i = 0; i < N_DIRS; i++) {
+        px = sx + xdir[DIR_CLAMP(i+si)];
+        py = sy + ydir[DIR_CLAMP(i+si)];
         if (pm_good_location(px, py, prim))
             break;
     }
-    if (i == 8)
+    if (i == N_DIRS)
         px = sx, py = sy;
 
     if (MON_AT(px, py))
-        (void) rloc(m_at(px, py), FALSE); /* insurance */
+        (void) rloc(m_at(px, py), RLOC_NOMSG); /* insurance */
 
     priest = makemon(prim, px, py, MM_EPRI);
     if (priest) {
@@ -241,7 +245,7 @@ priestini(d_level *lvl, struct mkroom *sroom, int sx, int sy,
         EPRI(priest)->shrpos.x = sx;
         EPRI(priest)->shrpos.y = sy;
         assign_level(&(EPRI(priest)->shrlevel), lvl);
-        priest->mtrapseen = ~0; /* traps are known */
+        mon_learns_traps(priest, ALL_TRAPS); /* traps are known */
         priest->mpeaceful = 1;
         priest->ispriest = 1;
         priest->isminion = 0;
@@ -291,26 +295,48 @@ mon_aligntyp(struct monst *mon)
  *              the true name even when under that influence
  */
 char *
-priestname(struct monst *mon,
-           char *pname) /* caller-supplied output buffer */
+priestname(
+    struct monst *mon,
+    int article,
+    char *pname) /* caller-supplied output buffer */
 {
     boolean do_hallu = Hallucination,
             aligned_priest = mon->data == &mons[PM_ALIGNED_CLERIC],
             high_priest = mon->data == &mons[PM_HIGH_CLERIC];
     char whatcode = '\0';
-    const char *what = do_hallu ? rndmonnam(&whatcode)
-                                : pmname(mon->data, Mgender(mon));
+    const char *what = do_hallu ? rndmonnam(&whatcode) : mon_pmname(mon);
 
     if (!mon->ispriest && !mon->isminion) /* should never happen...  */
         return strcpy(pname, what);       /* caller must be confused */
 
     *pname = '\0';
-    if (!do_hallu || !bogon_is_pname(whatcode))
-        Strcat(pname, "the ");
-    if (mon->minvis)
+    if (article != ARTICLE_NONE && (!do_hallu || !bogon_is_pname(whatcode))) {
+        if (article == ARTICLE_YOUR || (article == ARTICLE_A && high_priest))
+            article = ARTICLE_THE;
+        if (article == ARTICLE_THE) {
+            Strcat(pname, "the ");
+        } else {
+            char buf2[BUFSZ] = DUMMY;
+
+            /* don't let "Angel of <foo>" fool an() into using "the " */
+            Strcpy(buf2, pname);
+            *buf2 = lowc(*buf2);
+            (void) just_an(pname, buf2);
+        }
+    }
+    /* pname[] contains "" or {"a ","an ","the "} */
+    if (mon->minvis) {
+        /* avoid "a invisible priest" */
+        if (!strcmp(pname, "a "))
+            Strcpy(pname, "an ");
         Strcat(pname, "invisible ");
-    if (mon->isminion && EMIN(mon)->renegade)
+    }
+    if (mon->isminion && EMIN(mon)->renegade) {
+        /* avoid "an renegade Angel" */
+        if (!strcmp(pname, "an ")) /* will fail for "an invisible " */
+            Strcpy(pname, "a ");
         Strcat(pname, "renegade ");
+    }
 
     if (mon->ispriest || aligned_priest) { /* high_priest implies ispriest */
         if (!aligned_priest && !high_priest) {
@@ -333,7 +359,7 @@ priestname(struct monst *mon,
     Strcat(pname, what);
     /* same as distant_monnam(), more or less... */
     if (do_hallu || !high_priest || !Is_astralevel(&u.uz)
-        || distu(mon->mx, mon->my) <= 2 || g.program_state.gameover) {
+        || next2u(mon->mx, mon->my) || g.program_state.gameover) {
         Strcat(pname, " of ");
         Strcat(pname, halu_gname(mon_aligntyp(mon)));
     }
@@ -377,6 +403,8 @@ findpriest(char roomno)
     return (struct monst *) 0;
 }
 
+DISABLE_WARNING_FORMAT_NONLITERAL
+
 /* called from check_special_room() when the player enters the temple room */
 void
 intemple(int roomno)
@@ -400,7 +428,7 @@ intemple(int roomno)
         shrined = has_shrine(priest);
         sanctum = (priest->data == &mons[PM_HIGH_CLERIC]
                    && (Is_sanctum(&u.uz) || In_endgame(&u.uz)));
-        can_speak = (priest->mcanmove && !priest->msleeping);
+        can_speak = !helpless(priest);
         if (can_speak && !Deaf && g.moves >= epri_p->intone_time) {
             unsigned save_priest = priest->ispriest;
 
@@ -488,7 +516,7 @@ intemple(int roomno)
                       make sure we give one the first time */
         }
         if (!rn2(5)
-            && (mtmp = makemon(&mons[PM_GHOST], u.ux, u.uy, NO_MM_FLAGS))
+            && (mtmp = makemon(&mons[PM_GHOST], u.ux, u.uy, MM_NOMSG))
                    != 0) {
             int ngen = g.mvitals[PM_GHOST].born;
             if (canspotmon(mtmp))
@@ -499,7 +527,7 @@ intemple(int roomno)
                 You("sense a presence close by!");
             mtmp->mpeaceful = 0;
             set_malign(mtmp);
-            if (flags.verbose)
+            if (Verbose(3, intemple))
                 You("are frightened to death, and unable to move.");
             nomul(-3);
             g.multi_reason = "being terrified of a ghost";
@@ -507,6 +535,8 @@ intemple(int roomno)
         }
     }
 }
+
+RESTORE_WARNING_FORMAT_NONLITERAL
 
 /* reset the move counters used to limit temple entry feedback;
    leaving the level and then returning yields a fresh start */
@@ -530,7 +560,10 @@ priest_talk(struct monst *priest)
     boolean strayed = (u.ualign.record < 0);
 
     /* KMH, conduct */
-    u.uconduct.gnostic++;
+    if (!u.uconduct.gnostic++)
+        livelog_printf(LL_CONDUCT,
+                       "rejected atheism by consulting with %s",
+                       mon_nam(priest));
 
     if (priest->mflee || (!priest->ispriest && coaligned && strayed)) {
         pline("%s doesn't want anything to do with you!", Monnam(priest));
@@ -539,15 +572,14 @@ priest_talk(struct monst *priest)
     }
 
     /* priests don't chat unless peaceful and in their own temple */
-    if (!inhistemple(priest) || !priest->mpeaceful
-        || !priest->mcanmove || priest->msleeping) {
-        static const char *cranky_msg[3] = {
+    if (!inhistemple(priest) || !priest->mpeaceful || helpless(priest)) {
+        static const char *const cranky_msg[3] = {
             "Thou wouldst have words, eh?  I'll give thee a word or two!",
             "Talk?  Here is what I have to say!",
             "Pilgrim, I would speak no longer with thee."
         };
 
-        if (!priest->mcanmove || priest->msleeping) {
+        if (helpless(priest)) {
             pline("%s breaks out of %s reverie!", Monnam(priest),
                   mhis(priest));
             priest->mfrozen = priest->msleeping = 0;
@@ -638,7 +670,7 @@ priest_talk(struct monst *priest)
 }
 
 struct monst *
-mk_roamer(struct permonst *ptr, aligntyp alignment, xchar x, xchar y,
+mk_roamer(struct permonst *ptr, aligntyp alignment, coordxy x, coordxy y,
           boolean peaceful)
 {
     register struct monst *roamer;
@@ -650,16 +682,16 @@ mk_roamer(struct permonst *ptr, aligntyp alignment, xchar x, xchar y,
 #endif
 
     if (MON_AT(x, y))
-        (void) rloc(m_at(x, y), FALSE); /* insurance */
+        (void) rloc(m_at(x, y), RLOC_NOMSG); /* insurance */
 
-    if (!(roamer = makemon(ptr, x, y, MM_ADJACENTOK | MM_EMIN)))
+    if (!(roamer = makemon(ptr, x, y, MM_ADJACENTOK | MM_EMIN | MM_NOMSG)))
         return (struct monst *) 0;
 
     EMIN(roamer)->min_align = alignment;
     EMIN(roamer)->renegade = (coaligned && !peaceful);
     roamer->ispriest = 0;
     roamer->isminion = 1;
-    roamer->mtrapseen = ~0; /* traps are known */
+    mon_learns_traps(roamer, ALL_TRAPS); /* traps are known */
     roamer->mpeaceful = peaceful;
     roamer->msleeping = 0;
     set_malign(roamer); /* peaceful may have changed */
@@ -685,8 +717,9 @@ reset_hostility(struct monst *roamer)
 }
 
 boolean
-in_your_sanctuary(struct monst *mon, /* if non-null, <mx,my> overrides <x,y> */
-                  xchar x, xchar y)
+in_your_sanctuary(
+    struct monst *mon, /* if non-null, <mx,my> overrides <x,y> */
+    coordxy x, coordxy y)
 {
     register char roomno;
     register struct monst *priest;
@@ -711,7 +744,8 @@ in_your_sanctuary(struct monst *mon, /* if non-null, <mx,my> overrides <x,y> */
 void
 ghod_hitsu(struct monst *priest)
 {
-    int x, y, ax, ay, roomno = (int) temple_occupied(u.urooms);
+    coordxy x, y, ax, ay;
+    int roomno = (int) temple_occupied(u.urooms);
     struct mkroom *troom;
 
     if (!roomno || !has_shrine(priest))
@@ -721,7 +755,7 @@ ghod_hitsu(struct monst *priest)
     ay = y = EPRI(priest)->shrpos.y;
     troom = &g.rooms[roomno - ROOMOFFSET];
 
-    if ((u.ux == x && u.uy == y) || !linedup(u.ux, u.uy, x, y, 1)) {
+    if (u_at(x, y) || !linedup(u.ux, u.uy, x, y, 1)) {
         if (IS_DOOR(levl[u.ux][u.uy].typ)) {
             if (u.ux == troom->lx - 1) {
                 x = troom->hx;
@@ -775,7 +809,7 @@ ghod_hitsu(struct monst *priest)
         break;
     }
 
-    buzz(-10 - (AD_ELEC - 1), 6, x, y, sgn(g.tbx),
+    buzz(BZ_M_SPELL(BZ_OFS_AD(AD_ELEC)), 6, x, y, sgn(g.tbx),
          sgn(g.tby)); /* bolt of lightning */
     exercise(A_WIS, FALSE);
 }

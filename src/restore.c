@@ -1,4 +1,4 @@
-/* NetHack 3.7	restore.c	$NHDT-Date: 1606765214 2020/11/30 19:40:14 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.173 $ */
+/* NetHack 3.7	restore.c	$NHDT-Date: 1649530943 2022/04/09 19:02:23 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.194 $ */
 /* Copyright (c) Stichting Mathematisch Centrum, Amsterdam, 1985. */
 /*-Copyright (c) Michael Allison, 2009. */
 /* NetHack may be freely redistributed.  See license for details. */
@@ -9,10 +9,6 @@
 #if defined(MICRO)
 extern int dotcnt; /* shared with save */
 extern int dotrow; /* shared with save */
-#endif
-
-#ifdef USE_TILES
-extern void substitute_tiles(d_level *); /* from tile.c */
 #endif
 
 #ifdef ZEROCOMP
@@ -33,7 +29,9 @@ static void freefruitchn(struct fruit *);
 static void ghostfruit(struct obj *);
 static boolean restgamestate(NHFILE *, unsigned int *, unsigned int *);
 static void restlevelstate(unsigned int, unsigned int);
-static int restlevelfile(xchar);
+static int restlevelfile(xint8);
+static void rest_bubbles(NHFILE *);
+static void restore_gamelog(NHFILE *);
 static void restore_msghistory(NHFILE *);
 static void reset_oattached_mids(boolean);
 static void rest_levl(NHFILE *, boolean);
@@ -93,6 +91,14 @@ find_lev_obj(void)
     while ((otmp = fobjtmp) != 0) {
         fobjtmp = otmp->nobj;
         place_object(otmp, otmp->ox, otmp->oy);
+
+        /* fixup(s) performed when restoring the level that the hero
+           is on, rather than just an arbitrary one */
+        if (u.uz.dlevel) { /* 0 during full restore until current level */
+            /* handle uchain and uball when they're on the floor */
+            if (otmp->owornmask & (W_BALL | W_CHAIN))
+                setworn(otmp, otmp->owornmask);
+        }
     }
 }
 
@@ -149,43 +155,22 @@ restdamage(NHFILE* nhfp)
     boolean ghostly = (nhfp->ftype == NHF_BONESFILE);
 
     if (nhfp->structlevel)
-        mread(nhfp->fd, (genericptr_t) &dmgcount, sizeof(dmgcount));
+        mread(nhfp->fd, (genericptr_t) &dmgcount, sizeof dmgcount);
     counter = (int) dmgcount;
 
     if (!counter)
         return;
-    tmp_dam = (struct damage *) alloc(sizeof(struct damage));
-    while (--counter >= 0) {
-        char damaged_shops[5], *shp = (char *) 0;
-
+    do {
+        tmp_dam = (struct damage *) alloc(sizeof *tmp_dam);
         if (nhfp->structlevel)
-            mread(nhfp->fd, (genericptr_t) tmp_dam, sizeof(*tmp_dam));
+            mread(nhfp->fd, (genericptr_t) tmp_dam, sizeof *tmp_dam);
 
         if (ghostly)
-            tmp_dam->when += (g.monstermoves - g.omoves);
-        Strcpy(damaged_shops,
-               in_rooms(tmp_dam->place.x, tmp_dam->place.y, SHOPBASE));
-        if (u.uz.dlevel) {
-            /* when restoring, there are two passes over the current
-             * level.  the first time, u.uz isn't set, so neither is
-             * shop_keeper().  just wait and process the damage on
-             * the second pass.
-             */
-            for (shp = damaged_shops; *shp; shp++) {
-                struct monst *shkp = shop_keeper(*shp);
+            tmp_dam->when += (g.moves - g.omoves);
 
-                if (shkp && inhishop(shkp)
-                    && repair_damage(shkp, tmp_dam, (int *) 0, TRUE))
-                    break;
-            }
-        }
-        if (!shp || !*shp) {
-            tmp_dam->next = g.level.damagelist;
-            g.level.damagelist = tmp_dam;
-            tmp_dam = (struct damage *) alloc(sizeof(*tmp_dam));
-        }
-    }
-    free((genericptr_t) tmp_dam);
+        tmp_dam->next = g.level.damagelist;
+        g.level.damagelist = tmp_dam;
+    } while (--counter > 0);
 }
 
 /* restore one object */
@@ -267,7 +252,8 @@ restobjchn(NHFILE* nhfp, boolean frozen)
             otmp2->nobj = otmp;
 
         if (ghostly) {
-            unsigned nid = g.context.ident++;
+            unsigned nid = next_ident();
+
             add_id_mapping(otmp->o_id, nid);
             otmp->o_id = nid;
         }
@@ -278,7 +264,7 @@ restobjchn(NHFILE* nhfp, boolean frozen)
          * immediately after old player died.
          */
         if (ghostly && !frozen && !age_is_relative(otmp))
-            otmp->age = g.monstermoves - g.omoves + otmp->age;
+            otmp->age = g.moves - g.omoves + otmp->age;
 
         /* get contents of a container or statue */
         if (Has_contents(otmp)) {
@@ -335,12 +321,12 @@ restmon(NHFILE* nhfp, struct monst* mtmp)
         }
         /* egd - vault guard */
         if (nhfp->structlevel)
-            mread(nhfp->fd, (genericptr_t) &buflen, sizeof(buflen));
+            mread(nhfp->fd, (genericptr_t) &buflen, sizeof buflen);
 
         if (buflen > 0) {
             newegd(mtmp);
             if (nhfp->structlevel)
-                mread(nhfp->fd, (genericptr_t) EGD(mtmp), sizeof(struct egd));
+                mread(nhfp->fd, (genericptr_t) EGD(mtmp), sizeof (struct egd));
         }
         /* epri - temple priest */
         if (nhfp->structlevel)
@@ -348,7 +334,8 @@ restmon(NHFILE* nhfp, struct monst* mtmp)
         if (buflen > 0) {
             newepri(mtmp);
             if (nhfp->structlevel)
-                mread(nhfp->fd, (genericptr_t) EPRI(mtmp), sizeof(struct epri));
+                mread(nhfp->fd, (genericptr_t) EPRI(mtmp),
+                      sizeof (struct epri));
         }
         /* eshk - shopkeeper */
         if (nhfp->structlevel)
@@ -356,7 +343,8 @@ restmon(NHFILE* nhfp, struct monst* mtmp)
         if (buflen > 0) {
             neweshk(mtmp);
             if (nhfp->structlevel)
-                mread(nhfp->fd, (genericptr_t) ESHK(mtmp), sizeof(struct eshk));
+                mread(nhfp->fd, (genericptr_t) ESHK(mtmp),
+                      sizeof (struct eshk));
         }
         /* emin - minion */
         if (nhfp->structlevel)
@@ -364,7 +352,8 @@ restmon(NHFILE* nhfp, struct monst* mtmp)
         if (buflen > 0) {
             newemin(mtmp);
             if (nhfp->structlevel)
-                mread(nhfp->fd, (genericptr_t) EMIN(mtmp), sizeof(struct emin));
+                mread(nhfp->fd, (genericptr_t) EMIN(mtmp),
+                      sizeof (struct emin));
         }
         /* edog - pet */
         if (nhfp->structlevel)
@@ -372,12 +361,14 @@ restmon(NHFILE* nhfp, struct monst* mtmp)
         if (buflen > 0) {
             newedog(mtmp);
             if (nhfp->structlevel)
-                mread(nhfp->fd, (genericptr_t) EDOG(mtmp), sizeof(struct edog));
+                mread(nhfp->fd, (genericptr_t) EDOG(mtmp),
+                      sizeof (struct edog));
         }
         /* mcorpsenm - obj->corpsenm for mimic posing as corpse or
            statue (inline int rather than pointer to something) */
         if (nhfp->structlevel)
-            mread(nhfp->fd, (genericptr_t) &MCORPSENM(mtmp), sizeof MCORPSENM(mtmp));
+            mread(nhfp->fd, (genericptr_t) &MCORPSENM(mtmp),
+                  sizeof MCORPSENM(mtmp));
     } /* mextra */
 }
 
@@ -403,7 +394,8 @@ restmonchn(NHFILE* nhfp)
             mtmp2->nmon = mtmp;
 
         if (ghostly) {
-            unsigned nid = g.context.ident++;
+            unsigned nid = next_ident();
+
             add_id_mapping(mtmp->m_id, nid);
             mtmp->m_id = nid;
         }
@@ -522,7 +514,7 @@ restgamestate(NHFILE* nhfp, unsigned int* stuckid, unsigned int* steedid)
 
     if (nhfp->structlevel)
         mread(nhfp->fd, (genericptr_t) &uid, sizeof uid);
-      
+
     if (SYSOPT_CHECK_SAVE_UID
         && uid != (unsigned long) getuid()) { /* strange ... */
         /* for wizard mode, issue a reminder; for others, treat it
@@ -577,7 +569,7 @@ restgamestate(NHFILE* nhfp, unsigned int* stuckid, unsigned int* steedid)
     if (nhfp->structlevel)
         mread(nhfp->fd, (genericptr_t) &u, sizeof(struct you));
     g.youmonst.cham = u.mcham;
-        
+
     if (nhfp->structlevel)
         mread(nhfp->fd, (genericptr_t) timebuf, 14);
     timebuf[14] = '\0';
@@ -667,9 +659,12 @@ restgamestate(NHFILE* nhfp, unsigned int* stuckid, unsigned int* steedid)
     restlevchn(nhfp);
     if (nhfp->structlevel) {
         mread(nhfp->fd, (genericptr_t) &g.moves, sizeof g.moves);
-        mread(nhfp->fd, (genericptr_t) &g.monstermoves, sizeof g.monstermoves);
-        mread(nhfp->fd, (genericptr_t) &g.quest_status, sizeof (struct q_score));
-        mread(nhfp->fd, (genericptr_t) g.spl_book, (MAXSPELL + 1) * sizeof (struct spell));
+        /* hero_seq isn't saved and restored because it can be recalculated */
+        g.hero_seq = g.moves << 3; /* normally handled in moveloop() */
+        mread(nhfp->fd, (genericptr_t) &g.quest_status,
+              sizeof (struct q_score));
+        mread(nhfp->fd, (genericptr_t) g.spl_book,
+              (MAXSPELL + 1) * sizeof (struct spell));
     }
     restore_artifacts(nhfp);
     restore_oracles(nhfp);
@@ -687,10 +682,10 @@ restgamestate(NHFILE* nhfp, unsigned int* stuckid, unsigned int* steedid)
     }
     freefruitchn(g.ffruit); /* clean up fruit(s) made by initoptions() */
     g.ffruit = loadfruitchn(nhfp);
-  
+
     restnames(nhfp);
-    restore_waterlevel(nhfp);
     restore_msghistory(nhfp);
+    restore_gamelog(nhfp);
     /* must come after all mons & objs are restored */
     relink_timers(FALSE);
     relink_light_sources(FALSE);
@@ -728,7 +723,7 @@ restlevelstate(unsigned int stuckid, unsigned int steedid)
 
 /*ARGSUSED*/
 static int
-restlevelfile(xchar ltmp)
+restlevelfile(xint8 ltmp)
 {
     char whynot[BUFSZ];
     NHFILE *nhfp = (NHFILE *) 0;
@@ -750,13 +745,14 @@ int
 dorecover(NHFILE* nhfp)
 {
     unsigned int stuckid = 0, steedid = 0; /* not a register */
-    xchar ltmp = 0;
+    xint8 ltmp = 0;
     int rtmp;
-    struct obj *otmp;
 
-    g.program_state.restoring = 1;
+    /* suppress map display if some part of the code tries to update that */
+    g.program_state.restoring = REST_GSTATE;
+
     get_plname_from_file(nhfp, g.plname);
-    getlev(nhfp, 0, (xchar) 0);
+    getlev(nhfp, 0, (xint8) 0);
     if (!restgamestate(nhfp, &stuckid, &steedid)) {
         NHFILE tnhfp;
 
@@ -780,6 +776,8 @@ dorecover(NHFILE* nhfp)
     if (rtmp < 2)
         return rtmp; /* dorecover called recursively */
 
+    g.program_state.restoring = REST_LEVELS;
+
     /* these pointers won't be valid while we're processing the
      * other levels, but they'll be reset again by restlevelstate()
      * afterwards, and in the meantime at least u.usteed may mislead
@@ -792,7 +790,7 @@ dorecover(NHFILE* nhfp)
 #ifdef AMII_GRAPHICS
     {
         extern struct window_procs amii_procs;
-        if (WINDOWPORT("amii")) {
+        if (WINDOWPORT(amii)) {
             extern winid WIN_BASE;
             clear_nhwindow(WIN_BASE); /* hack until there's a hook for this */
         }
@@ -808,7 +806,7 @@ dorecover(NHFILE* nhfp)
     curs(WIN_MAP, 1, 1);
     dotcnt = 0;
     dotrow = 2;
-    if (!WINDOWPORT("X11"))
+    if (!WINDOWPORT(X11))
         putstr(WIN_MAP, 0, "Restoring:");
 #endif
     restoreinfo.mread_flags = 1; /* return despite error */
@@ -825,7 +823,7 @@ dorecover(NHFILE* nhfp)
             dotrow++;
             dotcnt = 0;
         }
-        if (!WINDOWPORT("X11")) {
+        if (!WINDOWPORT(X11)) {
             putstr(WIN_MAP, 0, ".");
         }
         mark_synch();
@@ -839,7 +837,7 @@ dorecover(NHFILE* nhfp)
     (void) validate(nhfp, (char *) 0);
     get_plname_from_file(nhfp, g.plname);
 
-    getlev(nhfp, 0, (xchar) 0);
+    getlev(nhfp, 0, (xint8) 0);
     close_nhfile(nhfp);
     restlevelstate(stuckid, steedid);
     g.program_state.something_worth_saving = 1; /* useful data now exists */
@@ -848,14 +846,9 @@ dorecover(NHFILE* nhfp)
         (void) delete_savefile();
     if (Is_rogue_level(&u.uz))
         assign_graphics(ROGUESET);
-#ifdef USE_TILES
-    substitute_tiles(&u.uz);
-#endif
+    reset_glyphmap(gm_levelchange);
     max_rank_sz(); /* to recompute g.mrank_sz (botl.c) */
-    /* take care of iron ball & chain */
-    for (otmp = fobj; otmp; otmp = otmp->nobj)
-        if (otmp->owornmask)
-            setworn(otmp, otmp->owornmask);
+    init_oclass_probs(); /* recompute g.oclass_prob_totals[] */
 
     if ((uball && !uchain) || (uchain && !uball)) {
         impossible("restgamestate: lost ball & chain");
@@ -879,6 +872,17 @@ dorecover(NHFILE* nhfp)
 
     run_timers(); /* expire all timers that have gone off while away */
     g.program_state.restoring = 0; /* affects bot() so clear before docrt() */
+
+    if (g.early_raw_messages && !g.program_state.beyond_savefile_load) {
+        /*
+         * We're about to obliterate some potentially important
+         * startup messages, so give the player a chance to see them.
+         */
+        g.early_raw_messages = 0;
+        wait_synch();
+    }
+    g.program_state.beyond_savefile_load = 1;
+
     docrt();
     clear_nhwindow(WIN_MESSAGE);
 
@@ -893,28 +897,30 @@ rest_stairs(NHFILE* nhfp)
 {
     int buflen = 0;
     stairway stway = UNDEFINED_VALUES;
-    int len = 0;
+    stairway *newst;
 
     stairway_free_all();
     while (1) {
         if (nhfp->structlevel) {
-            len += (int) sizeof(buflen);
             mread(nhfp->fd, (genericptr_t) &buflen, sizeof buflen);
         }
 
         if (buflen == -1)
             break;
 
-        len += (int) sizeof (stairway);
         if (nhfp->structlevel) {
             mread(nhfp->fd, (genericptr_t) &stway, sizeof (stairway));
         }
-        if (stway.tolev.dnum == u.uz.dnum) {
+        if (g.program_state.restoring != REST_GSTATE
+            && stway.tolev.dnum == u.uz.dnum) {
             /* stairway dlevel is relative, make it absolute */
             stway.tolev.dlevel += u.uz.dlevel;
         }
         stairway_add(stway.sx, stway.sy, stway.up, stway.isladder,
                      &(stway.tolev));
+        newst = stairway_at(stway.sx, stway.sy);
+        if (newst)
+            newst->u_traversed = stway.u_traversed;
     }
 }
 
@@ -996,14 +1002,14 @@ trickery(char *reason)
 }
 
 void
-getlev(NHFILE* nhfp, int pid, xchar lev)
+getlev(NHFILE* nhfp, int pid, xint8 lev)
 {
     register struct trap *trap;
     register struct monst *mtmp;
     long elapsed;
     branch *br;
     int hpid = 0;
-    xchar dlvl = 0;
+    xint8 dlvl = 0;
     int x, y;
     boolean ghostly = (nhfp->ftype == NHF_BONESFILE);
 #ifdef TOS
@@ -1055,7 +1061,7 @@ getlev(NHFILE* nhfp, int pid, xchar lev)
         mread(nhfp->fd, (genericptr_t) g.lastseentyp, sizeof(g.lastseentyp));
         mread(nhfp->fd, (genericptr_t) &g.omoves, sizeof(g.omoves));
     }
-    elapsed = g.monstermoves - g.omoves;
+    elapsed = g.moves - g.omoves;
 
     if (nhfp->structlevel) {
         rest_stairs(nhfp);
@@ -1069,7 +1075,7 @@ getlev(NHFILE* nhfp, int pid, xchar lev)
         g.doorindex = g.rooms[g.nroom - 1].fdoor + g.rooms[g.nroom - 1].doorct;
     else
         g.doorindex = 0;
-  
+
     restore_timers(nhfp, RANGE_LEVEL, elapsed);
     restore_light_sources(nhfp);
     fmon = restmonchn(nhfp);
@@ -1118,11 +1124,10 @@ getlev(NHFILE* nhfp, int pid, xchar lev)
             /* reset peaceful/malign relative to new character;
                shopkeepers will reset based on name */
             if (!mtmp->isshk)
-                mtmp->mpeaceful =
-                    (is_unicorn(mtmp->data)
-                     && sgn(u.ualign.type) == sgn(mtmp->data->maligntyp))
-                        ? TRUE
-                        : peace_minded(mtmp->data);
+                mtmp->mpeaceful = (is_unicorn(mtmp->data)
+                                   && (sgn(u.ualign.type)
+                                       == sgn(mtmp->data->maligntyp))) ? 1
+                                  : peace_minded(mtmp->data);
             set_malign(mtmp);
         } else if (elapsed > 0L) {
             mon_catchup_elapsed_time(mtmp, elapsed);
@@ -1136,6 +1141,7 @@ getlev(NHFILE* nhfp, int pid, xchar lev)
     }
     restdamage(nhfp);
     rest_regions(nhfp);
+    rest_bubbles(nhfp); /* for water and air; empty marker on other levels */
 
     if (ghostly) {
         stairway *stway = g.stairs;
@@ -1224,6 +1230,46 @@ get_plname_from_file(NHFILE* nhfp, char *plbuf)
         (void) read(nhfp->fd, (genericptr_t) plbuf, pltmpsiz);
     }
     return;
+}
+
+/* restore Plane of Water's air bubbles and Plane of Air's clouds */
+static void
+rest_bubbles(NHFILE *nhfp)
+{
+    xint8 bbubbly;
+
+    /* whether or not the Plane of Water's air bubbles or Plane of Air's
+       clouds are present is recorded during save so that we don't have to
+       know what level is being restored */
+    bbubbly = 0;
+    if (nhfp->structlevel)
+        mread(nhfp->fd, (genericptr_t) &bbubbly, sizeof bbubbly);
+
+    if (bbubbly)
+        restore_waterlevel(nhfp);
+}
+
+static void
+restore_gamelog(NHFILE* nhfp)
+{
+    int slen = 0;
+    char msg[BUFSZ*2];
+    struct gamelog_line tmp;
+
+    while (1) {
+        if (nhfp->structlevel)
+            mread(nhfp->fd, (genericptr_t)&slen, sizeof(slen));
+        if (slen == -1)
+            break;
+        if (slen > ((BUFSZ*2) - 1))
+            panic("restore_gamelog: msg too big (%d)", slen);
+        if (nhfp->structlevel) {
+            mread(nhfp->fd, (genericptr_t) msg, slen);
+            mread(nhfp->fd, (genericptr_t) &tmp, sizeof(tmp));
+            msg[slen] = '\0';
+            gamelog_add(tmp.flags, tmp.turn, msg);
+        }
+    }
 }
 
 static void
@@ -1349,6 +1395,7 @@ restore_menu(
     char **saved;
     menu_item *chosen_game = (menu_item *) 0;
     int k, clet, ch = 0; /* ch: 0 => new game */
+    int clr = 0;
 
     *g.plname = '\0';
     saved = get_saved_games(); /* array of character names */
@@ -1362,25 +1409,25 @@ restore_menu(
             /* COPYRIGHT_BANNER_[ABCD] */
             for (k = 1; k <= 4; ++k)
                 add_menu(tmpwin, &nul_glyphinfo, &any, 0, 0, ATR_NONE,
-                         copyright_banner_line(k), MENU_ITEMFLAGS_NONE);
-            add_menu(tmpwin, &nul_glyphinfo, &any, 0, 0, ATR_NONE, "",
+                         clr, copyright_banner_line(k), MENU_ITEMFLAGS_NONE);
+            add_menu(tmpwin, &nul_glyphinfo, &any, 0, 0, ATR_NONE, clr, "",
                      MENU_ITEMFLAGS_NONE);
         }
         add_menu(tmpwin, &nul_glyphinfo, &any, 0, 0, ATR_NONE,
-                 "Select one of your saved games", MENU_ITEMFLAGS_NONE);
+                 clr, "Select one of your saved games", MENU_ITEMFLAGS_NONE);
         for (k = 0; saved[k]; ++k) {
             any.a_int = k + 1;
             add_menu(tmpwin, &nul_glyphinfo, &any, 0, 0,
-                     ATR_NONE, saved[k], MENU_ITEMFLAGS_NONE);
+                     ATR_NONE, clr, saved[k], MENU_ITEMFLAGS_NONE);
         }
         clet = (k <= 'n' - 'a') ? 'n' : 0; /* new game */
         any.a_int = -1;                    /* not >= 0 */
         add_menu(tmpwin, &nul_glyphinfo, &any, clet, 0, ATR_NONE,
-                 "Start a new character", MENU_ITEMFLAGS_NONE);
+                 clr, "Start a new character", MENU_ITEMFLAGS_NONE);
         clet = (k + 1 <= 'q' - 'a') ? 'q' : 0; /* quit */
         any.a_int = -2;
         add_menu(tmpwin, &nul_glyphinfo, &any, clet, 0, ATR_NONE,
-                 "Never mind (quit)", MENU_ITEMFLAGS_SELECTED);
+                 clr, "Never mind (quit)", MENU_ITEMFLAGS_SELECTED);
         /* no prompt on end_menu, as we've done our own at the top */
         end_menu(tmpwin, (char *) 0);
         if (select_menu(tmpwin, PICK_ONE, &chosen_game) > 0) {
@@ -1411,7 +1458,7 @@ restore_menu(
 int
 validate(NHFILE* nhfp, const char *name)
 {
-    int rlen = 0;
+    readLenType rlen = 0;
     struct savefile_info sfi;
     unsigned long utdflags = 0L;
     boolean verbose = name ? TRUE : FALSE, reslt = FALSE;
@@ -1421,18 +1468,18 @@ validate(NHFILE* nhfp, const char *name)
     if (!(reslt = uptodate(nhfp, name, utdflags))) return 1;
 
     if ((nhfp->mode & WRITING) == 0) {
-	if (nhfp->structlevel)
-            rlen = read(nhfp->fd, (genericptr_t) &sfi, sizeof sfi);
+        if (nhfp->structlevel)
+            rlen = (readLenType) read(nhfp->fd, (genericptr_t) &sfi, sizeof sfi);
     } else {
         if (nhfp->structlevel)
-            rlen = read(nhfp->fd, (genericptr_t) &sfi, sizeof sfi);
+            rlen = (readLenType) read(nhfp->fd, (genericptr_t) &sfi, sizeof sfi);
         minit();		/* ZEROCOMP */
         if (rlen == 0) {
-	    if (verbose) {
-	        pline("File \"%s\" is empty during save file feature check?", name);
-	        wait_synch();
-	    }
-	    return -1;
+            if (verbose) {
+                pline("File \"%s\" is empty during save file feature check?", name);
+                wait_synch();
+            }
+            return -1;
         }
     }
     return 0;

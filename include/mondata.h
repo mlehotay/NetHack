@@ -29,7 +29,8 @@
 #define resists_ston(mon) \
     ((mon_resistancebits(mon) & MR_STONE) != 0)
 
-#define immune_poisongas(ptr) ((ptr) == &mons[PM_HEZROU])
+#define immune_poisongas(ptr) ((ptr) == &mons[PM_HEZROU]        \
+                               || (ptr) == &mons[PM_VROCK])
 
 #define is_lminion(mon) \
     (is_minion((mon)->data) && mon_aligntyp(mon) == A_LAWFUL)
@@ -37,6 +38,8 @@
 #define is_floater(ptr) ((ptr)->mlet == S_EYE || (ptr)->mlet == S_LIGHT)
 /* clinger: piercers, mimics, wumpus -- generally don't fall down holes */
 #define is_clinger(ptr) (((ptr)->mflags1 & M1_CLING) != 0L)
+#define grounded(ptr) (!is_flyer(ptr) && !is_floater(ptr) \
+                       && (!is_clinger(ptr) || !has_ceiling(&u.uz)))
 #define is_swimmer(ptr) (((ptr)->mflags1 & M1_SWIM) != 0L)
 #define breathless(ptr) (((ptr)->mflags1 & M1_BREATHLESS) != 0L)
 #define amphibious(ptr) \
@@ -83,6 +86,8 @@
 #define is_wooden(ptr) ((ptr) == &mons[PM_WOOD_GOLEM])
 #define thick_skinned(ptr) (((ptr)->mflags1 & M1_THICK_HIDE) != 0L)
 #define hug_throttles(ptr) ((ptr) == &mons[PM_ROPE_GOLEM])
+#define digests(ptr) dmgtype_fromattack((ptr), AD_DGST, AT_ENGL) /* purple w*/
+#define enfolds(ptr) dmgtype_fromattack((ptr), AD_WRAP, AT_ENGL) /* 't' */
 #define slimeproof(ptr) \
     ((ptr) == &mons[PM_GREEN_SLIME] || flaming(ptr) || noncorporeal(ptr))
 #define lays_eggs(ptr) (((ptr)->mflags1 & M1_OVIPAROUS) != 0L)
@@ -197,10 +202,15 @@
 #define emits_light(ptr)                                          \
     (((ptr)->mlet == S_LIGHT || (ptr) == &mons[PM_FLAMING_SPHERE] \
       || (ptr) == &mons[PM_SHOCKING_SPHERE]                       \
+      || (ptr) == &mons[PM_BABY_GOLD_DRAGON]                      \
       || (ptr) == &mons[PM_FIRE_VORTEX])                          \
          ? 1                                                      \
-         : ((ptr) == &mons[PM_FIRE_ELEMENTAL]) ? 1 : 0)
-/*	[note: the light ranges above were reduced to 1 for performance...] */
+         : ((ptr) == &mons[PM_FIRE_ELEMENTAL]                     \
+            || (ptr) == &mons[PM_GOLD_DRAGON]) ? 1 : 0)
+    /* [Note: the light ranges above were reduced to 1 for performance,
+     *  otherwise screen updating on the plane of fire slowed to a crawl.
+     *  Note too: that was with 1990s hardware and before fumarole smoke
+     *  blocking line of sight was added, so might no longer be necessary.] */
 #define likes_lava(ptr) \
     (ptr == &mons[PM_FIRE_ELEMENTAL] || ptr == &mons[PM_SALAMANDER])
 #define pm_invisible(ptr) \
@@ -213,6 +223,11 @@
 
 #define touch_petrifies(ptr) \
     ((ptr) == &mons[PM_COCKATRICE] || (ptr) == &mons[PM_CHICKATRICE])
+
+/* missiles made of rocks don't harm these: xorns and earth elementals
+   (but not ghosts and shades because that would impact all missile use
+   and also require an exception for blessed rocks/gems/boulders) */
+#define passes_rocks(ptr) (passes_walls(ptr) && !unsolid(ptr))
 
 #define is_mind_flayer(ptr) \
     ((ptr) == &mons[PM_MIND_FLAYER] || (ptr) == &mons[PM_MASTER_MIND_FLAYER])

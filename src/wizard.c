@@ -1,4 +1,4 @@
-/* NetHack 3.7	wizard.c	$NHDT-Date: 1596498229 2020/08/03 23:43:49 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.68 $ */
+/* NetHack 3.7	wizard.c	$NHDT-Date: 1646688073 2022/03/07 21:21:13 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.85 $ */
 /* Copyright (c) Stichting Mathematisch Centrum, Amsterdam, 1985. */
 /*-Copyright (c) Robert Patrick Rankin, 2016. */
 /* NetHack may be freely redistributed.  See license for details. */
@@ -17,7 +17,6 @@ static struct obj *on_ground(short);
 static boolean you_have(int);
 static unsigned long target_on(int, struct monst *);
 static unsigned long strategy(struct monst *);
-static void choose_stairs(xchar *, xchar *);
 
 /* adding more neutral creatures will tend to reduce the number of monsters
    summoned by nasty(); adding more lawful creatures will reduce the number
@@ -92,7 +91,7 @@ amulet(void)
             continue;
         if (mtmp->iswiz && mtmp->msleeping && !rn2(40)) {
             mtmp->msleeping = 0;
-            if (distu(mtmp->mx, mtmp->my) > 2)
+            if (!next2u(mtmp->mx, mtmp->my))
                 You(
       "get the creepy feeling that somebody noticed your taking the Amulet.");
             return;
@@ -311,34 +310,41 @@ strategy(struct monst *mtmp)
     return dstrat;
 }
 
-static void
-choose_stairs(xchar *sx, xchar *sy)
+/* pick a destination for a covetous monster to flee to so that it can
+   heal or for guardians (Kops) to congregate at to block hero's progress */
+void
+choose_stairs(
+    coordxy *sx, coordxy *sy, /* output; left as-is if no spot found */
+    boolean dir) /* True: forward, False: backtrack (usually up) */
 {
-    xchar x = 0, y = 0;
-    stairway *stway = g.stairs;
-    boolean stdir = !builds_up(&u.uz);
+    stairway *stway;
+    boolean stdir = builds_up(&u.uz) ? dir : !dir;
 
-    if ((stway = stairway_find_type_dir(FALSE, stdir)) != 0) {
-        x = stway->sx;
-        y = stway->sy;
-    } else if ((stway = stairway_find_type_dir(TRUE, stdir)) != 0) {
-        x = stway->sx;
-        y = stway->sy;
-    } else {
-        while (stway) {
-            if (stway->tolev.dnum != u.uz.dnum) {
-                x = stway->sx;
-                y = stway->sy;
-                break;
+    /* look for stairs in direction 'stdir' (True: up, False: down) */
+    stway = stairway_find_type_dir(FALSE, stdir);
+    if (!stway) {
+        /* no stairs; look for ladder it that direction */
+        stway = stairway_find_type_dir(TRUE, stdir);
+        if (!stway) {
+            /* no ladder either; look for branch stairs or ladder in any
+               direction */
+            for (stway = g.stairs; stway; stway = stway->next)
+                if (stway->tolev.dnum != u.uz.dnum)
+                    break;
+            /* if no branch stairs/ladder, check for regular stairs in
+               opposite direction, then for regular ladder if necessary */
+            if (!stway) {
+                stway = stairway_find_type_dir(FALSE, !stdir);
+                if (!stway)
+                    stway = stairway_find_type_dir(TRUE, !stdir);
             }
-            stway = stway->next;
         }
+        /* [note: 'stway' could still be Null if the only access to this
+           level is via magic portal] */
     }
 
-    if (x && y) {
-        *sx = x;
-        *sy = y;
-    }
+    if (stway)
+        *sx = stway->sx, *sy = stway->sy;
 }
 
 DISABLE_WARNING_UNREACHABLE_CODE
@@ -347,7 +353,7 @@ int
 tactics(struct monst *mtmp)
 {
     unsigned long strat = strategy(mtmp);
-    xchar sx = 0, sy = 0, mx, my;
+    coordxy sx = 0, sy = 0, mx, my;
 
     mtmp->mstrategy =
         (mtmp->mstrategy & (STRAT_WAITMASK | STRAT_APPEARMSG)) | strat;
@@ -356,14 +362,14 @@ tactics(struct monst *mtmp)
     case STRAT_HEAL: /* hide and recover */
         mx = mtmp->mx, my = mtmp->my;
         /* if wounded, hole up on or near the stairs (to block them) */
-        choose_stairs(&sx, &sy);
+        choose_stairs(&sx, &sy, (mtmp->m_id % 2));
         mtmp->mavenge = 1; /* covetous monsters attack while fleeing */
         if (In_W_tower(mx, my, &u.uz)
             || (mtmp->iswiz && !sx && !mon_has_amulet(mtmp))) {
             if (!rn2(3 + mtmp->mhp / 10))
-                (void) rloc(mtmp, TRUE);
+                (void) rloc(mtmp, RLOC_MSG);
         } else if (sx && (mx != sx || my != sy)) {
-            if (!mnearto(mtmp, sx, sy, TRUE)) {
+            if (!mnearto(mtmp, sx, sy, TRUE, RLOC_MSG)) {
                 /* couldn't move to the target spot for some reason,
                    so stay where we are (don't actually need rloc_to()
                    because mtmp is still on the map at <mx,my>... */
@@ -382,22 +388,22 @@ tactics(struct monst *mtmp)
 
     case STRAT_NONE: /* harass */
         if (!rn2(!mtmp->mflee ? 5 : 33))
-            mnexto(mtmp);
+            mnexto(mtmp, RLOC_MSG);
         return 0;
 
     default: /* kill, maim, pillage! */
     {
         long where = (strat & STRAT_STRATMASK);
-        xchar tx = STRAT_GOALX(strat), ty = STRAT_GOALY(strat);
+        coordxy tx = STRAT_GOALX(strat), ty = STRAT_GOALY(strat);
         int targ = (int) (strat & STRAT_GOAL);
         struct obj *otmp;
 
         if (!targ) { /* simply wants you to close */
             return 0;
         }
-        if ((u.ux == tx && u.uy == ty) || where == STRAT_PLAYER) {
+        if (u_at(tx, ty) || where == STRAT_PLAYER) {
             /* player is standing on it (or has it) */
-            mnexto(mtmp);
+            mnexto(mtmp, RLOC_MSG);
             return 0;
         }
         if (where == STRAT_GROUND) {
@@ -408,9 +414,7 @@ tactics(struct monst *mtmp)
                 if ((otmp = on_ground(which_arti(targ))) != 0) {
                     if (cansee(mtmp->mx, mtmp->my))
                         pline("%s picks up %s.", Monnam(mtmp),
-                              (distu(mtmp->mx, mtmp->my) <= 5)
-                                  ? doname(otmp)
-                                  : distant_name(otmp, doname));
+                              distant_name(otmp, doname));
                     obj_extract_self(otmp);
                     (void) mpickobj(mtmp, otmp);
                     return 1;
@@ -419,12 +423,12 @@ tactics(struct monst *mtmp)
             } else {
                 /* a monster is standing on it - cause some trouble */
                 if (!rn2(5))
-                    mnexto(mtmp);
+                    mnexto(mtmp, RLOC_MSG);
                 return 0;
             }
         } else { /* a monster has it - 'port beside it. */
             mx = mtmp->mx, my = mtmp->my;
-            if (!mnearto(mtmp, tx, ty, FALSE))
+            if (!mnearto(mtmp, tx, ty, FALSE, RLOC_MSG))
                 rloc_to(mtmp, mx, my); /* no room? stay put */
             return 0;
         }
@@ -451,8 +455,7 @@ has_aggravatables(struct monst *mon)
             continue;
         if (in_w_tower != In_W_tower(mtmp->mx, mtmp->my, &u.uz))
             continue;
-        if ((mtmp->mstrategy & STRAT_WAITFORU) != 0
-            || mtmp->msleeping || !mtmp->mcanmove)
+        if ((mtmp->mstrategy & STRAT_WAITFORU) != 0 || helpless(mtmp))
             return TRUE;
     }
     return FALSE;
@@ -560,6 +563,9 @@ nasty(struct monst *summoner)
     coord bypos;
     int i, j, count, census, tmp, makeindex,
         s_cls, m_cls, difcap, trylimit, castalign;
+    /* when a monster casts the "summon nasties" spell, it gives feedback;
+       when random post-Wizard harassment casts that, we give feedback */
+    unsigned mmflags = summoner ? MM_NOMSG : NO_MM_FLAGS;
 
 #define MAXNASTIES 10 /* more than this can be created */
 
@@ -620,7 +626,7 @@ nasty(struct monst *summoner)
                 /* this honors genocide but overrides extinction; it ignores
                    inside-hell-only (G_HELL) & outside-hell-only (G_NOHELL) */
                 if ((mtmp = makemon(&mons[makeindex], bypos.x, bypos.y,
-                                    NO_MM_FLAGS)) != 0) {
+                                    mmflags)) != 0) {
                     mtmp->msleeping = mtmp->mpeaceful = mtmp->mtame = 0;
                     set_malign(mtmp);
                 } else {
@@ -628,8 +634,7 @@ nasty(struct monst *summoner)
                        unlike direct choice, not forced to be hostile [why?];
                        limit spellcasters to inhibit chain summoning */
                     if ((mtmp = makemon((struct permonst *) 0,
-                                        bypos.x, bypos.y,
-                                        NO_MM_FLAGS)) != 0) {
+                                        bypos.x, bypos.y, mmflags)) != 0) {
                         m_cls = mtmp->data->mlet;
                         if ((difcap > 0 && mtmp->data->difficulty >= difcap
                              && attacktype(mtmp->data, AT_MAGC))
@@ -684,7 +689,8 @@ resurrect(void)
         mtmp = makemon(&mons[PM_WIZARD_OF_YENDOR], u.ux, u.uy, MM_NOWAIT);
         /* affects experience; he's not coming back from a corpse
            but is subject to repeated killing like a revived corpse */
-        if (mtmp) mtmp->mrevived = 1;
+        if (mtmp)
+            mtmp->mrevived = 1;
     } else {
         /* look for a migrating Wizard */
         verb = "elude";
@@ -693,7 +699,7 @@ resurrect(void)
             if (mtmp->iswiz
                 /* if he has the Amulet, he won't bring it to you */
                 && !mon_has_amulet(mtmp)
-                && (elapsed = g.monstermoves - mtmp->mlstmv) > 0L) {
+                && (elapsed = g.moves - mtmp->mlstmv) > 0L) {
                 mon_catchup_elapsed_time(mtmp, elapsed);
                 if (elapsed >= LARGEST_INT)
                     elapsed = LARGEST_INT - 1;
@@ -702,9 +708,12 @@ resurrect(void)
                     mtmp->msleeping = 0;
                 if (mtmp->mfrozen == 1) /* would unfreeze on next move */
                     mtmp->mfrozen = 0, mtmp->mcanmove = 1;
-                if (mtmp->mcanmove && !mtmp->msleeping) {
+                if (!helpless(mtmp)) {
                     *mmtmp = mtmp->nmon;
-                    mon_arrive(mtmp, TRUE);
+                    mon_arrive(mtmp, -1); /* -1: Wiz_arrive (dog.c) */
+                    /* mx: mon_arrive() might have sent mtmp into limbo */
+                    if (!mtmp->mx)
+                        mtmp = 0;
                     /* note: there might be a second Wizard; if so,
                        he'll have to wait til the next resurrection */
                     break;
@@ -715,7 +724,17 @@ resurrect(void)
     }
 
     if (mtmp) {
-        mtmp->mtame = mtmp->mpeaceful = 0; /* paranoia */
+        /* FIXME: when a new wizard is created by makemon(), it gives
+           a "<mon> appears" message, delivered after he's been placed
+           on the map; however, when an existing wizard comes off
+           migrating_mons, he ends up triggering "<mon> vanishes and
+           reappears" on his first move (tactics when hero is carrying
+           the Amulet); setting STRAT_WAITMASK suppresses that but then
+           he just sits wherever he is, "meditating", contradicting the
+           threatening message below */
+        mtmp->mstrategy &= ~STRAT_WAITMASK;
+
+        mtmp->mtame = 0, mtmp->mpeaceful = 0; /* paranoia */
         set_malign(mtmp);
         if (!Deaf) {
             pline("A voice booms out...");
@@ -730,6 +749,7 @@ void
 intervene(void)
 {
     int which = Is_astralevel(&u.uz) ? rnd(4) : rn2(6);
+
     /* cases 0 and 5 don't apply on the Astral level */
     switch (which) {
     case 0:
@@ -816,6 +836,7 @@ cuss(struct monst *mtmp)
         else
             com_pager("demon_cuss");
     }
+    wake_nearto(mtmp->mx, mtmp->my, 5 * 5);
 }
 
 /*wizard.c*/

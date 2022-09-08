@@ -1,4 +1,4 @@
-/* NetHack 3.7	dlb_main.c	$NHDT-Date: 1596498258 2020/08/03 23:44:18 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.14 $ */
+/* NetHack 3.7	dlb_main.c	$NHDT-Date: 1629969943 2021/08/26 09:25:43 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.18 $ */
 /* Copyright (c) Kenneth Lorber, Bethesda, Maryland, 1993. */
 /* NetHack may be freely redistributed.  See license for details. */
 
@@ -14,11 +14,16 @@
 #include <string.h>
 #endif
 
-static void grow_ld(libdir **, int *, int);
 static void xexit(int) NORETURN;
+extern void panic(const char *, ...) NORETURN;
+char *eos(char *); /* also used by dlb.c */
+FILE *fopen_datafile(const char *, const char *);
+unsigned FITSuint_(unsigned long long, const char *, int);
+unsigned Strlen_(const char *, const char *, int);
 
 #ifdef DLB
 #ifdef DLBLIB
+static void grow_ld(libdir **, int *, int);
 
 #define DLB_DIRECTORY "Directory" /* name of lib directory */
 #define LIBLISTFILE "dlb.lst"     /* default list file */
@@ -26,9 +31,6 @@ static void xexit(int) NORETURN;
 /* library functions (from dlb.c) */
 extern boolean open_library(const char *, library *);
 extern void close_library(library *);
-
-char *eos(char *); /* also used by dlb.c */
-FILE *fopen_datafile(const char *, const char *);
 
 static void Write(int, char *, long);
 static void usage(void) NORETURN;
@@ -128,6 +130,15 @@ Write(int out, char *buf, long len)
         xexit(EXIT_FAILURE);
     }
 }
+#endif /* DLBLIB */
+#endif /* DLB */
+
+/* open_library(dlb.c) needs this (which normally comes from src/files.c) */
+FILE *
+fopen_datafile(const char *filename, const char *mode)
+{
+    return fopen(filename, mode);
+}
 
 char *
 eos(char *s)
@@ -137,18 +148,14 @@ eos(char *s)
     return s;
 }
 
-/* open_library(dlb.c) needs this (which normally comes from src/files.c) */
-FILE *
-fopen_datafile(const char *filename, const char *mode)
-{
-    return fopen(filename, mode);
-}
-
-#endif /* DLBLIB */
-#endif /* DLB */
+#ifdef DLB
+#define UNUSED_if_no_DLB /*empty*/
+#else
+#define UNUSED_if_no_DLB UNUSED
+#endif
 
 int
-main(int argc, char **argv)
+main(int argc UNUSED_if_no_DLB, char **argv UNUSED_if_no_DLB)
 {
 #ifdef DLB
 #ifdef DLBLIB
@@ -309,9 +316,9 @@ main(int argc, char **argv)
                 if (remainder > (long) sizeof(buf))
                     r = (int) sizeof(buf);
                 else
-                    r = remainder;
+                    r = (int) remainder;
 
-                n = fread(buf, 1, r, lib.fdata);
+                n = (int) fread(buf, 1, r, lib.fdata);
                 if (n != r) {
                     printf("Read Error in '%s'\n", lib.dir[i].fname);
                     xexit(EXIT_FAILURE);
@@ -356,7 +363,7 @@ main(int argc, char **argv)
             for (; ap < argc; ap++, nfiles++) {
                 if (nfiles == ldlimit)
                     grow_ld(&ld, &ldlimit, DLB_FILES_ALLOC / 5);
-                ld[nfiles].fname = (char *) alloc(strlen(argv[ap]) + 1);
+                ld[nfiles].fname = (char *) alloc(Strlen(argv[ap]) + 1);
                 Strcpy(ld[nfiles].fname, argv[ap]);
             }
         }
@@ -374,7 +381,7 @@ main(int argc, char **argv)
                 if (nfiles == ldlimit)
                     grow_ld(&ld, &ldlimit, DLB_FILES_ALLOC / 5);
                 *(eos(buf) - 1) = '\0'; /* strip newline */
-                ld[nfiles].fname = (char *) alloc(strlen(buf) + 1);
+                ld[nfiles].fname = (char *) alloc((int)strlen(buf) + 1);
                 Strcpy(ld[nfiles].fname, buf);
             }
             fclose(list);
@@ -431,7 +438,7 @@ main(int argc, char **argv)
                 printf("%s\n", ld[i].fname);
 
             fsiz = 0L;
-            while ((r = read(fd, buf, sizeof buf)) != 0) {
+            while ((r = (int) read(fd, buf, sizeof buf)) != 0) {
                 if (r == -1) {
                     printf("Read Error in '%s'\n", ld[i].fname);
                     xexit(EXIT_FAILURE);
@@ -539,9 +546,16 @@ xexit(int retcd)
     /*NOTREACHED*/
 }
 
-#ifdef AMIGA
-#include "date.h"
-const char amiga_version_string[] = AMIGA_VERSION_STRING;
-#endif
+/* from hacklib.c */
+unsigned
+Strlen_(const char *str, const char *file, int line)
+{
+    size_t len = strnlen(str, LARGEST_INT);
 
+    if (len == LARGEST_INT) {
+        panic("%s:%d string too long", file, line);
+        /*NOTREACHED*/
+    }
+    return (unsigned) len;
+}
 /*dlb_main.c*/

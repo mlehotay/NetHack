@@ -4,11 +4,7 @@
 
 #include "winMS.h"
 #include <commdlg.h>
-#if !defined(CROSSCOMPILE)
-#include "date.h"
-#else
 #include "config.h"
-#endif
 #if !defined(PATCHLEVEL_H)
 #include "patchlevel.h"
 #endif
@@ -754,59 +750,59 @@ mswin_layout_main_window(HWND changed_child)
 }
 
 VOID CALLBACK FuzzTimerProc(
-	_In_ HWND     hwnd,
-	_In_ UINT     uMsg,
-	_In_ UINT_PTR idEvent,
-	_In_ DWORD    dwTime
-	)
+    _In_ HWND     hwnd,
+    _In_ UINT     uMsg,
+    _In_ UINT_PTR idEvent,
+    _In_ DWORD    dwTime
+    )
 {
-	INPUT input[16];
-	int i_pos = 0;
-	int c = randomkey();
-	SHORT k = VkKeyScanA(c);
-	BOOL gen_alt = (rn2(50) == 0) && isalpha(c);
+        INPUT input[16];
+        int i_pos = 0;
+        int c = randomkey();
+        SHORT k = VkKeyScanA(c);
+        BOOL gen_alt = (rn2(50) == 0) && isalpha(c);
 
-	if (!iflags.debug_fuzzer) {
-		KillTimer(hwnd, IDT_FUZZ_TIMER);
-		return;
-	}
+        if (!iflags.debug_fuzzer) {
+        	KillTimer(hwnd, IDT_FUZZ_TIMER);
+        	return;
+        }
 
-	if (!GetFocus())
+        if (!GetFocus())
             return;
 
-	ZeroMemory(input, sizeof(input));
-	if (gen_alt) {
-		input[i_pos].type = INPUT_KEYBOARD;
-		input[i_pos].ki.dwFlags = KEYEVENTF_SCANCODE;
-		input[i_pos].ki.wScan = MapVirtualKey(VK_MENU, 0);
-		i_pos++;
-	}
+        ZeroMemory(input, sizeof(input));
+        if (gen_alt) {
+        	input[i_pos].type = INPUT_KEYBOARD;
+        	input[i_pos].ki.dwFlags = KEYEVENTF_SCANCODE;
+        	input[i_pos].ki.wScan = MapVirtualKey(VK_MENU, 0);
+        	i_pos++;
+        }
 
-	if (HIBYTE(k) & 1) {
-		input[i_pos].type = INPUT_KEYBOARD;
-		input[i_pos].ki.dwFlags = KEYEVENTF_SCANCODE;
-		input[i_pos].ki.wScan = MapVirtualKey(VK_LSHIFT, 0);
-		i_pos++;
-	}
+        if (HIBYTE(k) & 1) {
+        	input[i_pos].type = INPUT_KEYBOARD;
+        	input[i_pos].ki.dwFlags = KEYEVENTF_SCANCODE;
+        	input[i_pos].ki.wScan = MapVirtualKey(VK_LSHIFT, 0);
+        	i_pos++;
+        }
 
-	input[i_pos].type = INPUT_KEYBOARD;
-	input[i_pos].ki.dwFlags = KEYEVENTF_SCANCODE;
-	input[i_pos].ki.wScan = MapVirtualKey(LOBYTE(k), 0);
-	i_pos++;
+        input[i_pos].type = INPUT_KEYBOARD;
+        input[i_pos].ki.dwFlags = KEYEVENTF_SCANCODE;
+        input[i_pos].ki.wScan = MapVirtualKey(LOBYTE(k), 0);
+        i_pos++;
 
-	if (HIBYTE(k) & 1) {
-		input[i_pos].type = INPUT_KEYBOARD;
-		input[i_pos].ki.dwFlags = KEYEVENTF_SCANCODE | KEYEVENTF_KEYUP;
-		input[i_pos].ki.wScan = MapVirtualKey(VK_LSHIFT, 0);
-		i_pos++;
-	}
-	if (gen_alt) {
-		input[i_pos].type = INPUT_KEYBOARD;
-		input[i_pos].ki.dwFlags = KEYEVENTF_SCANCODE | KEYEVENTF_KEYUP;
-		input[i_pos].ki.wScan = MapVirtualKey(VK_MENU, 0);
-		i_pos++;
-	}
-	SendInput(i_pos, input, sizeof(input[0]));
+        if (HIBYTE(k) & 1) {
+        	input[i_pos].type = INPUT_KEYBOARD;
+        	input[i_pos].ki.dwFlags = KEYEVENTF_SCANCODE | KEYEVENTF_KEYUP;
+        	input[i_pos].ki.wScan = MapVirtualKey(VK_LSHIFT, 0);
+        	i_pos++;
+        }
+        if (gen_alt) {
+        	input[i_pos].type = INPUT_KEYBOARD;
+        	input[i_pos].ki.dwFlags = KEYEVENTF_SCANCODE | KEYEVENTF_KEYUP;
+        	input[i_pos].ki.wScan = MapVirtualKey(VK_MENU, 0);
+        	i_pos++;
+        }
+        SendInput(i_pos, input, sizeof(input[0]));
 }
 
 LRESULT
@@ -1065,13 +1061,13 @@ About(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
 
     switch (message) {
     case WM_INITDIALOG:
-        getversionstring(buf);
+        getversionstring(buf, sizeof buf);
         SetDlgItemText(hDlg, IDC_ABOUT_VERSION,
                        NH_A2W(buf, wbuf, sizeof(wbuf)));
 
         Sprintf(buf, "%s\n%s\n%s\n%s",
                 COPYRIGHT_BANNER_A, COPYRIGHT_BANNER_B,
-                COPYRIGHT_BANNER_C, COPYRIGHT_BANNER_D);
+                nomakedefs.copyright_banner_c, COPYRIGHT_BANNER_D);
         SetDlgItemText(hDlg, IDC_ABOUT_COPYRIGHT,
                        NH_A2W(buf, wbuf, sizeof(wbuf)));
 

@@ -6,6 +6,23 @@
 
 Functions exposed from the NetHack core. They are all in the `nh` table.
 
+All core functions involving xy coordinates interpret these as relative to the
+last defined map or room.
+
+=== abscoord
+
+Convert a room- or map-relative coordinate to absolute.
+Can accept one table with x and y keys (and in that case, returns similar),
+or two integer values (and returns two integer values)
+des, nh, and obj routines all treat inputs as relative coordinates, but this is
+here in case an absolute one is needed for some reason (debugging?).
+
+Example:
+
+ local ax, ay = nh.abscoord(x, y);
+ local coord = nh.abscoord({ x = 10, y = 15 });
+
+
 === an
 
 Returns a string with "a " or "an " prepended to it.
@@ -13,6 +30,22 @@ Returns a string with "a " or "an " prepended to it.
 Example:
 
  local str = nh.an("unicorn");
+
+
+=== debug_flags
+
+Set debugging flags.
+
+|===
+| mongen           | boolean | Do monsters generate
+| hunger           | boolean | Does hero's hunger-state increase
+| overwrite_stairs | boolean | Allow special-file commands overwrite the stairs
+|===
+
+Example:
+
+ nh.debug_flags({ mongen = false, hunger = false });
+
 
 === dnum_name
 
@@ -22,6 +55,17 @@ number given as parameter.
 Example:
 
  local dungeon_name = nh.dnum_name(u.dnum);
+
+
+=== doturn
+
+Execute gameloop once, or until multi-turn action is done if
+optional boolean parameter is true.
+
+Example:
+
+ nh.doturn();
+
 
 === dump_fmtstr
 
@@ -97,7 +141,8 @@ Example:
  local x = 20;
  local y = 10;
  local loc = nh.getmap(x,y);
- nh.pline("Map location at (" .. x .. "," .. y .. ) is " .. (loc.lit ? "lit" : "unlit") );
+ nh.pline("Map location at (" .. x .. "," .. y .. ) is " .. (loc.lit and "lit" or "unlit") );
+ local loc2 = nh.getmap({ x = 18, y = 16 });
 
 
 === get_config
@@ -128,7 +173,17 @@ Returns a table with the following elements:
 
 Example:
 
- local t = nh.gettrap(x, y);
+ local t1 = nh.gettrap(x, y);
+ local t2 = nh.gettrap({ x = 10, y = 15 });
+
+
+=== has_timer_at
+
+Does location at x,y have a timer?
+
+Example:
+
+ local has_melttimer = nh.has_timer_at(x,y, "melt-ice");
 
 
 === deltrap
@@ -138,7 +193,16 @@ Delete a trap at x,y
 Example:
 
  nh.deltrap(x, y);
+ nh.deltrap({ x = 10, y = 10 });
 
+
+=== impossible
+
+Issue an impossible, signaling a possible error in the code.
+
+Example:
+
+ nh.impossible("Something errory happened!");
 
 
 === ing_suffix
@@ -158,6 +222,7 @@ Normally this is the level's physical depth from the surface.
 Example:
 
  local diff = nh.level_difficulty();
+
 
 === makeplural
 
@@ -218,6 +283,16 @@ Example:
  nh.pline("Line: " .. errors[1].line .. ", " .. errors[1].error);
 
 
+=== peek_timer_at
+
+When does timer at location at x,y trigger?
+
+Example:
+
+ local melttime = nh.peek_timer_at(x,y, "melt-ice");
+ local melttime = nh.peek_timer_at({x=5,y=6}, "melt-ice");
+
+
 === pline
 
 Show the text in the message area.
@@ -226,6 +301,14 @@ Example:
 
  nh.pline("Message text to show.");
 
+
+=== pushkey
+
+Push a key into the command queue.
+
+Example:
+
+ nh.pushkey("i");
 
 === random
 
@@ -253,6 +336,46 @@ Example:
  local str = nh.s_suffix("foo");
 
 
+=== stairways
+
+Returns an array of stairway data. Each entry is a hash with the following keys:
+
+|===
+| x, y   | location of the stairs on the map
+| up     | boolean, is it up stairs?
+| ladder | boolean, is it a ladder?
+| dnum   | dungeon number where the stairs lead to
+| dlevel | dungeon level where the stairs lead to
+|===
+
+Example:
+
+ local stairs = nh.stairways();
+ for k, v in pairs(stairs) do
+   nh.pline("stair[" .. k .. "]:(" .. v.x .. "," .. v.y .. ")," .. tostring(v.up));
+ end
+
+
+=== start_timer_at
+
+Start a timer at location x,y, with trigger time of `when` - relative to current turn.
+
+Example:
+
+ nh.start_timer_at(x,y, "melt-ice", when);
+ nh.start_timer_at({x=7,y=8}, "melt-ice", when);
+
+
+=== stop_timer_at
+
+Stop a timer at location x,y.
+
+Example:
+
+ nh.stop_timer_at(x,y, "melt-ice");
+ nh.stop_timer_at({x=5,y=6}, "melt-ice");
+
+
 === verbalize
 
 Show the text in the message area as if someone said it, obeying eg. hero's deafness.
@@ -264,6 +387,9 @@ Example:
 == Special level functions
 
 Functions for creating special levels. They are in the `des` table.
+
+All special level functions involving xy coordinates interpret these as relative
+to the last defined map or room.
 
 === altar
 
@@ -332,6 +458,14 @@ Example:
  des.feature({ type = "throne", coord = {4, 6}, looted = true });
  des.feature({ type = "tree", coord = {4, 6}, looted = true, swarm = false });
 
+=== finalize_level
+
+Only used for testing purposes. See also <<_reset_level>>.
+
+Example:
+
+ des.finalize_level();
+
 === gold
 
 Create a pile of gold.
@@ -360,6 +494,7 @@ Example:
 
  des.ladder("down");
  des.ladder("up", 6,10);
+ des.ladder("up", {6,10});
  des.ladder({ x=11, y=05, dir="down" });
  des.ladder({ coord={11, 05}, dir="down" });
 
@@ -457,6 +592,40 @@ Example:
  des.mineralize({ gem_prob = 10, gold_prob = 20, kelp_moat = 30, kelp_pool = 40 });
 
 === monster
+
+Create a monster.
+
+The hash parameter accepts the following keys:
+
+[options="header"]
+|===
+| parameter      | type   | description
+| id             | string | specific monster type, eg. "wood nymph"
+| class          | string | monster class, eg "D"
+| x, y           | integers |
+| coord          | table of two integer |
+| peaceful       | boolean |
+| asleep         | boolean |
+| name           | string | name of the monster
+| female         | boolean |
+| invisible      | boolean |
+| cancelled      | boolean |
+| revived        | boolean |
+| avenge         | boolean |
+| fleeing        | 0 - 127 |
+| blinded        | 0 - 127 |
+| paralyzed      | 0 - 127 |
+| stunned        | boolean |
+| confused       | boolean |
+| waiting        | boolean | monster will wait until hero gets next to it
+| tail           | boolean | generate worm without a tail?
+| group          | boolean | generate a group of monsters?
+| adjacentok     | boolean | is adjacent location ok, if given one is not suitable?
+| ignorewater    | boolean | ignore water when choosing location for the monster
+| countbirth     | boolean | do we count this monster as generated
+| appear_as      | string | monster can appear as object, monster, or terrain. Add "obj:", "mon:", or "ter:" prefix to the value. |
+| inventory      | function | objects generated in the function are given to the monster
+|===
 
 Example:
 
@@ -559,7 +728,7 @@ Example:
 
 === reset_level
 
-Only used for testing purposes.
+Only used for testing purposes. See also <<_finalize_level>>.
 
 Example:
 
@@ -583,7 +752,25 @@ fields:
 | lit       | Is the room lit or unlit? Defaults to -1 (random).
 | filled    | Is the room filled as per the room type. Defaults to 1 (filled).
 | joined    | Is the room joined to the rest of the level with corridors? Default is true.
-| contents  | A function called with one parameter, a table with "width" and "height", the room width and height, excluding the walls. All coordinates in the function will be relative to the room.
+| contents  | A function called with one parameter, a table with room data. See <<_room_contents>>.
+|===
+
+==== room contents
+
+The room contents function is called when the room is created.
+All coordinates in the function will be relative to the room.
+The function get passed one parameter, a table with room data:
+
+[options="header"]
+|===
+| parameter   | description
+| width       | room width, excluding the walls.
+| height      | room height, excluding the walls.
+| region      | table with 4 elements, the room region coordinates: x1, y1, x2, y2.
+| lit         | is the room lit or unlit?
+| irregular   | is the room irregular?
+| needjoining | does the room need joining with corridors?
+| type        | the room type.
 |===
 
 
@@ -605,6 +792,7 @@ Example:
  des.stair({ dir = "down", x = 4, y = 7 });
  des.stair({ dir = "down", coord = {5,12} });
  des.stair("down", 4, 7);
+ des.stair("down", {4, 7});
 
 === teleport_region
 
@@ -626,10 +814,14 @@ Example:
 
 === trap
 
+Create a trap. The `launchfrom` is relative to the rolling boulder trap coord.
+
 Example:
 
  des.trap({ type = "hole", x = 1, y = 1 });
  des.trap({ type = "hole", coord = {2, 2} });
+ des.trap({ type = "web", coord = {2, 2}, spider_on_web = false, seen = true });
+ des.trap({ type = "rolling boulder", coord = {7, 5}, launchfrom = {-2, -2} });
  des.trap("hole", 3, 4);
  des.trap("level teleport", {5, 8});
  des.trap("rust")
@@ -674,11 +866,13 @@ Example:
 
 === Logical or
 
-Choose locations that are selected in either or both selections.
+Choose locations that are selected in either or both selections. The
+addition operator also does this.
 
 Example:
 
  local sel = selection.area(4,5, 40,10) | selection.rect(7,8, 60,14);
+ local sel = selection.area(4,5, 40,10) + selection.rect(7,8, 60,14);
 
 
 === Logical xor
@@ -690,9 +884,28 @@ Example:
  local sel = selection.area(4,5, 40,10) ~ selection.rect(7,8, 60,14);
 
 
+=== Logical difference
+
+Choose locations in the first selection but not in the second selection.
+
+Example:
+
+ local sel = selection.area(10,10, 20,20) - selection.area(14,14, 17,17);
+
+
 === area
 
 Alias for <<_fillrect>>.
+
+=== bounds
+
+Get the bounding box for the selection. Returns a table with lx, ly, hx, hy integer fields.
+
+Example:
+
+ local rect = sel:bounds();
+ local s = string.format("(%i,%i)-(%i,%i)", rect.lx, rect.ly, rect.hx, rect.hy));
+
 
 === circle
 
@@ -747,11 +960,13 @@ Example:
 
 Select locations by starting floodfill at (x,y),
 matching the same map terrain in cardinal directions.
+If the optional third parameter is true, also checks diagonals.
 
 Example:
 
  local s = selection.floodfill(sel, x, y);
  local s = selection.floodfill(x,y);
+ local s = selection.floodfill(x,y, true);
 
 === get
 
@@ -760,6 +975,7 @@ Get the selection value at (x,y).
 Example:
 
  local value = selection.get(sel, x, y);
+ local value = selection.get(sel, { x = 10, y = 14 });
 
 === gradient
 
@@ -845,13 +1061,14 @@ Example:
 
 === rndcoord
 
-Choose one of the selected locations, and return the x,y coordinates.
+Choose one of the selected locations, and return a table with x and y keys.
 If the optional second argument is 1, removes the location from the selection.
+If there are no coordinates in the selection, returns -1, -1.
 
 Example:
 
- local x,y = selection.rndcoord(sel);
- local x,y = selection.rndcoord(sel, 1);
+ local coord = selection.rndcoord(sel);
+ local coord = selection.rndcoord(sel, 1);
 
 === set
 
@@ -864,6 +1081,164 @@ Example:
  local sel = selection.set();
  local sel = sel:set();
  local sel = selection.set(sel);
+
+== Obj
+
+Handling objects via obj-class.
+
+=== new
+
+Create a new object via wishing routine.
+
+Example:
+
+ local o = obj.new("rock");
+
+
+=== isnull
+
+Is the object a "null" object?  Meaning, the object variable exists in lua, but NetHack
+core has freed it.
+
+Example:
+
+ local badobj = o:isnull();
+
+
+=== at
+
+Get the topmost object on the map at x,y.
+
+Example:
+
+ local o = obj.at(x, y);
+
+
+=== next
+
+Get the next object in the object chain.
+When called without an object, returns the first object in the object chain.
+When called with an object, an optional boolean parameter can be given. When
+it is true, and the object is on the map, the next object at the same location
+is returned. Otherwise the normal object chain is followed.
+
+Example:
+
+ local first = obj.next();
+ local second = first:next();
+ local o_at_xy = obj.at(x, y);
+ local next_at_xy = o_at_xy:next(true);
+
+
+=== totable
+
+Create a lua table representation of the object, unpacking all the object fields.
+
+Example:
+
+ local o = obj.new("rock");
+ local otbl = o:totable();
+
+
+=== class
+
+Get a lua table of object class data.
+
+Example:
+
+ local odata1 = obj.class(obj.new("rock"));
+
+
+=== placeobj
+
+Place object on the map at x,y.
+
+Example:
+
+ local o = obj.new("rock");
+ o:placeobj(u.ux, u.uy);
+
+
+=== container
+
+Get the container object is in.
+
+Example:
+
+ local box = o:container();
+
+
+=== contents
+
+Get the contents of an object.
+
+Example:
+
+ local o = obj.new("large chest");
+ local cobj = o:contents();
+
+
+=== addcontent
+
+Put object inside another object.
+
+Example:
+
+ local box = obj.new("large chest");
+ box.addcontent(obj.new("rock"));
+
+
+=== has_timer
+
+Does object have an attached timer of certain type?
+
+Example:
+
+ local hastimer = o:has_timer("rot-organic");
+
+
+=== peek_timer
+
+Peek at an object timer. Returns the turn when timer triggers.
+Returns 0 if no such timer attached to the object.
+
+Example:
+
+ local when = o:peek_timer("hatch-egg");
+
+
+=== stop_timer
+
+Stop object timer(s). Return the turn when timer would have triggered.
+Returns 0 if no such timer was attached to the object.
+Without a timer type parameters, stops all timers for the object,
+and returns nothing.
+
+Example:
+
+ o:stop_timer();
+ local when = o:stop_timer("rot-organic");
+
+
+=== start_timer
+
+Start an object timer.
+
+Example:
+
+ o:start_timer("hatch-egg", 10);
+
+
+=== bury
+
+Bury an object. Returns true if object is gone (merged with ground), false otherwise.
+Without parameters, buries the object at the location it is.
+
+Example:
+
+ local ogone = o:bury();
+ local ogone = o:bury(5, 5);
+
 
 == Map characters
 
@@ -893,4 +1268,14 @@ Example:
 | `"F"`     | iron bars
 | `"x"`     | "transparent" - used for <<_map>> parts.
 | `"w"`     | "any wall" - see <<_match>>
+|===
+
+== Constants
+
+These constants are in the `nhc` table.
+
+|===
+| COLNO | Number of map columns
+| ROWNO | Number of map rows
+| DLB   | 1 or 0, depending if NetHack is compiled with DLB
 |===

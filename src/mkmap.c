@@ -14,6 +14,7 @@ static schar get_map(int, int, schar);
 static void pass_one(schar, schar);
 static void pass_two(schar, schar);
 static void pass_three(schar, schar);
+static void join_map_cleanup(void);
 static void join_map(schar, schar);
 static void finish_map(schar, schar, boolean, boolean, boolean);
 static void remove_room(unsigned);
@@ -26,6 +27,7 @@ init_map(schar bg_typ)
 
     for (i = 1; i < COLNO; i++)
         for (j = 0; j < ROWNO; j++) {
+            levl[i][j].roomno = NO_ROOM;
             levl[i][j].typ = bg_typ;
             levl[i][j].lit = FALSE;
         }
@@ -57,8 +59,10 @@ get_map(int col, int row, schar bg_typ)
     return levl[col][row].typ;
 }
 
-static const int dirs[16] = { -1, -1 /**/, -1, 0 /**/,  -1, 1 /**/, 0, -1 /**/,
-                               0,  1 /**/,  1,  -1 /**/, 1,  0 /**/, 1, 1 };
+static const int dirs[16] = {
+    -1, -1 /**/, -1,  0 /**/, -1, 1 /**/, 0, -1 /**/,
+     0,  1 /**/,  1, -1 /**/,  1, 0 /**/, 1,  1
+};
 
 static void
 pass_one(schar bg_typ, schar fg_typ)
@@ -238,6 +242,19 @@ flood_fill_rm(
         g.max_ry = sy;
 }
 
+/* join_map uses temporary rooms; clean up after it */
+static void
+join_map_cleanup(void)
+{
+    coordxy x, y;
+
+    for (x = 1; x < COLNO; x++)
+        for (y = 0; y < ROWNO; y++)
+            levl[x][y].roomno = NO_ROOM;
+    g.nroom = g.nsubroom = 0;
+    g.rooms[g.nroom].hx = g.subrooms[g.nsubroom].hx = -1;
+}
+
 static void
 join_map(schar bg_typ, schar fg_typ)
 {
@@ -257,8 +274,8 @@ join_map(schar bg_typ, schar fg_typ)
                 g.n_loc_filled = 0;
                 flood_fill_rm(i, j, g.nroom + ROOMOFFSET, FALSE, FALSE);
                 if (g.n_loc_filled > 3) {
-                    add_room(g.min_rx, g.min_ry, g.max_rx, g.max_ry, FALSE, OROOM,
-                             TRUE);
+                    add_room(g.min_rx, g.min_ry, g.max_rx, g.max_ry,
+                             FALSE, OROOM, TRUE);
                     g.rooms[g.nroom - 1].irregular = TRUE;
                     if (g.nroom >= (MAXNROFROOMS * 2))
                         goto joinm;
@@ -278,14 +295,15 @@ join_map(schar bg_typ, schar fg_typ)
             }
         }
 
-joinm:
+ joinm:
     /*
      * Ok, now we can actually join the regions with fg_typ's.
      * The rooms are already sorted due to the previous loop,
      * so don't call sort_rooms(), which can screw up the roomno's
      * validity in the levl structure.
      */
-    for (croom = &g.rooms[0], croom2 = croom + 1; croom2 < &g.rooms[g.nroom];) {
+    for (croom = &g.rooms[0], croom2 = croom + 1;
+         croom2 < &g.rooms[g.nroom]; ) {
         /* pick random starting and end locations for "corridor" */
         if (!somexy(croom, &sm) || !somexy(croom2, &em)) {
             /* ack! -- the level is going to be busted */
@@ -308,14 +326,15 @@ joinm:
         }
         croom2++; /* always increment the next room */
     }
+    join_map_cleanup();
 }
 
 static void
 finish_map(
-    schar fg_typ, 
-    schar bg_typ, 
-    boolean lit, 
-    boolean walled, 
+    schar fg_typ,
+    schar bg_typ,
+    boolean lit,
+    boolean walled,
     boolean icedpools)
 {
     int i, j;
@@ -346,6 +365,10 @@ finish_map(
 }
 
 /*
+ * TODO: If we really want to remove rooms after a map is plopped down
+ * in a special level, this needs to be rewritten - the maps may have
+ * holes in them ("x" mapchar), leaving parts of rooms still on the map.
+ *
  * When level processed by join_map is overlaid by a MAP, some rooms may no
  * longer be valid.  All rooms in the region lx <= x < hx, ly <= y < hy are
  * removed.  Rooms partially in the region are truncated.  This function
@@ -430,7 +453,7 @@ mkmap(lev_init* init_lev)
 {
     schar bg_typ = init_lev->bg, fg_typ = init_lev->fg;
     boolean smooth = init_lev->smoothed, join = init_lev->joined;
-    xchar lit = init_lev->lit, walled = init_lev->walled;
+    xint16 lit = init_lev->lit, walled = init_lev->walled;
     int i;
 
     lit = litstate_rnd(lit);

@@ -13,11 +13,11 @@ static boolean intersect(NhRect *, NhRect *, NhRect *);
  * need for room generation.
  */
 
-#define MAXRECT 50
 #define XLIM 4
 #define YLIM 3
 
-static NhRect rect[MAXRECT + 1];
+static NhRect *rect = (NhRect *) 0;
+static int n_rects = 0;
 static int rect_cnt;
 
 /*
@@ -28,11 +28,27 @@ static int rect_cnt;
 void
 init_rect(void)
 {
+    if (!rect) {
+        n_rects = (COLNO * ROWNO) / 30;
+        rect = (NhRect *) alloc(sizeof(NhRect) * n_rects);
+        if (!rect)
+            panic("Could not alloc rect");
+    }
+
     rect_cnt = 1;
     rect[0].lx = rect[0].ly = 0;
     rect[0].hx = COLNO - 1;
     rect[0].hy = ROWNO - 1;
 }
+
+void
+free_rect(void)
+{
+    if (rect)
+        free(rect);
+    n_rects = rect_cnt = 0;
+}
+
 
 /*
  * Search Index of one precise NhRect.
@@ -112,6 +128,16 @@ intersect(NhRect* r1, NhRect* r2, NhRect* r3)
     return TRUE;
 }
 
+/* Put the rectangle containing both r1 and r2 into r3 */
+void
+rect_bounds(NhRect r1, NhRect r2, NhRect *r3)
+{
+    r3->lx = min(r1.lx, r2.lx);
+    r3->ly = min(r1.ly, r2.ly);
+    r3->hx = max(r1.hx, r2.hx);
+    r3->hy = max(r1.hy, r2.hy);
+}
+
 /*
  * Remove a rectangle from the list of free NhRect.
  */
@@ -133,9 +159,8 @@ remove_rect(NhRect* r)
 void
 add_rect(NhRect* r)
 {
-    if (rect_cnt >= MAXRECT) {
-        if (wizard)
-            pline("MAXRECT may be too small.");
+    if (rect_cnt >= n_rects) {
+        impossible("n_rects may be too small.");
         return;
     }
     /* Check that this NhRect is not included in another one */

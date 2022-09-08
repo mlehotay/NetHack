@@ -1,4 +1,4 @@
-/* NetHack 3.7	display.c	$NHDT-Date: 1609101156 2020/12/27 20:32:36 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.141 $ */
+/* NetHack 3.7	display.c	$NHDT-Date: 1661295668 2022/08/23 23:01:08 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.192 $ */
 /* Copyright (c) Dean Luick, with acknowledgements to Kevin Darcy */
 /* and Dave Cohrs, 1990.                                          */
 /* NetHack may be freely redistributed.  See license for details. */
@@ -15,7 +15,7 @@
  * what to draw at a given location.  The routines for the vision system
  * can be found in vision.c and vision.h.  The routines for display can
  * be found in this file (display.c) and display.h.  The drawing routines
- * are part of the window port.  See doc/window.doc for the drawing
+ * are part of the window port.  See doc/window.txt for the drawing
  * interface.
  *
  * The display system deals with an abstraction called a glyph.  Anything
@@ -123,32 +123,106 @@
  */
 #include "hack.h"
 
-static void show_mon_or_warn(int, int, int);
-static void display_monster(xchar, xchar, struct monst *, int, boolean);
+static void show_mon_or_warn(coordxy, coordxy, int);
+static void display_monster(coordxy, coordxy, struct monst *, int, boolean);
 static int swallow_to_glyph(int, int);
 static void display_warning(struct monst *);
 
-static int check_pos(int, int, int);
-static int get_bk_glyph(xchar, xchar);
-static int tether_glyph(int, int);
+static int check_pos(coordxy, coordxy, int);
+static int get_bk_glyph(coordxy x, coordxy y);
+static int tether_glyph(coordxy, coordxy);
+static void mimic_light_blocking(struct monst *);
 #ifdef UNBUFFERED_GLYPHINFO
-static glyph_info *glyphinfo_at(xchar, xchar, int);
+static glyph_info *glyphinfo_at(coordxy, coordxy, int);
 #endif
 
 /*#define WA_VERBOSE*/ /* give (x,y) locations for all "bad" spots */
 #ifdef WA_VERBOSE
-static boolean more_than_one(int, int, int, int, int);
+static boolean more_than_one(coordxy, coordxy, coordxy, coordxy, coordxy);
 #endif
 
-static int set_twall(int, int, int, int, int, int, int, int);
-static int set_wall(int, int, int);
-static int set_corn(int, int, int, int, int, int, int, int);
-static int set_crosswall(int, int);
-static void set_seenv(struct rm *, int, int, int, int);
+static int set_twall(coordxy, coordxy, coordxy, coordxy,
+                     coordxy, coordxy, coordxy, coordxy);
+static int set_wall(coordxy, coordxy, int);
+static int set_corn(coordxy, coordxy, coordxy, coordxy,
+                    coordxy, coordxy, coordxy, coordxy);
+static int set_crosswall(coordxy, coordxy);
+static void set_seenv(struct rm *, coordxy, coordxy, coordxy, coordxy);
 static void t_warn(struct rm *);
 static int wall_angle(struct rm *);
 
 #define remember_topology(x, y) (g.lastseentyp[x][y] = levl[x][y].typ)
+
+/*
+ *      See display.h for descriptions of tp_sensemon() through
+ *      is_safemon().  Some of these were generating an awful lot of
+ *      code "behind the curtain", particularly canspotmon() (which is
+ *      still a macro but one that now expands to a pair of function
+ *      calls rather than to a ton of special case checks).  Return
+ *      values are all int 0 or 1, not boolean.
+ *
+ *      They're still implemented as macros within this file.
+ */
+int
+tp_sensemon(struct monst *mon)
+{
+    return _tp_sensemon(mon);
+}
+#define tp_sensemon(mon) _tp_sensemon(mon)
+
+int
+sensemon(struct monst *mon)
+{
+    return _sensemon(mon);
+}
+#define sensemon(mon) _sensemon(mon)
+
+int
+mon_warning(struct monst *mon)
+{
+    return _mon_warning(mon);
+}
+#define mon_warning(mon) _mon_warning(mon)
+
+int
+mon_visible(struct monst *mon)
+{
+    return _mon_visible(mon);
+}
+#define mon_visible(mon) _mon_visible(mon)
+
+int
+see_with_infrared(struct monst *mon)
+{
+    return _see_with_infrared(mon);
+}
+#define see_with_infrared(mon) _see_with_infrared(mon)
+
+int
+canseemon(struct monst *mon)
+{
+    return _canseemon(mon);
+}
+#define canseemon(mon) _canseemon(mon)
+
+int
+knowninvisible(struct monst *mon)
+{
+    return _knowninvisible(mon);
+}
+/* #define knowninvisible() isn't useful here */
+
+int
+is_safemon(struct monst *mon)
+{
+    return _is_safemon(mon);
+}
+/* #define is_safemon() isn't useful here */
+
+/*
+ *      End of former macro-only vision related (mostly) routines
+ *      converted to functions.
+ */
 
 /*
  * magic_map_background()
@@ -157,7 +231,7 @@ static int wall_angle(struct rm *);
  * attention to and correct unexplored, lit ROOM and CORR spots.
  */
 void
-magic_map_background(xchar x, xchar y, int show)
+magic_map_background(coordxy x, coordxy y, int show)
 {
     int glyph = back_to_glyph(x, y); /* assumes hero can see x,y */
     struct rm *lev = &levl[x][y];
@@ -194,9 +268,6 @@ magic_map_background(xchar x, xchar y, int show)
  * having to create fake objects and traps.  However, I am reluctant to
  * make this change.
  */
-/* FIXME: some of these use xchars for x and y, and some use ints.  Make
- * this consistent.
- */
 
 /*
  * map_background()
@@ -205,7 +276,7 @@ magic_map_background(xchar x, xchar y, int show)
  * the hero can physically see the location.  Update the screen if directed.
  */
 void
-map_background(register xchar x, register xchar y, register int show)
+map_background(register coordxy x, register coordxy y, register int show)
 {
     register int glyph = back_to_glyph(x, y);
 
@@ -224,7 +295,7 @@ map_background(register xchar x, register xchar y, register int show)
 void
 map_trap(register struct trap *trap, register int show)
 {
-    register int x = trap->tx, y = trap->ty;
+    register coordxy x = trap->tx, y = trap->ty;
     register int glyph = trap_to_glyph(trap);
 
     if (g.level.flags.hero_memory)
@@ -242,7 +313,7 @@ map_trap(register struct trap *trap, register int show)
 void
 map_object(register struct obj *obj, register int show)
 {
-    register int x = obj->ox, y = obj->oy;
+    register coordxy x = obj->ox, y = obj->oy;
     register int glyph = obj_to_glyph(obj, newsym_rn2);
 
     if (g.level.flags.hero_memory) {
@@ -269,7 +340,7 @@ map_object(register struct obj *obj, register int show)
  * by newsym() if necessary.
  */
 void
-map_invisible(register xchar x, register xchar y)
+map_invisible(register coordxy x, register coordxy y)
 {
     if (x != u.ux || y != u.uy) { /* don't display I at hero's location */
         if (g.level.flags.hero_memory)
@@ -279,7 +350,7 @@ map_invisible(register xchar x, register xchar y)
 }
 
 boolean
-unmap_invisible(int x, int y)
+unmap_invisible(coordxy x, coordxy y)
 {
     if (isok(x,y) && glyph_is_invisible(levl[x][y].glyph)) {
         unmap_object(x, y);
@@ -300,7 +371,7 @@ unmap_invisible(int x, int y)
  * to call newsym().
  */
 void
-unmap_object(register int x, register int y)
+unmap_object(register coordxy x, register coordxy y)
 {
     register struct trap *trap;
 
@@ -347,14 +418,14 @@ unmap_object(register int x, register int y)
     }
 
 void
-map_location(int x, int y, int show)
+map_location(coordxy x, coordxy y, int show)
 {
     _map_location(x, y, show);
 }
 
 /* display something on monster layer; may need to fixup object layer */
 static void
-show_mon_or_warn(int x, int y, int monglyph)
+show_mon_or_warn(coordxy x, coordxy y, int monglyph)
 {
     struct obj *o;
 
@@ -386,7 +457,7 @@ show_mon_or_warn(int x, int y, int monglyph)
  *
  */
 static void
-display_monster(xchar x, xchar y,    /* display position */
+display_monster(coordxy x, coordxy y,    /* display position */
                 struct monst *mon,   /* monster to display */
                 int sightflags,      /* 1 if the monster is physically seen;
                                         2 if detected using Detect_monsters */
@@ -450,7 +521,8 @@ display_monster(xchar x, xchar y,    /* display position */
         case M_AP_MONSTER:
             show_glyph(x, y,
                        monnum_to_glyph(what_mon((int) mon->mappearance,
-                                                rn2_on_display_rng)));
+                                                rn2_on_display_rng),
+                                       mon->female ? FEMALE : MALE));
             break;
         }
     }
@@ -469,19 +541,22 @@ display_monster(xchar x, xchar y,    /* display position */
          */
         if (mon->mtame && !Hallucination) {
             if (worm_tail)
-                num = petnum_to_glyph(PM_LONG_WORM_TAIL);
+                num = petnum_to_glyph(PM_LONG_WORM_TAIL,
+                        mon->female ? FEMALE : MALE);
             else
                 num = pet_to_glyph(mon, rn2_on_display_rng);
         } else if (sightflags == DETECTED) {
             if (worm_tail)
                 num = detected_monnum_to_glyph(
-                             what_mon(PM_LONG_WORM_TAIL, rn2_on_display_rng));
+                             what_mon(PM_LONG_WORM_TAIL, rn2_on_display_rng),
+                            mon->female ? FEMALE : MALE);
             else
                 num = detected_mon_to_glyph(mon, rn2_on_display_rng);
         } else {
             if (worm_tail)
                 num = monnum_to_glyph(
-                             what_mon(PM_LONG_WORM_TAIL, rn2_on_display_rng));
+                             what_mon(PM_LONG_WORM_TAIL, rn2_on_display_rng),
+                             mon->female ? FEMALE : MALE);
             else
                 num = mon_to_glyph(mon, rn2_on_display_rng);
         }
@@ -501,7 +576,7 @@ display_monster(xchar x, xchar y,    /* display position */
 static void
 display_warning(struct monst *mon)
 {
-    int x = mon->mx, y = mon->my;
+    coordxy x = mon->mx, y = mon->my;
     int glyph;
 
     if (mon_warning(mon)) {
@@ -529,6 +604,20 @@ warning_of(struct monst *mon)
     return wl;
 }
 
+/* map or status window might not be ready for output during level creation
+   or game restoration (something like u.usteed which affects display of
+   the hero and also a status condition might not be set up yet) */
+boolean
+suppress_map_output(void)
+{
+    if (g.in_mklev || g.program_state.saving || g.program_state.restoring)
+        return TRUE;
+#ifdef HANGUPHANDLING
+    if (g.program_state.done_hup)
+        return TRUE;
+#endif
+    return FALSE;
+}
 
 /*
  * feel_newsym()
@@ -536,7 +625,7 @@ warning_of(struct monst *mon)
  * When hero knows what happened to location, even when blind.
  */
 void
-feel_newsym(xchar x, xchar y)
+feel_newsym(coordxy x, coordxy y)
 {
     if (Blind)
         feel_location(x, y);
@@ -556,11 +645,15 @@ feel_newsym(xchar x, xchar y)
  * searching only finds one monster per turn so we must check that separately.
  */
 void
-feel_location(xchar x, xchar y)
+feel_location(coordxy x, coordxy y)
 {
     struct rm *lev;
     struct obj *boulder;
     register struct monst *mon;
+
+    /* replicate safeguards used by newsym(); might not be required here */
+    if (suppress_map_output())
+        return;
 
     if (!isok(x, y))
         return;
@@ -675,19 +768,25 @@ feel_location(xchar x, xchar y)
              * something has been dropped on the ball/chain.  If the bit is
              * not cleared, then when the ball/chain is moved it will drop
              * the wrong glyph.
+             *
+             * Note: during unpunish() we can be called by delobj() when
+             * destroying uchain while uball hasn't been cleared yet (so
+             * Punished will still yield True but uchain might not be part
+             * of the floor list anymore).
              */
-            if (uchain->ox == x && uchain->oy == y) {
-                if (g.level.objects[x][y] == uchain)
-                    u.bc_felt |= BC_CHAIN;
-                else
-                    u.bc_felt &= ~BC_CHAIN; /* do not feel the chain */
-            }
-            if (!carried(uball) && uball->ox == x && uball->oy == y) {
-                if (g.level.objects[x][y] == uball)
-                    u.bc_felt |= BC_BALL;
-                else
-                    u.bc_felt &= ~BC_BALL; /* do not feel the ball */
-            }
+            if (uchain && uchain->where == OBJ_FLOOR
+                && uchain->ox == x && uchain->oy == y
+                && g.level.objects[x][y] == uchain)
+                u.bc_felt |= BC_CHAIN;
+            else
+                u.bc_felt &= ~BC_CHAIN; /* do not feel the chain */
+
+            if (uball && uball->where == OBJ_FLOOR
+                && uball->ox == x && uball->oy == y
+                && g.level.objects[x][y] == uball)
+                u.bc_felt |= BC_BALL;
+            else
+                u.bc_felt &= ~BC_BALL; /* do not feel the ball */
         }
 
         /* Floor spaces are dark if unlit.  Corridors are dark if unlit. */
@@ -714,30 +813,27 @@ feel_location(xchar x, xchar y)
  * Possibly put a new glyph at the given location.
  */
 void
-newsym(register int x, register int y)
+newsym(coordxy x, coordxy y)
 {
     struct monst *mon;
     int see_it;
     boolean worm_tail;
     register struct rm *lev = &(levl[x][y]);
 
-    if (g.in_mklev)
+    /* don't try to produce map output when level is in a state of flux */
+    if (suppress_map_output())
         return;
-#ifdef HANGUPHANDLING
-    if (g.program_state.done_hup)
-        return;
-#endif
 
     /* only permit updating the hero when swallowed */
     if (u.uswallow) {
-        if (x == u.ux && y == u.uy)
+        if (u_at(x, y))
             display_self();
         return;
     }
     if (Underwater && !Is_waterlevel(&u.uz)) {
         /* when underwater, don't do anything unless <x,y> is an
            adjacent water or lava or ice position */
-        if (!(is_pool_or_lava(x, y) || is_ice(x, y)) || distu(x, y) > 2)
+        if (!(is_pool_or_lava(x, y) || is_ice(x, y)) || !next2u(x, y))
             return;
     }
 
@@ -775,7 +871,7 @@ newsym(register int x, register int y)
             return;
         }
 
-        if (x == u.ux && y == u.uy) {
+        if (u_at(x, y)) {
             int see_self = canspotself();
 
             /* update map information for <u.ux,u.uy> (remembered topology
@@ -812,7 +908,7 @@ newsym(register int x, register int y)
 
     /* Can't see the location. */
     } else {
-        if (x == u.ux && y == u.uy) {
+        if (u_at(x, y)) {
             feel_location(u.ux, u.uy); /* forces an update */
 
             if (canspotself())
@@ -881,7 +977,7 @@ newsym(register int x, register int y)
  * pulled into a platform dependent routine for fancier graphics if desired.
  */
 void
-shieldeff(xchar x, xchar y)
+shieldeff(coordxy x, coordxy y)
 {
     register int i;
 
@@ -898,7 +994,7 @@ shieldeff(xchar x, xchar y)
 }
 
 static int
-tether_glyph(int x, int y)
+tether_glyph(coordxy x, coordxy y)
 {
     int tdx, tdy;
     tdx = u.ux - x;
@@ -943,7 +1039,7 @@ static struct tmp_glyph {
 } tgfirst;
 
 void
-tmp_at(int x, int y)
+tmp_at(coordxy x, coordxy y)
 {
     static struct tmp_glyph *tglyph = (struct tmp_glyph *) 0;
     struct tmp_glyph *tmp;
@@ -979,90 +1075,92 @@ tmp_at(int x, int y)
         break;
     }
 
-    if (!tglyph)
+    if (!tglyph) {
         panic("tmp_at: tglyph not initialized");
+    } else {
+        switch (x) {
+        case DISP_CHANGE:
+            tglyph->glyph = y;
+            break;
 
-    switch (x) {
-    case DISP_CHANGE:
-        tglyph->glyph = y;
-        break;
+        case DISP_END:
+            if (tglyph->style == DISP_BEAM || tglyph->style == DISP_ALL) {
+                register int i;
 
-    case DISP_END:
-        if (tglyph->style == DISP_BEAM || tglyph->style == DISP_ALL) {
-            register int i;
-
-            /* Erase (reset) from source to end */
-            for (i = 0; i < tglyph->sidx; i++)
-                newsym(tglyph->saved[i].x, tglyph->saved[i].y);
-        } else if (tglyph->style == DISP_TETHER) {
-            int i;
-
-            if (y == BACKTRACK && tglyph->sidx > 1) {
-                /* backtrack */
-                for (i = tglyph->sidx - 1; i > 0; i--) {
+                /* Erase (reset) from source to end */
+                for (i = 0; i < tglyph->sidx; i++)
                     newsym(tglyph->saved[i].x, tglyph->saved[i].y);
-                    show_glyph(tglyph->saved[i - 1].x,
-                               tglyph->saved[i - 1].y, tglyph->glyph);
-                    flush_screen(0);   /* make sure it shows up */
-                    delay_output();
+            } else if (tglyph->style == DISP_TETHER) {
+                int i;
+
+                if (y == BACKTRACK && tglyph->sidx > 1) {
+                    /* backtrack */
+                    for (i = tglyph->sidx - 1; i > 0; i--) {
+                        newsym(tglyph->saved[i].x, tglyph->saved[i].y);
+                        show_glyph(tglyph->saved[i - 1].x,
+                                   tglyph->saved[i - 1].y, tglyph->glyph);
+                        flush_screen(0); /* make sure it shows up */
+                        delay_output();
+                    }
+                    tglyph->sidx = 1;
                 }
+                for (i = 0; i < tglyph->sidx; i++)
+                    newsym(tglyph->saved[i].x, tglyph->saved[i].y);
+            } else {              /* DISP_FLASH or DISP_ALWAYS */
+                if (tglyph->sidx) /* been called at least once */
+                    newsym(tglyph->saved[0].x, tglyph->saved[0].y);
+            }
+            /* tglyph->sidx = 0; -- about to be freed, so not necessary */
+            tmp = tglyph->prev;
+            if (tglyph != &tgfirst)
+                free((genericptr_t) tglyph);
+            tglyph = tmp;
+            break;
+
+        default: /* do it */
+            if (!isok(x, y))
+                break;
+            if (tglyph->style == DISP_BEAM || tglyph->style == DISP_ALL) {
+                if (tglyph->style != DISP_ALL && !cansee(x, y))
+                    break;
+                if (tglyph->sidx >= TMP_AT_MAX_GLYPHS)
+                    break; /* too many locations */
+                /* save pos for later erasing */
+                tglyph->saved[tglyph->sidx].x = x;
+                tglyph->saved[tglyph->sidx].y = y;
+                tglyph->sidx += 1;
+            } else if (tglyph->style == DISP_TETHER) {
+                if (tglyph->sidx >= TMP_AT_MAX_GLYPHS)
+                    break; /* too many locations */
+                if (tglyph->sidx) {
+                    int px, py;
+
+                    px = tglyph->saved[tglyph->sidx - 1].x;
+                    py = tglyph->saved[tglyph->sidx - 1].y;
+                    show_glyph(px, py, tether_glyph(px, py));
+                }
+                /* save pos for later use or erasure */
+                tglyph->saved[tglyph->sidx].x = x;
+                tglyph->saved[tglyph->sidx].y = y;
+                tglyph->sidx += 1;
+            } else { /* DISP_FLASH/ALWAYS */
+                if (tglyph
+                        ->sidx) { /* not first call, so reset previous pos */
+                    newsym(tglyph->saved[0].x, tglyph->saved[0].y);
+                    tglyph->sidx = 0; /* display is presently up to date */
+                }
+                if (!cansee(x, y) && tglyph->style != DISP_ALWAYS)
+                    break;
+                tglyph->saved[0].x = x;
+                tglyph->saved[0].y = y;
                 tglyph->sidx = 1;
             }
-            for (i = 0; i < tglyph->sidx; i++)
-                newsym(tglyph->saved[i].x, tglyph->saved[i].y);
-        } else {              /* DISP_FLASH or DISP_ALWAYS */
-            if (tglyph->sidx) /* been called at least once */
-                newsym(tglyph->saved[0].x, tglyph->saved[0].y);
-        }
-        /* tglyph->sidx = 0; -- about to be freed, so not necessary */
-        tmp = tglyph->prev;
-        if (tglyph != &tgfirst)
-            free((genericptr_t) tglyph);
-        tglyph = tmp;
-        break;
 
-    default: /* do it */
-        if (!isok(x, y))
+            show_glyph(x, y, tglyph->glyph); /* show it */
+            flush_screen(0);                 /* make sure it shows up */
             break;
-        if (tglyph->style == DISP_BEAM || tglyph->style == DISP_ALL) {
-            if (tglyph->style != DISP_ALL && !cansee(x, y))
-                break;
-            if (tglyph->sidx >= TMP_AT_MAX_GLYPHS)
-                break; /* too many locations */
-            /* save pos for later erasing */
-            tglyph->saved[tglyph->sidx].x = x;
-            tglyph->saved[tglyph->sidx].y = y;
-            tglyph->sidx += 1;
-        } else if (tglyph->style == DISP_TETHER) {
-            if (tglyph->sidx >= TMP_AT_MAX_GLYPHS)
-                break; /* too many locations */
-            if (tglyph->sidx) {
-                int px, py;
-
-                px = tglyph->saved[tglyph->sidx-1].x;
-                py = tglyph->saved[tglyph->sidx-1].y;
-                show_glyph(px, py, tether_glyph(px, py));
-            }
-            /* save pos for later use or erasure */
-            tglyph->saved[tglyph->sidx].x = x;
-            tglyph->saved[tglyph->sidx].y = y;
-            tglyph->sidx += 1;
-        } else {                /* DISP_FLASH/ALWAYS */
-            if (tglyph->sidx) { /* not first call, so reset previous pos */
-                newsym(tglyph->saved[0].x, tglyph->saved[0].y);
-                tglyph->sidx = 0; /* display is presently up to date */
-            }
-            if (!cansee(x, y) && tglyph->style != DISP_ALWAYS)
-                break;
-            tglyph->saved[0].x = x;
-            tglyph->saved[0].y = y;
-            tglyph->sidx = 1;
-        }
-
-        show_glyph(x, y, tglyph->glyph); /* show it */
-        flush_screen(0);                 /* make sure it shows up */
-        break;
-    } /* end case */
+        } /* end switch */
+    }
 }
 
 /*
@@ -1072,7 +1170,7 @@ tmp_at(int x, int y)
  * meant to be at the location.
  */
 void
-flash_glyph_at(int x, int y, int tg, int rpt)
+flash_glyph_at(coordxy x, coordxy y, int tg, int rpt)
 {
     int i, glyph[2];
 
@@ -1101,14 +1199,14 @@ flash_glyph_at(int x, int y, int tg, int rpt)
 void
 swallowed(int first)
 {
-    static xchar lastx, lasty; /* last swallowed position */
+    static coordxy lastx, lasty; /* last swallowed position */
     int swallower, left_ok, rght_ok;
 
     if (first) {
         cls();
         bot();
     } else {
-        register int x, y;
+        coordxy x, y;
 
         /* Clear old location */
         for (y = lasty - 1; y <= lasty + 1; y++)
@@ -1164,9 +1262,9 @@ swallowed(int first)
 void
 under_water(int mode)
 {
-    static xchar lastx, lasty;
+    static coordxy lastx, lasty;
     static boolean dela;
-    register int x, y;
+    coordxy x, y;
 
     /* swallowing has a higher precedence than under water */
     if (Is_waterlevel(&u.uz) || u.uswallow)
@@ -1197,7 +1295,7 @@ under_water(int mode)
     for (x = u.ux - 1; x <= u.ux + 1; x++)
         for (y = u.uy - 1; y <= u.uy + 1; y++)
             if (isok(x, y) && (is_pool_or_lava(x, y) || is_ice(x, y))) {
-                if (Blind && !(x == u.ux && y == u.uy))
+                if (Blind && !u_at(x, y))
                     show_glyph(x, y, GLYPH_UNEXPLORED);
                 else
                     newsym(x, y);
@@ -1246,6 +1344,7 @@ under_ground(int mode)
  *      + hallucinating
  *      + doing a full screen redraw
  *      + see invisible times out or a ring of see invisible is taken off
+ *        or intrinsic see invisible is stolen by a gremlin
  *      + when a potion of see invisible is quaffed or a ring of see
  *        invisible is put on
  *      + gaining telepathy when blind [givit() in eat.c, pleased() in pray.c]
@@ -1284,6 +1383,17 @@ see_monsters(void)
         newsym(u.ux, u.uy);
 }
 
+static void
+mimic_light_blocking(struct monst *mtmp)
+{
+    if (mtmp->minvis && is_lightblocker_mappear(mtmp)) {
+        if (See_invisible)
+            block_point(mtmp->mx, mtmp->my);
+        else
+            unblock_point(mtmp->mx, mtmp->my);
+    }
+}
+
 /*
  * Block/unblock light depending on what a mimic is mimicing and if it's
  * invisible or not.  Should be called only when the state of See_invisible
@@ -1292,18 +1402,7 @@ see_monsters(void)
 void
 set_mimic_blocking(void)
 {
-    register struct monst *mon;
-
-    for (mon = fmon; mon; mon = mon->nmon) {
-        if (DEADMONSTER(mon))
-            continue;
-        if (mon->minvis && is_lightblocker_mappear(mon)) {
-            if (See_invisible)
-                block_point(mon->mx, mon->my);
-            else
-                unblock_point(mon->mx, mon->my);
-        }
-    }
+    iter_mons(mimic_light_blocking);
 }
 
 /*
@@ -1342,9 +1441,14 @@ see_traps(void)
     }
 }
 
-/*  glyph, color, ttychar, symidx, glyphflags */
+/*  glyph, ttychar, { glyphflags, { sym.color, sym.symidx },
+                      tileidx, u } */
 static glyph_info no_ginfo = {
-    NO_GLYPH, NO_COLOR, ' ', 0, MG_BADXY
+    NO_GLYPH, ' ', { MG_BADXY, { NO_COLOR, 0 }, 0
+#ifdef ENHANCED_SYMBOLS
+                                                 , 0
+#endif
+    }
 };
 #ifndef UNBUFFERED_GLYPHINFO
 #define Glyphinfo_at(x, y, glyph) \
@@ -1353,6 +1457,32 @@ static glyph_info no_ginfo = {
 #else
 static glyph_info ginfo;
 #define Glyphinfo_at(x, y, glyph) glyphinfo_at(x, y, glyph)
+#endif
+
+#ifdef USE_TILES
+extern const glyph_info nul_glyphinfo; /* tile.c */
+#else
+/* glyph, ttychar, { glyphflags, { sym.color, sym.symidx },
+                     tileidx, 0} */
+const glyph_info nul_glyphinfo = {
+    NO_GLYPH, ' ',
+        {  /* glyph_map */
+            MG_UNEXPL,
+            { NO_COLOR, SYM_UNEXPLORED + SYM_OFF_X },
+            0
+#ifdef ENHANCED_SYMBOLS
+             , 0
+#endif
+        }
+};
+#endif
+
+#ifdef USE_TILES
+extern glyph_map glyphmap[MAX_GLYPH]; /* from tile.c */
+#else
+glyph_map glyphmap[MAX_GLYPH] = {
+    { 0U, { 0, 0}, 0, 0 }
+};
 #endif
 
 /*
@@ -1364,21 +1494,24 @@ curs_on_u(void)
     flush_screen(1); /* Flush waiting glyphs & put cursor on hero */
 }
 
+/* the #redraw command */
 int
 doredraw(void)
 {
     docrt();
-    return 0;
+    return ECMD_OK;
 }
 
 void
 docrt(void)
 {
-    register int x, y;
+    coordxy x, y;
     register struct rm *lev;
 
-    if (!u.ux)
+    if (!u.ux || g.program_state.in_docrt)
         return; /* display isn't ready yet */
+
+    g.program_state.in_docrt = TRUE;
 
     if (u.uswallow) {
         swallowed(1);
@@ -1422,6 +1555,7 @@ docrt(void)
     update_inventory();
 
     g.context.botlx = 1; /* force a redraw of the bottom line */
+    g.program_state.in_docrt = FALSE;
 }
 
 /* for panning beyond a clipped region; resend the current map data to
@@ -1429,7 +1563,8 @@ docrt(void)
 void
 redraw_map(void)
 {
-    int x, y, glyph;
+    coordxy x, y;
+    int glyph;
     glyph_info bkglyphinfo = nul_glyphinfo;
 
     /*
@@ -1440,7 +1575,7 @@ redraw_map(void)
      * !u.ux: display isn't ready yet; (restoring || !on_level()): was part
      * of cliparound() but interface shouldn't access this much internals
      */
-    if (!u.ux || g.restoring || !on_level(&u.uz0, &u.uz))
+    if (!u.ux || suppress_map_output() || !on_level(&u.uz0, &u.uz))
         return;
 
     /*
@@ -1467,11 +1602,21 @@ redraw_map(void)
 void
 reglyph_darkroom(void)
 {
-    xchar x, y;
+    coordxy x, y;
 
     for (x = 1; x < COLNO; x++)
         for (y = 0; y < ROWNO; y++) {
             struct rm *lev = &levl[x][y];
+
+            if (!flags.dark_room) {
+                if (lev->glyph == cmap_to_glyph(S_corr)
+                    && lev->waslit)
+                    lev->glyph = cmap_to_glyph(S_litcorr);
+            } else {
+                if (lev->glyph == cmap_to_glyph(S_litcorr)
+                    && !cansee(x, y))
+                    lev->glyph = cmap_to_glyph(S_corr);
+            }
 
             if (!flags.dark_room || !iflags.use_color
                 || Is_rogue_level(&u.uz)) {
@@ -1500,7 +1645,7 @@ reglyph_darkroom(void)
  * between object piles and single objects, it doesn't mark the location
  * for update. */
 void
-newsym_force(int x, int y)
+newsym_force(coordxy x, coordxy y)
 {
     newsym(x, y);
     g.gbuf[y][x].gnew = 1;
@@ -1514,7 +1659,7 @@ newsym_force(int x, int y)
  * Store the glyph in the 3rd screen for later flushing.
  */
 void
-show_glyph(int x, int y, int glyph)
+show_glyph(coordxy x, coordxy y, int glyph)
 {
 #ifndef UNBUFFERED_GLYPHINFO
     glyph_info glyphinfo;
@@ -1524,8 +1669,8 @@ show_glyph(int x, int y, int glyph)
      * Check for bad positions and glyphs.
      */
     if (!isok(x, y)) {
-        const char *text;
-        int offset;
+        const char *text = "";
+        int offset = -1;
 
         /* column 0 is invalid, but it's often used as a flag, so ignore it */
         if (x == 0)
@@ -1536,43 +1681,85 @@ show_glyph(int x, int y, int glyph)
          *  the definition.
          */
 
-        if (glyph >= GLYPH_WARNING_OFF
-            && glyph < GLYPH_STATUE_OFF) { /* a warning */
-            text = "warning";
-            offset = glyph - GLYPH_WARNING_OFF;
-        } else if (glyph >= GLYPH_SWALLOW_OFF) { /* swallow border */
-            text = "swallow border";
-            offset = glyph - GLYPH_SWALLOW_OFF;
-        } else if (glyph >= GLYPH_ZAP_OFF) { /* zap beam */
-            text = "zap beam";
-            offset = glyph - GLYPH_ZAP_OFF;
-        } else if (glyph >= GLYPH_EXPLODE_OFF) { /* explosion */
-            text = "explosion";
-            offset = glyph - GLYPH_EXPLODE_OFF;
-        } else if (glyph >= GLYPH_CMAP_OFF) { /* cmap */
-            text = "cmap_index";
-            offset = glyph - GLYPH_CMAP_OFF;
-        } else if (glyph >= GLYPH_OBJ_OFF) { /* object */
+        if ((offset = (glyph - GLYPH_NOTHING_OFF)) >= 0) {
+            text = "nothing";
+        } else if ((offset = (glyph - GLYPH_UNEXPLORED_OFF)) >= 0) {
+            text = "unexplored";
+        } else if ((offset = (glyph - GLYPH_STATUE_FEM_PILETOP_OFF))) {
+            text = "statue of a female monster at top of a pile";
+        } else if ((offset = (glyph - GLYPH_STATUE_MALE_PILETOP_OFF))) {
+            text = "statue of a male monster at top of a pile";
+        } else if ((offset = (glyph - GLYPH_BODY_PILETOP_OFF))) {
+            text = "body at top of a pile";
+        } else if ((offset = (glyph - GLYPH_OBJ_PILETOP_OFF))) {
+            text = "object at top of a pile";
+        } else if ((offset = (glyph - GLYPH_STATUE_FEM_OFF)) >= 0) {
+            text = "statue of female monster";
+        } else if ((offset = (glyph - GLYPH_STATUE_MALE_OFF)) >= 0) {
+            text = "statue of male monster";
+        } else if ((offset = (glyph - GLYPH_WARNING_OFF)) >= 0) {
+            /* warn flash */
+            text = "warning explosion";
+        } else if ((offset = (glyph - GLYPH_EXPLODE_FROSTY_OFF)) >= 0) {
+            text = "frosty explosion";
+        } else if ((offset = (glyph - GLYPH_EXPLODE_FIERY_OFF)) >= 0) {
+            text = "fiery explosion";
+        } else if ((offset = (glyph - GLYPH_EXPLODE_MAGICAL_OFF)) >= 0) {
+            text = "magical explosion";
+        } else if ((offset = (glyph - GLYPH_EXPLODE_WET_OFF)) >= 0) {
+            text = "wet explosion";
+        } else if ((offset = (glyph - GLYPH_EXPLODE_MUDDY_OFF)) >= 0) {
+            text = "muddy explosion";
+        } else if ((offset = (glyph - GLYPH_EXPLODE_NOXIOUS_OFF)) >= 0) {
+            text = "noxious explosion";
+        } else if ((offset = (glyph - GLYPH_EXPLODE_DARK_OFF)) >= 0) {
+            text = "dark explosion";
+        } else if ((offset = (glyph - GLYPH_SWALLOW_OFF)) >= 0) {
+            text = "swallow";
+        } else if ((offset = (glyph - GLYPH_CMAP_C_OFF)) >= 0) {
+            text = "cmap C";
+        } else if ((offset = (glyph - GLYPH_ZAP_OFF)) >= 0) {
+            text = "zap";
+        } else if ((offset = (glyph - GLYPH_CMAP_B_OFF)) >= 0) {
+            text = "cmap B";
+        } else if ((offset = (glyph - GLYPH_ALTAR_OFF)) >= 0) {
+            text = "altar";
+        } else if ((offset = (glyph - GLYPH_CMAP_A_OFF)) >= 0) {
+            text = "cmap A";
+        } else if ((offset = (glyph - GLYPH_CMAP_SOKO_OFF)) >= 0) {
+            text = "sokoban dungeon walls";
+        } else if ((offset = (glyph - GLYPH_CMAP_KNOX_OFF)) >= 0) {
+            text = "knox dungeon walls";
+        } else if ((offset = (glyph - GLYPH_CMAP_GEH_OFF)) >= 0) {
+            text = "gehennom dungeon walls";
+        } else if ((offset = (glyph - GLYPH_CMAP_MINES_OFF)) >= 0) {
+            text = "gnomish mines dungeon walls";
+        } else if ((offset = (glyph - GLYPH_CMAP_MAIN_OFF)) >= 0) {
+            text = "main dungeon walls";
+        } else if ((offset = (glyph - GLYPH_CMAP_STONE_OFF)) >= 0) {
+            text = "stone";
+        } else if ((offset = (glyph - GLYPH_OBJ_OFF)) >= 0) {
             text = "object";
-            offset = glyph - GLYPH_OBJ_OFF;
-        } else if (glyph >= GLYPH_RIDDEN_OFF) { /* ridden mon */
-            text = "ridden mon";
-            offset = glyph - GLYPH_RIDDEN_OFF;
-        } else if (glyph >= GLYPH_BODY_OFF) { /* a corpse */
-            text = "corpse";
-            offset = glyph - GLYPH_BODY_OFF;
-        } else if (glyph >= GLYPH_DETECT_OFF) { /* detected mon */
-            text = "detected mon";
-            offset = glyph - GLYPH_DETECT_OFF;
-        } else if (glyph >= GLYPH_INVIS_OFF) { /* invisible mon */
-            text = "invisible mon";
-            offset = glyph - GLYPH_INVIS_OFF;
-        } else if (glyph >= GLYPH_PET_OFF) { /* a pet */
-            text = "pet";
-            offset = glyph - GLYPH_PET_OFF;
-        } else { /* a monster */
-            text = "monster";
-            offset = glyph;
+        } else if ((offset = (glyph - GLYPH_RIDDEN_FEM_OFF)) >= 0) {
+            text = "ridden female monster";
+        } else if ((offset = (glyph - GLYPH_RIDDEN_MALE_OFF)) >= 0) {
+            text = "ridden male monster";
+        } else if ((offset = (glyph - GLYPH_BODY_OFF)) >= 0) {
+            text = "body";
+        } else if ((offset = (glyph - GLYPH_DETECT_FEM_OFF)) >= 0) {
+            text = "detected female monster";
+        } else if ((offset = (glyph - GLYPH_DETECT_MALE_OFF)) >= 0) {
+            text = "detected male monster";
+        } else if ((offset = (glyph - GLYPH_INVIS_OFF)) >= 0) {
+            text = "invisible monster";
+        } else if ((offset = (glyph - GLYPH_PET_FEM_OFF)) >= 0) {
+            text = "female pet";
+        } else if ((offset = (glyph - GLYPH_PET_MALE_OFF)) >= 0) {
+            text = "male pet";
+        } else if ((offset = (glyph - GLYPH_MON_FEM_OFF)) >= 0) {
+            text = "female monster";
+        } else if ((offset = (glyph - GLYPH_MON_MALE_OFF)) >= 0) {
+            text = "male monster";
         }
         impossible("show_glyph:  bad pos %d %d with glyph %d [%s %d].", x, y,
                    glyph, text, offset);
@@ -1591,7 +1778,7 @@ show_glyph(int x, int y, int glyph)
     map_glyphinfo(x, y, glyph, 0, &glyphinfo);
 #endif
 
-    if (g.gbuf[y][x].glyph != glyph
+    if (g.gbuf[y][x].glyphinfo.glyph != glyph
 #ifndef UNBUFFERED_GLYPHINFO
         /* flags might change (single object vs pile, monster tamed or pet
            gone feral), color might change (altar's alignment converted by
@@ -1599,18 +1786,18 @@ show_glyph(int x, int y, int glyph)
            glyph does too (changing boulder symbol would be an exception,
            but that triggers full redraw so doesn't matter here); still,
            be thorough and check everything */
-        || g.gbuf[y][x].glyphinfo.glyphflags != glyphinfo.glyphflags
         || g.gbuf[y][x].glyphinfo.ttychar != glyphinfo.ttychar
-        || g.gbuf[y][x].glyphinfo.color != glyphinfo.color
+        || g.gbuf[y][x].glyphinfo.gm.glyphflags != glyphinfo.gm.glyphflags
+        || g.gbuf[y][x].glyphinfo.gm.sym.color != glyphinfo.gm.sym.color
+        || g.gbuf[y][x].glyphinfo.gm.tileidx != glyphinfo.gm.tileidx
 #endif
         || iflags.use_background_glyph) {
-        g.gbuf[y][x].glyph = glyph;
+        g.gbuf[y][x].glyphinfo.glyph = glyph;
         g.gbuf[y][x].gnew = 1;
 #ifndef UNBUFFERED_GLYPHINFO
         g.gbuf[y][x].glyphinfo.glyph = glyphinfo.glyph;
-        g.gbuf[y][x].glyphinfo.glyphflags = glyphinfo.glyphflags;
         g.gbuf[y][x].glyphinfo.ttychar = glyphinfo.ttychar;
-        g.gbuf[y][x].glyphinfo.color = glyphinfo.color;
+        g.gbuf[y][x].glyphinfo.gm = glyphinfo.gm;
 #endif
         if (g.gbuf_start[y] > x)
             g.gbuf_start[y] = x;
@@ -1634,11 +1821,15 @@ show_glyph(int x, int y, int glyph)
     }
 
 static gbuf_entry nul_gbuf = {
-        0,                      /* gnew */
-        GLYPH_UNEXPLORED,       /* glyph */
-#ifndef UNBUFFERED_GLYPHINFO
-        {(unsigned) ' ', (unsigned) NO_COLOR, MG_UNEXPL},
+    0,                                 /* gnew */
+    { GLYPH_UNEXPLORED, (unsigned) ' ', /* glyphinfo.glyph */
+        /* glyphinfo.gm */
+        { MG_UNEXPL, { (unsigned) NO_COLOR, 0 }, 0
+#ifdef ENHANCED_SYMBOLS
+                                                  , 0
 #endif
+        }
+    }
 };
 
 /*
@@ -1647,7 +1838,7 @@ static gbuf_entry nul_gbuf = {
 void
 clear_glyph_buffer(void)
 {
-    register int x, y;
+    register coordxy x, y;
     gbuf_entry *gptr = &g.gbuf[0][0];
     glyph_info *giptr =
 #ifndef UNBUFFERED_GLYPHINFO
@@ -1659,12 +1850,14 @@ clear_glyph_buffer(void)
 #endif
 #ifndef UNBUFFERED_GLYPHINFO
     nul_gbuf.gnew = (giptr->ttychar != nul_gbuf.glyphinfo.ttychar
-                     || giptr->color != nul_gbuf.glyphinfo.color
-                     || giptr->glyphflags != nul_gbuf.glyphinfo.glyphflags)
+                     || giptr->gm.sym.color != nul_gbuf.glyphinfo.gm.sym.color
+                     || giptr->gm.glyphflags
+                        != nul_gbuf.glyphinfo.gm.glyphflags
+                     || giptr->gm.tileidx != nul_gbuf.glyphinfo.gm.tileidx)
 #else
-    nul_gbuf.gnew = (giptr->ttychar != ' '
-                     || giptr->color != NO_COLOR
-                     || (giptr->glyphflags & ~MG_UNEXPL) != 0)
+    nul_gbuf.gnew = (giptr->glyphinfo.ttychar != ' '
+                     || giptr->gm.sym.color != NO_COLOR
+                     || (giptr->gm.glyphflags & ~MG_UNEXPL) != 0)
 #endif
                          ? 1 : 0;
     for (y = 0; y < ROWNO; y++) {
@@ -1680,9 +1873,10 @@ clear_glyph_buffer(void)
 /* used by tty after menu or text popup has temporarily overwritten the map
    and it has been erased so shows spaces, not necessarily S_unexplored */
 void
-row_refresh(int start, int stop, int y)
+row_refresh(coordxy start, coordxy stop, coordxy y)
 {
-    register int x, glyph;
+    register coordxy x;
+    int glyph;
     register boolean force;
     gbuf_entry *gptr = &g.gbuf[0][0];
     glyph_info bkglyphinfo = nul_glyphinfo;
@@ -1696,22 +1890,23 @@ row_refresh(int start, int stop, int y)
 #endif
 #ifndef UNBUFFERED_GLYPHINFO
     force = (giptr->ttychar != nul_gbuf.glyphinfo.ttychar
-                 || giptr->color != nul_gbuf.glyphinfo.color
-                 || giptr->glyphflags != nul_gbuf.glyphinfo.glyphflags)
+                 || giptr->gm.sym.color != nul_gbuf.glyphinfo.gm.sym.color
+                 || giptr->gm.glyphflags != nul_gbuf.glyphinfo.gm.glyphflags
+                 || giptr->gm.tileidx != nul_gbuf.glyphinfo.gm.tileidx)
 #else
     force = (giptr->ttychar != ' '
-                 || giptr->color != NO_COLOR
-                 || (giptr->glyphflags & ~MG_UNEXPL) != 0)
+                 || giptr->gm.sym.color != NO_COLOR
+                 || (giptr->gm.glyphflags & ~MG_UNEXPL) != 0)
 #endif
                  ? 1 : 0;
     for (x = start; x <= stop; x++) {
         gptr = &g.gbuf[y][x];
-        glyph = gptr->glyph;
+        glyph = gptr->glyphinfo.glyph;
         if (force || glyph != GLYPH_UNEXPLORED) {
             bkglyphinfo.glyph = get_bk_glyph(x, y);
             print_glyph(WIN_MAP, x, y,
                         Glyphinfo_at(x, y, glyph), &bkglyphinfo);
-	}
+        }
     }
 }
 
@@ -1742,11 +1937,11 @@ flush_screen(int cursor_on_u)
      */
     static int flushing = 0;
     static int delay_flushing = 0;
-    register int x, y;
+    register coordxy x, y;
     glyph_info bkglyphinfo = nul_glyphinfo;
 
     /* 3.7: don't update map, status, or perm_invent during save/restore */
-    if (g.program_state.saving || g.program_state.restoring)
+    if (suppress_map_output())
         return;
 
     if (cursor_on_u == -1)
@@ -1761,27 +1956,31 @@ flush_screen(int cursor_on_u)
         return;
 #endif
 
+    /* get this done now, before we place the cursor on the hero */
+    if (g.context.botl || g.context.botlx)
+        bot();
+    else if (iflags.time_botl)
+        timebot();
+
     for (y = 0; y < ROWNO; y++) {
         register gbuf_entry *gptr = &g.gbuf[y][x = g.gbuf_start[y]];
 
         for (; x <= g.gbuf_stop[y]; gptr++, x++)
             if (gptr->gnew) {
-                bkglyphinfo.glyph = get_bk_glyph(x, y);            
+                map_glyphinfo(x, y, get_bk_glyph(x, y), 0, &bkglyphinfo);
                 print_glyph(WIN_MAP, x, y,
                             Glyphinfo_at(x, y, gptr->glyph), &bkglyphinfo);
                 gptr->gnew = 0;
             }
     }
+    reset_glyph_bbox();
 
+    /* after map update, before display_nhwindow(WIN_MAP) */
     if (cursor_on_u)
         curs(WIN_MAP, u.ux, u.uy); /* move cursor to the hero */
+
     display_nhwindow(WIN_MAP, FALSE);
-    reset_glyph_bbox();
     flushing = 0;
-    if (g.context.botl || g.context.botlx)
-        bot();
-    else if (iflags.time_botl)
-        timebot();
 }
 
 /* ======================================================================== */
@@ -1802,10 +2001,11 @@ flush_screen(int cursor_on_u)
  * variables.
  */
 int
-back_to_glyph(xchar x, xchar y)
+back_to_glyph(coordxy x, coordxy y)
 {
-    int idx;
+    int idx, bypass_glyph = NO_GLYPH;
     struct rm *ptr = &(levl[x][y]);
+    struct stairway *sway;
 
     switch (ptr->typ) {
     case SCORR:
@@ -1854,10 +2054,18 @@ back_to_glyph(xchar x, xchar y)
         idx = S_pool;
         break;
     case STAIRS:
-        idx = (ptr->ladder & LA_DOWN) ? S_dnstair : S_upstair;
+        sway = stairway_at(x, y);
+        if (known_branch_stairs(sway))
+            idx = (ptr->ladder & LA_DOWN) ? S_brdnstair : S_brupstair;
+        else
+            idx = (ptr->ladder & LA_DOWN) ? S_dnstair : S_upstair;
         break;
     case LADDER:
-        idx = (ptr->ladder & LA_DOWN) ? S_dnladder : S_upladder;
+        sway = stairway_at(x, y);
+        if (known_branch_stairs(sway))
+            idx = (ptr->ladder & LA_DOWN) ? S_brdnladder : S_brupladder;
+        else
+            idx = (ptr->ladder & LA_DOWN) ? S_dnladder : S_upladder;
         break;
     case FOUNTAIN:
         idx = S_fountain;
@@ -1866,7 +2074,8 @@ back_to_glyph(xchar x, xchar y)
         idx = S_sink;
         break;
     case ALTAR:
-        idx = S_altar;
+        idx = S_altar;  /* not really used */
+        bypass_glyph = altar_to_glyph(ptr->altarmask);
         break;
     case GRAVE:
         idx = S_grave;
@@ -1922,7 +2131,7 @@ back_to_glyph(xchar x, xchar y)
         break;
     }
 
-    return cmap_to_glyph(idx);
+    return (bypass_glyph != NO_GLYPH) ? bypass_glyph : cmap_to_glyph(idx);
 }
 
 /*
@@ -1935,12 +2144,13 @@ back_to_glyph(xchar x, xchar y)
 static int
 swallow_to_glyph(int mnum, int loc)
 {
+    int m_3 = what_mon(mnum, rn2_on_display_rng) << 3;
+
     if (loc < S_sw_tl || S_sw_br < loc) {
         impossible("swallow_to_glyph: bad swallow location");
         loc = S_sw_br;
     }
-    return ((int) (what_mon(mnum, rn2_on_display_rng) << 3) |
-            (loc - S_sw_tl)) + GLYPH_SWALLOW_OFF;
+    return (m_3 | (loc - S_sw_tl)) + GLYPH_SWALLOW_OFF;
 }
 
 /*
@@ -1973,16 +2183,16 @@ zapdir_to_glyph(int dx, int dy, int beam_type)
  * structure, so we must check the "third screen".
  */
 int
-glyph_at(xchar x, xchar y)
+glyph_at(coordxy x, coordxy y)
 {
     if (x < 0 || y < 0 || x >= COLNO || y >= ROWNO)
         return cmap_to_glyph(S_room); /* XXX */
-    return g.gbuf[y][x].glyph;
+    return g.gbuf[y][x].glyphinfo.glyph;
 }
 
 #ifdef UNBUFFERED_GLYPHINFO
 glyph_info *
-glyphinfo_at(xchar x, xchar y, int glyph)
+glyphinfo_at(coordxy x, coordxy y, int glyph)
 {
     map_glyphinfo(x, y, glyph, 0, &ginfo);
     return &ginfo;
@@ -2003,13 +2213,13 @@ glyphinfo_at(xchar x, xchar y, int glyph)
  */
 
 static int
-get_bk_glyph(xchar x, xchar y)
+get_bk_glyph(coordxy x, coordxy y)
 {
     int idx, bkglyph = GLYPH_UNEXPLORED;
     struct rm *lev = &levl[x][y];
 
     if (iflags.use_background_glyph && lev->seenv != 0
-        && (g.gbuf[y][x].glyph != GLYPH_UNEXPLORED)) {
+        && (g.gbuf[y][x].glyphinfo.glyph != GLYPH_UNEXPLORED)) {
         switch (lev->typ) {
         case SCORR:
         case STONE:
@@ -2060,18 +2270,115 @@ get_bk_glyph(xchar x, xchar y)
     return bkglyph;
 }
 
+#if defined(USE_TILES) && defined(MSDOS)
+#define HAS_ROGUE_IBM_GRAPHICS \
+    (g.currentgraphics == ROGUESET && SYMHANDLING(H_IBM) && !iflags.grmode)
+#else
+#define HAS_ROGUE_IBM_GRAPHICS \
+    (g.currentgraphics == ROGUESET && SYMHANDLING(H_IBM))
+#endif
 #define HI_DOMESTIC CLR_WHITE /* monst.c */
+
+/* masks for per-level variances kept in g.glyphmap_perlevel_flags */
+#define GMAP_SET            0x0001
+#define GMAP_ROGUELEVEL     0x0002
+
+void
+map_glyphinfo(
+    coordxy x, coordxy y,
+    int glyph,
+    unsigned mgflags,
+    glyph_info *glyphinfo)
+{
+    int offset;
+    boolean is_you = (u_at(x, y)
+                      /* verify hero or steed (not something underneath
+                         when hero is invisible without see invisible,
+                         or a temporary display effect like an explosion);
+                         this is only approximate, because hero might be
+                         mimicking an object (after eating mimic corpse or
+                         if polyd into mimic) or furniture (only if polyd) */
+                      && glyph_is_monster(glyph));
+    const glyph_map *gmap = &glyphmap[glyph];
+
+    glyphinfo->gm = *gmap; /* glyphflags, sym.symidx, sym.color, tileidx */
+    /*
+     * Only hero tinkering permitted on-the-fly (who).
+     * Unique glyphs in glyphmap[] determine everything else (what).
+     *
+     * (Note: if hero is invisible without see invisible, he/she usually
+     * can't see himself/herself.  This applies to accessibility hacks
+     * as well as to regular display.)
+     */
+    if (is_you) {
 #ifdef TEXTCOLOR
-static const int explcolors[] = {
-    CLR_BLACK,   /* dark    */
-    CLR_GREEN,   /* noxious */
-    CLR_BROWN,   /* muddy   */
-    CLR_BLUE,    /* wet     */
-    CLR_MAGENTA, /* magical */
-    CLR_ORANGE,  /* fiery   */
-    CLR_WHITE,   /* frosty  */
+        if (!iflags.use_color || Upolyd || glyph != hero_glyph) {
+            ; /* color tweak not needed (!use_color) or not wanted (poly'd
+                 or riding--which uses steed's color, not hero's) */
+        } else if (HAS_ROGUE_IBM_GRAPHICS
+                   && g.symset[g.currentgraphics].nocolor == 0) {
+            /* actually player should be yellow-on-gray if in corridor */
+            glyphinfo->gm.sym.color = CLR_YELLOW;
+        } else if (flags.showrace) {
+            /* for showrace, non-human hero is displayed by the symbol of
+               corresponding type of monster rather than by '@' (handled
+               by newsym()); we change the color to same as human hero */
+            glyphinfo->gm.sym.color = HI_DOMESTIC;
+        }
+#endif
+        /* accessibility
+          This unchanging display character for hero was requested by
+          a blind player to enhance screen reader use.
+          Turn on override symbol if caller hasn't specified NOOVERRIDE. */
+        if (sysopt.accessibility == 1 && !(mgflags & MG_FLAG_NOOVERRIDE)) {
+            offset = SYM_HERO_OVERRIDE + SYM_OFF_X;
+            if ((g.glyphmap_perlevel_flags & GMAP_ROGUELEVEL)
+                    ? g.ov_rogue_syms[offset]
+                    : g.ov_primary_syms[offset])
+                glyphinfo->gm.sym.symidx = offset;
+        }
+        glyphinfo->gm.glyphflags |= MG_HERO;
+    }
+    if (sysopt.accessibility == 1
+        && (mgflags & MG_FLAG_NOOVERRIDE) && glyph_is_pet(glyph)) {
+        /* one more accessiblity kludge;
+           turn off override symbol if caller has specfieid NOOVERRIDE */
+        glyphinfo->gm.sym.symidx = mons[glyph_to_mon(glyph)].mlet + SYM_OFF_M;
+    }
+    glyphinfo->ttychar = g.showsyms[glyphinfo->gm.sym.symidx];
+    glyphinfo->glyph = glyph;
+}
+
+#ifdef TEXTCOLOR
+/*
+ *  This must be the same order as used for buzz() in zap.c.
+ *  The zap_color_ and altar_color_ enums are in decl.h.
+ */
+const int zapcolors[NUM_ZAP] = {
+    zap_color_missile,    zap_color_fire,  zap_color_frost,
+    zap_color_sleep,      zap_color_death, zap_color_lightning,
+    zap_color_poison_gas, zap_color_acid,
+};
+const int altarcolors[] = {
+    altar_color_unaligned, altar_color_chaotic, altar_color_neutral,
+    altar_color_lawful, altar_color_other
+};
+const int explodecolors[7] = {
+    explode_color_dark,   explode_color_noxious, explode_color_muddy,
+    explode_color_wet,    explode_color_magical, explode_color_fiery,
+    explode_color_frosty,
 };
 
+/* main_walls, mines_walls, gehennom_walls, knox_walls, sokoban_walls */
+int wallcolors[sokoban_walls + 1] = {
+    /* default init value is to match defsym[S_vwall + n].color (CLR_GRAY) */
+    CLR_GRAY, CLR_GRAY, CLR_GRAY, CLR_GRAY, CLR_GRAY,
+    /* CLR_GRAY, CLR_BROWN, CLR_RED, CLR_GRAY, CLR_BRIGHT_BLUE, */
+};
+
+#endif /* text color */
+
+#ifdef TEXTCOLOR
 #define zap_color(n) color = iflags.use_color ? zapcolors[n] : NO_COLOR
 #define cmap_color(n) color = iflags.use_color ? defsyms[n].color : NO_COLOR
 #define obj_color(n) color = iflags.use_color ? objects[n].oc_color : NO_COLOR
@@ -2080,8 +2387,10 @@ static const int explcolors[] = {
 #define pet_color(n) color = iflags.use_color ? mons[n].mcolor : NO_COLOR
 #define warn_color(n) \
     color = iflags.use_color ? def_warnsyms[n].color : NO_COLOR
-#define explode_color(n) color = iflags.use_color ? explcolors[n] : NO_COLOR
-
+#define explode_color(n) \
+    color = iflags.use_color ? explodecolors[n] : NO_COLOR
+#define wall_color(n) color = iflags.use_color ? wallcolors[n] : NO_COLOR
+#define altar_color(n) color = iflags.use_color ? altarcolors[n] : NO_COLOR
 #else /* no text color */
 
 #define zap_color(n)
@@ -2092,325 +2401,403 @@ static const int explcolors[] = {
 #define pet_color(c)
 #define warn_color(n)
 #define explode_color(n)
+#define wall_color(n)
+#define altar_color(n)
 #endif
 
-#if defined(USE_TILES) && defined(MSDOS)
-#define HAS_ROGUE_IBM_GRAPHICS \
-    (g.currentgraphics == ROGUESET && SYMHANDLING(H_IBM) && !iflags.grmode)
-#else
-#define HAS_ROGUE_IBM_GRAPHICS \
-    (g.currentgraphics == ROGUESET && SYMHANDLING(H_IBM))
+#if 0
+#define is_objpile(x, y)                         \
+    (!Hallucination && g.level.objects[(x)][(y)] \
+     && g.level.objects[(x)][(y)]->nexthere)
 #endif
 
-#define is_objpile(x,y) (!Hallucination && g.level.objects[(x)][(y)] \
-                         && g.level.objects[(x)][(y)]->nexthere)
+static int cmap_to_roguecolor(int);
 
-#define GMAP_SET                 0x00000001
-#define GMAP_ROGUELEVEL          0x00000002
-#define GMAP_ALTARCOLOR          0x00000004
+static int
+cmap_to_roguecolor(int cmap)
+{
+    int color = NO_COLOR;
+
+    if (g.symset[g.currentgraphics].nocolor)
+        return NO_COLOR;
+
+    if (cmap >= S_vwall && cmap <= S_hcdoor)
+        color = CLR_BROWN;
+    else if (cmap >= S_arrow_trap && cmap <= S_polymorph_trap)
+        color = CLR_MAGENTA;
+    else if (cmap == S_corr || cmap == S_litcorr)
+        color = CLR_GRAY;
+    else if (cmap >= S_room && cmap <= S_water
+                && cmap != S_darkroom)
+        color = CLR_GREEN;
+    else
+        color = NO_COLOR;
+
+    return color;
+}
+
+/*
+   reset_glyphmap(trigger)
+
+   The glyphmap likely needs to be re-calculated for the following triggers:
+
+   gm_levelchange    called when the player has gone to a new level.
+
+   gm_symchange      called if someone has interactively altered the symbols
+                     for the game, most likely at the options menu.
+
+   gm_optionchange   The game settings have been toggled and some of them
+                     are configured to trigger a reset_glyphmap()
+
+   gm_accessibility_change  One of the accessibility flags has changed.
+
+*/
 
 void
-map_glyphinfo(xchar x, xchar y, int glyph,
-              unsigned mgflags, glyph_info *glyphinfo)
+reset_glyphmap(enum glyphmap_change_triggers trigger)
 {
-    register int offset, idx;
+    int glyph;
+    register int offset;
     int color = NO_COLOR;
-    unsigned special = 0;
-    struct obj *obj;        /* only used for STATUE */
 
     /* condense multiple tests in macro version down to single */
     boolean has_rogue_ibm_graphics = HAS_ROGUE_IBM_GRAPHICS,
-            is_you = (x == u.ux && y == u.uy),
             has_rogue_color = (has_rogue_ibm_graphics
-                               && g.symset[g.currentgraphics].nocolor == 0),
-            do_mon_checks = FALSE;
-
-    if (x < 0 || y < 0 || x >= COLNO || y >= ROWNO) {
-        *glyphinfo = nul_glyphinfo;
-        glyphinfo->glyphflags |= MG_BADXY;
-        return;
-    }
+                               && g.symset[g.currentgraphics].nocolor == 0);
+    if (trigger == gm_levelchange)
+        g.glyphmap_perlevel_flags = 0;
 
     if (!g.glyphmap_perlevel_flags) {
         /*
          *    GMAP_SET                0x00000001
          *    GMAP_ROGUELEVEL         0x00000002
-         *    GMAP_ALTARCOLOR         0x00000004
          */
         g.glyphmap_perlevel_flags |= GMAP_SET;
 
         if (Is_rogue_level(&u.uz)) {
             g.glyphmap_perlevel_flags |= GMAP_ROGUELEVEL;
-        } else if ((Is_astralevel(&u.uz) || Is_sanctum(&u.uz))) {
-            g.glyphmap_perlevel_flags |= GMAP_ALTARCOLOR;
         }
     }
 
-    /*
-     *  Map the glyph to a character and color.
-     *
-     *  Warning:  For speed, this makes an assumption on the order of
-     *            offsets.  The order is set in display.h.
-     */
-    if ((offset = (glyph - GLYPH_NOTHING_OFF)) >= 0) {
-        idx = SYM_NOTHING + SYM_OFF_X;
-        color = NO_COLOR;
-        special |= MG_NOTHING;
-    } else if ((offset = (glyph - GLYPH_UNEXPLORED_OFF)) >= 0) {
-        idx = SYM_UNEXPLORED + SYM_OFF_X;
-        color = NO_COLOR;
-        special |= MG_UNEXPL;
-    } else if ((offset = (glyph - GLYPH_STATUE_OFF)) >= 0) { /* a statue */
-        idx = mons[offset].mlet + SYM_OFF_M;
-        if (has_rogue_color)
-            color = CLR_RED;
-        else
-            obj_color(STATUE);
-        special |= MG_STATUE;
-        if (is_objpile(x,y))
-            special |= MG_OBJPILE;
-        if ((obj = sobj_at(STATUE, x, y)) && (obj->spe & STATUE_FEMALE))
-            special |= MG_FEMALE;
-    } else if ((offset = (glyph - GLYPH_WARNING_OFF)) >= 0) { /* warn flash */
-        idx = offset + SYM_OFF_W;
-        if (has_rogue_color)
-            color = NO_COLOR;
-        else
-            warn_color(offset);
-    } else if ((offset = (glyph - GLYPH_SWALLOW_OFF)) >= 0) { /* swallow */
-        /* see swallow_to_glyph() in display.c */
-        idx = (S_sw_tl + (offset & 0x7)) + SYM_OFF_P;
-        if (has_rogue_color && iflags.use_color)
-            color = NO_COLOR;
-        else
-            mon_color(offset >> 3);
-    } else if ((offset = (glyph - GLYPH_ZAP_OFF)) >= 0) { /* zap beam */
-        /* see zapdir_to_glyph() in display.c */
-        idx = (S_vbeam + (offset & 0x3)) + SYM_OFF_P;
-        if (has_rogue_color && iflags.use_color)
-            color = NO_COLOR;
-        else
-            zap_color((offset >> 2));
-    } else if ((offset = (glyph - GLYPH_EXPLODE_OFF)) >= 0) { /* explosion */
-        idx = ((offset % MAXEXPCHARS) + S_explode1) + SYM_OFF_P;
-        explode_color(offset / MAXEXPCHARS);
-    } else if ((offset = (glyph - GLYPH_CMAP_OFF)) >= 0) { /* cmap */
-        idx = offset + SYM_OFF_P;
-        if (has_rogue_color && iflags.use_color) {
-            if (offset >= S_vwall && offset <= S_hcdoor)
-                color = CLR_BROWN;
-            else if (offset >= S_arrow_trap && offset <= S_polymorph_trap)
-                color = CLR_MAGENTA;
-            else if (offset == S_corr || offset == S_litcorr)
-                color = CLR_GRAY;
-            else if (offset >= S_room && offset <= S_water
-                     && offset != S_darkroom)
-                color = CLR_GREEN;
-            else
-                color = NO_COLOR;
-#ifdef TEXTCOLOR
-        /* provide a visible difference if normal and lit corridor
-           use the same symbol */
-        } else if (iflags.use_color && offset == S_litcorr
-                   && g.showsyms[idx] == g.showsyms[S_corr + SYM_OFF_P]) {
-            color = CLR_WHITE;
-#endif
-        /* try to provide a visible difference between water and lava
-           if they use the same symbol and color is disabled */
-        } else if (!iflags.use_color && offset == S_lava
-                   && (g.showsyms[idx] == g.showsyms[S_pool + SYM_OFF_P]
-                       || g.showsyms[idx]
-                          == g.showsyms[S_water + SYM_OFF_P])) {
-            special |= MG_BW_LAVA;
-        /* similar for floor [what about empty doorway?] and ice */
-        } else if (!iflags.use_color && offset == S_ice
-                   && (g.showsyms[idx] == g.showsyms[S_room + SYM_OFF_P]
-                       || g.showsyms[idx]
-                          == g.showsyms[S_darkroom + SYM_OFF_P])) {
-            special |= MG_BW_ICE;
-        } else if (offset == S_altar && iflags.use_color) {
-            int amsk = altarmask_at(x, y); /* might be a mimic */
+    for (glyph = 0; glyph < MAX_GLYPH; ++glyph) {
+        glyph_map *gmap = &glyphmap[glyph];
 
-            if ((g.glyphmap_perlevel_flags & GMAP_ALTARCOLOR)
-                && (amsk & AM_SHRINE) != 0) {
-                /* high altar */
-                color = CLR_BRIGHT_MAGENTA;
-            } else {
-                switch (amsk & AM_MASK) {
-#if 0   /*
-         * On OSX with TERM=xterm-color256 these render as
-         *  white -> tty: gray, curses: ok
-         *  gray  -> both tty and curses: black
-         *  black -> both tty and curses: blue
-         *  red   -> both tty and curses: ok.
-         * Since the colors have specific associations (with the
-         * unicorns matched with each alignment), we shouldn't use
-         * scrambled colors and we don't have sufficient information
-         * to handle platform-specific color variations.
+        gmap->glyphflags = 0U;
+        /*
+         *  Map the glyph to a character and color.
+         *
+         *  Warning:  For speed, this makes an assumption on the order of
+         *            offsets.  The order is set in display.h.
          */
-                case AM_LAWFUL:  /* 4 */
-                    color = CLR_WHITE;
+        if ((offset = (glyph - GLYPH_NOTHING_OFF)) >= 0) {
+            gmap->sym.symidx = SYM_NOTHING + SYM_OFF_X;
+            color = NO_COLOR;
+            gmap->glyphflags |= MG_NOTHING;
+        } else if ((offset = (glyph - GLYPH_UNEXPLORED_OFF)) >= 0) {
+            gmap->sym.symidx = SYM_UNEXPLORED + SYM_OFF_X;
+            color = NO_COLOR;
+            gmap->glyphflags |= MG_UNEXPL;
+        } else if ((offset = (glyph - GLYPH_STATUE_FEM_PILETOP_OFF)) >= 0) {
+            gmap->sym.symidx = mons[offset].mlet + SYM_OFF_M;
+            if (has_rogue_color)
+                color = CLR_RED;
+            else
+                obj_color(STATUE);
+            gmap->glyphflags |= (MG_STATUE | MG_FEMALE | MG_OBJPILE);
+        } else if ((offset = (glyph - GLYPH_STATUE_MALE_PILETOP_OFF)) >= 0) {
+            gmap->sym.symidx = mons[offset].mlet + SYM_OFF_M;
+            if (has_rogue_color)
+                color = CLR_RED;
+            else
+                obj_color(STATUE);
+            gmap->glyphflags |= (MG_STATUE | MG_MALE | MG_OBJPILE);
+        } else if ((offset = (glyph - GLYPH_BODY_PILETOP_OFF)) >= 0) {
+            gmap->sym.symidx = objects[CORPSE].oc_class + SYM_OFF_O;
+            if (has_rogue_color)
+                color = CLR_RED;
+            else
+                mon_color(offset);
+            gmap->glyphflags |= (MG_CORPSE | MG_OBJPILE);
+        } else if ((offset = (glyph - GLYPH_OBJ_PILETOP_OFF)) >= 0) {
+            gmap->sym.symidx = objects[offset].oc_class + SYM_OFF_O;
+            if (offset == BOULDER)
+                gmap->sym.symidx = SYM_BOULDER + SYM_OFF_X;
+            if (has_rogue_color) {
+                switch (objects[offset].oc_class) {
+                case COIN_CLASS:
+                    color = CLR_YELLOW;
                     break;
-                case AM_NEUTRAL: /* 2 */
-                    color = CLR_GRAY;
-                    break;
-                case AM_CHAOTIC: /* 1 */
-                    color = CLR_BLACK;
-                    break;
-#else /* !0: TEMP? */
-                case AM_LAWFUL:  /* 4 */
-                case AM_NEUTRAL: /* 2 */
-                case AM_CHAOTIC: /* 1 */
-                    cmap_color(S_altar); /* gray */
-                    break;
-#endif /* 0 */
-                case AM_NONE:    /* 0 */
+                case FOOD_CLASS:
                     color = CLR_RED;
                     break;
-                default: /* 3, 5..7 -- shouldn't happen but 3 was possible
-                          * prior to 3.6.3 (due to faulty sink polymorph) */
-                    color = NO_COLOR;
+                default:
+                    color = CLR_BRIGHT_BLUE;
                     break;
                 }
-            }
-        } else {
-            cmap_color(offset);
-        }
-    } else if ((offset = (glyph - GLYPH_OBJ_OFF)) >= 0) { /* object */
-        idx = objects[offset].oc_class + SYM_OFF_O;
-        if (offset == BOULDER)
-            idx = SYM_BOULDER + SYM_OFF_X;
-        if (has_rogue_color && iflags.use_color) {
-            switch (objects[offset].oc_class) {
-            case COIN_CLASS:
-                color = CLR_YELLOW;
-                break;
-            case FOOD_CLASS:
+            } else
+                obj_color(offset);
+            gmap->glyphflags |= MG_OBJPILE;
+        } else if ((offset = (glyph - GLYPH_STATUE_FEM_OFF)) >= 0) {
+            gmap->sym.symidx = mons[offset].mlet + SYM_OFF_M;
+            if (has_rogue_color)
                 color = CLR_RED;
-                break;
-            default:
-                color = CLR_BRIGHT_BLUE;
-                break;
-            }
-        } else
-            obj_color(offset);
-        if (offset != BOULDER && is_objpile(x,y))
-            special |= MG_OBJPILE;
-    } else if ((offset = (glyph - GLYPH_RIDDEN_OFF)) >= 0) { /* mon ridden */
-        idx = mons[offset].mlet + SYM_OFF_M;
-        if (has_rogue_color)
-            /* This currently implies that the hero is here -- monsters */
-            /* don't ride (yet...).  Should we set it to yellow like in */
-            /* the monster case below?  There is no equivalent in rogue. */
-            color = NO_COLOR; /* no need to check iflags.use_color */
-        else
-            mon_color(offset);
-        special |= MG_RIDDEN;
-        do_mon_checks = TRUE;
-    } else if ((offset = (glyph - GLYPH_BODY_OFF)) >= 0) { /* a corpse */
-        idx = objects[CORPSE].oc_class + SYM_OFF_O;
-        if (has_rogue_color && iflags.use_color)
-            color = CLR_RED;
-        else
-            mon_color(offset);
-        special |= MG_CORPSE;
-        if (is_objpile(x,y))
-            special |= MG_OBJPILE;
-    } else if ((offset = (glyph - GLYPH_DETECT_OFF)) >= 0) { /* mon detect */
-        idx = mons[offset].mlet + SYM_OFF_M;
-        if (has_rogue_color)
-            color = NO_COLOR; /* no need to check iflags.use_color */
-        else
-            mon_color(offset);
-        /* Disabled for now; anyone want to get reverse video to work? */
-        /* is_reverse = TRUE; */
-        special |= MG_DETECT;
-        do_mon_checks = TRUE;
-    } else if ((offset = (glyph - GLYPH_INVIS_OFF)) >= 0) { /* invisible */
-        idx = SYM_INVISIBLE + SYM_OFF_X;
-        if (has_rogue_color)
-            color = NO_COLOR; /* no need to check iflags.use_color */
-        else
-            invis_color(offset);
-        special |= MG_INVIS;
-    } else if ((offset = (glyph - GLYPH_PET_OFF)) >= 0) { /* a pet */
-        idx = mons[offset].mlet + SYM_OFF_M;
-        if (has_rogue_color)
-            color = NO_COLOR; /* no need to check iflags.use_color */
-        else
-            pet_color(offset);
-        special |= MG_PET;
-        do_mon_checks = TRUE;
-    } else { /* a monster */
-        idx = mons[glyph].mlet + SYM_OFF_M;
-        if (has_rogue_color && iflags.use_color) {
-            if (is_you)
-                /* actually player should be yellow-on-gray if in corridor */
-                color = CLR_YELLOW;
             else
+                obj_color(STATUE);
+            gmap->glyphflags |= (MG_STATUE | MG_FEMALE);
+        } else if ((offset = (glyph - GLYPH_STATUE_MALE_OFF)) >= 0) {
+            gmap->sym.symidx = mons[offset].mlet + SYM_OFF_M;
+            if (has_rogue_color)
+                color = CLR_RED;
+            else
+                obj_color(STATUE);
+            gmap->glyphflags |= (MG_STATUE | MG_MALE);
+        } else if ((offset = (glyph - GLYPH_WARNING_OFF))
+                   >= 0) { /* warn flash */
+            gmap->sym.symidx = offset + SYM_OFF_W;
+            if (has_rogue_color)
                 color = NO_COLOR;
-        } else {
-            mon_color(glyph);
-#ifdef TEXTCOLOR
-            /* special case the hero for `showrace' option */
-            if (iflags.use_color && is_you && flags.showrace && !Upolyd)
-                color = HI_DOMESTIC;
-#endif
-        }
-        do_mon_checks = TRUE;
-    }
+            else
+                warn_color(offset);
+        } else if ((offset = (glyph - GLYPH_EXPLODE_FROSTY_OFF)) >= 0) {
+            gmap->sym.symidx = S_expl_tl + offset + SYM_OFF_P;
+            explode_color(expl_frosty);
+        } else if ((offset = (glyph - GLYPH_EXPLODE_FIERY_OFF)) >= 0) {
+            gmap->sym.symidx = S_expl_tl + offset + SYM_OFF_P;
+            explode_color(expl_fiery);
+        } else if ((offset = (glyph - GLYPH_EXPLODE_MAGICAL_OFF)) >= 0) {
+            gmap->sym.symidx = S_expl_tl + offset + SYM_OFF_P;
+            explode_color(expl_magical);
+        } else if ((offset = (glyph - GLYPH_EXPLODE_WET_OFF)) >= 0) {
+            gmap->sym.symidx = S_expl_tl + offset + SYM_OFF_P;
+            explode_color(expl_wet);
+        } else if ((offset = (glyph - GLYPH_EXPLODE_MUDDY_OFF)) >= 0) {
+            gmap->sym.symidx = S_expl_tl + offset + SYM_OFF_P;
+            explode_color(expl_muddy);
+        } else if ((offset = (glyph - GLYPH_EXPLODE_NOXIOUS_OFF)) >= 0) {
+            gmap->sym.symidx = S_expl_tl + offset + SYM_OFF_P;
+            explode_color(expl_noxious);
+        } else if ((offset = (glyph - GLYPH_EXPLODE_DARK_OFF)) >= 0) {
+            gmap->sym.symidx = S_expl_tl + offset + SYM_OFF_P;
+            explode_color(expl_dark);
+        } else if ((offset = (glyph - GLYPH_SWALLOW_OFF)) >= 0) {
+            /* see swallow_to_glyph() in display.c */
+            gmap->sym.symidx = (S_sw_tl + (offset & 0x7)) + SYM_OFF_P;
+            if (has_rogue_color)
+                color = NO_COLOR;
+            else
+                mon_color(offset >> 3);
+        } else if ((offset = (glyph - GLYPH_CMAP_C_OFF)) >= 0) {
+            gmap->sym.symidx = S_digbeam + offset + SYM_OFF_P;
+            if (has_rogue_color)
+                color = cmap_to_roguecolor(S_digbeam + offset);
+            else
+                cmap_color(S_digbeam + offset);
+        } else if ((offset = (glyph - GLYPH_ZAP_OFF)) >= 0) {
+            /* see zapdir_to_glyph() in display.c */
+            gmap->sym.symidx = (S_vbeam + (offset & 0x3)) + SYM_OFF_P;
+            if (has_rogue_color)
+                color = NO_COLOR;
+            else
+                zap_color((offset >> 2));
+        } else if ((offset = (glyph - GLYPH_CMAP_B_OFF)) >= 0) {
+            int cmap = S_grave + offset;
 
-    if (do_mon_checks) {
-        struct monst *m;
+            gmap->sym.symidx = cmap + SYM_OFF_P;
+            cmap_color(cmap);
+            if (!iflags.use_color) {
+                /* try to provide a visible difference between water and lava
+                   if they use the same symbol and color is disabled */
+                if (cmap == S_lava
+                    && (g.showsyms[gmap->sym.symidx]
+                            == g.showsyms[S_pool + SYM_OFF_P]
+                        || g.showsyms[gmap->sym.symidx]
+                               == g.showsyms[S_water + SYM_OFF_P])) {
+                    gmap->glyphflags |= MG_BW_LAVA;
 
-        if (is_you) {
-            if (Ugender == FEMALE)
-                special |= MG_FEMALE;
-        } else {
-            /* when hero is riding, steed will be shown at hero's location
-               but has not been placed on the map so m_at() won't find it */
-            m = (x == u.ux && y == u.uy && u.usteed) ? u.usteed : m_at(x, y);
-            if (m) {
-                if (!Hallucination) {
-                    if (m->female)
-                        special |= MG_FEMALE;
-                } else if (rn2_on_display_rng(2)) {
-                        special |= MG_FEMALE;
+                /* similar for floor [what about empty doorway?] and ice */
+                } else if (cmap == S_ice
+                           && (g.showsyms[gmap->sym.symidx]
+                                   == g.showsyms[S_room + SYM_OFF_P]
+                               || g.showsyms[gmap->sym.symidx]
+                                      == g.showsyms[S_darkroom
+                                                    + SYM_OFF_P])) {
+                    gmap->glyphflags |= MG_BW_ICE;
+
+                /* and for fountain vs sink */
+                } else if (cmap == S_sink
+                           && (g.showsyms[gmap->sym.symidx]
+                               == g.showsyms[S_fountain + SYM_OFF_P])) {
+                    gmap->glyphflags |= MG_BW_SINK;
                 }
+            } else if (has_rogue_color) {
+                color = cmap_to_roguecolor(cmap);
             }
-        }
-    }
-    /* These were requested by a blind player to enhance screen reader use */
-    if (sysopt.accessibility == 1 && !(mgflags & MG_FLAG_NOOVERRIDE)) {
-        int ovidx;
-
-        if ((special & MG_PET) != 0) {
-            ovidx = SYM_PET_OVERRIDE + SYM_OFF_X;
-            if ((g.glyphmap_perlevel_flags & GMAP_ROGUELEVEL)
-                    ? g.ov_rogue_syms[ovidx]
-                    : g.ov_primary_syms[ovidx])
-                idx = ovidx;
-        }
-        if (is_you) {
-            ovidx = SYM_HERO_OVERRIDE + SYM_OFF_X;
-            if ((g.glyphmap_perlevel_flags & GMAP_ROGUELEVEL)
-                    ? g.ov_rogue_syms[ovidx]
-                    : g.ov_primary_syms[ovidx])
-                idx = ovidx;
-        }
-    }
-
+        } else if ((offset = (glyph - GLYPH_ALTAR_OFF)) >= 0) {
+            /* unaligned, chaotic, neutral, lawful, other altar */
+            gmap->sym.symidx = S_altar + SYM_OFF_P;
+            if (has_rogue_color)
+                color = cmap_to_roguecolor(S_altar);
+            else
+                altar_color(offset);
+        } else if ((offset = (glyph - GLYPH_CMAP_A_OFF)) >= 0) {
+            int cmap = S_ndoor + offset;
+            gmap->sym.symidx = cmap + SYM_OFF_P;
+            cmap_color(cmap);
+            /*
+             *   Some speciality color mappings not hardcoded in data init
+             */
+            if (has_rogue_color) {
+                color = cmap_to_roguecolor(cmap);
 #ifdef TEXTCOLOR
-    /* Turn off color if no color defined, or rogue level w/o PC graphics. */
-    if (!has_color(color)
-        || ((g.glyphmap_perlevel_flags & GMAP_ROGUELEVEL) && !has_rogue_color))
+            /* provide a visible difference if normal and lit corridor
+               use the same symbol */
+            } else if ((cmap == S_litcorr)
+                       && g.showsyms[gmap->sym.symidx]
+                              == g.showsyms[S_corr + SYM_OFF_P]) {
+                color = CLR_WHITE;
 #endif
-        color = NO_COLOR;
-    glyphinfo->color = color;
-    glyphinfo->symidx = idx;
-    glyphinfo->ttychar = g.showsyms[idx];
-    glyphinfo->glyphflags = special;
-    glyphinfo->glyph = glyph;
+            }
+        } else if ((offset = (glyph - GLYPH_CMAP_SOKO_OFF)) >= 0) {
+            gmap->sym.symidx = S_vwall + offset + SYM_OFF_P;
+            wall_color(sokoban_walls);
+        } else if ((offset = (glyph - GLYPH_CMAP_KNOX_OFF)) >= 0) {
+            gmap->sym.symidx = S_vwall + offset + SYM_OFF_P;
+            wall_color(knox_walls);
+        } else if ((offset = (glyph - GLYPH_CMAP_GEH_OFF)) >= 0) {
+            gmap->sym.symidx = S_vwall + offset + SYM_OFF_P;
+            wall_color(gehennom_walls);
+        } else if ((offset = (glyph - GLYPH_CMAP_MINES_OFF)) >= 0) {
+            gmap->sym.symidx = S_vwall + offset + SYM_OFF_P;
+            wall_color(mines_walls);
+        } else if ((offset = (glyph - GLYPH_CMAP_MAIN_OFF)) >= 0) {
+            gmap->sym.symidx = S_vwall + offset + SYM_OFF_P;
+            if (has_rogue_color)
+                color = cmap_to_roguecolor(S_vwall + offset);
+            else
+                wall_color(main_walls);
+        } else if ((offset = (glyph - GLYPH_CMAP_STONE_OFF)) >= 0) {
+            gmap->sym.symidx = SYM_OFF_P;
+            cmap_color(S_stone);
+        } else if ((offset = (glyph - GLYPH_OBJ_OFF)) >= 0) {
+            gmap->sym.symidx = objects[offset].oc_class + SYM_OFF_O;
+            if (offset == BOULDER)
+                gmap->sym.symidx = SYM_BOULDER + SYM_OFF_X;
+            if (has_rogue_color) {
+                switch (objects[offset].oc_class) {
+                case COIN_CLASS:
+                    color = CLR_YELLOW;
+                    break;
+                case FOOD_CLASS:
+                    color = CLR_RED;
+                    break;
+                default:
+                    color = CLR_BRIGHT_BLUE;
+                    break;
+                }
+            } else
+                obj_color(offset);
+        } else if ((offset = (glyph - GLYPH_RIDDEN_FEM_OFF)) >= 0) {
+            gmap->sym.symidx = mons[offset].mlet + SYM_OFF_M;
+            if (has_rogue_color)
+                /* This currently implies that the hero is here -- monsters */
+                /* don't ride (yet...).  Should we set it to yellow like in */
+                /* the monster case below?  There is no equivalent in rogue.
+                 */
+                color = NO_COLOR;
+            else
+                mon_color(offset);
+            gmap->glyphflags |= (MG_RIDDEN | MG_FEMALE);
+        } else if ((offset = (glyph - GLYPH_RIDDEN_MALE_OFF)) >= 0) {
+            gmap->sym.symidx = mons[offset].mlet + SYM_OFF_M;
+            if (has_rogue_color)
+                color = NO_COLOR;
+            else
+                mon_color(offset);
+            gmap->glyphflags |= (MG_RIDDEN | MG_MALE);
+        } else if ((offset = (glyph - GLYPH_BODY_OFF)) >= 0) {
+            gmap->sym.symidx = objects[CORPSE].oc_class + SYM_OFF_O;
+            if (has_rogue_color)
+                color = CLR_RED;
+            else
+                mon_color(offset);
+            gmap->glyphflags |= MG_CORPSE;
+        } else if ((offset = (glyph - GLYPH_DETECT_FEM_OFF)) >= 0) {
+            gmap->sym.symidx = mons[offset].mlet + SYM_OFF_M;
+            if (has_rogue_color)
+                color = NO_COLOR;
+            else
+                mon_color(offset);
+            /* Disabled for now; anyone want to get reverse video to work? */
+            /* is_reverse = TRUE; */
+            gmap->glyphflags |= (MG_DETECT | MG_FEMALE);
+        } else if ((offset = (glyph - GLYPH_DETECT_MALE_OFF)) >= 0) {
+            gmap->sym.symidx = mons[offset].mlet + SYM_OFF_M;
+            if (has_rogue_color)
+                color = NO_COLOR;
+            else
+                mon_color(offset);
+            /* Disabled for now; anyone want to get reverse video to work? */
+            /* is_reverse = TRUE; */
+            gmap->glyphflags |= (MG_DETECT | MG_MALE);
+        } else if ((offset = (glyph - GLYPH_INVIS_OFF)) >= 0) {
+            gmap->sym.symidx = SYM_INVISIBLE + SYM_OFF_X;
+            if (has_rogue_color)
+                color = NO_COLOR;
+            else
+                invis_color(offset);
+            gmap->glyphflags |= MG_INVIS;
+        } else if ((offset = (glyph - GLYPH_PET_FEM_OFF)) >= 0) {
+            gmap->sym.symidx = mons[offset].mlet + SYM_OFF_M;
+            if (has_rogue_color)
+                color = NO_COLOR;
+            else
+                pet_color(offset);
+            gmap->glyphflags |= (MG_PET | MG_FEMALE);
+        } else if ((offset = (glyph - GLYPH_PET_MALE_OFF)) >= 0) {
+            gmap->sym.symidx = mons[offset].mlet + SYM_OFF_M;
+            if (has_rogue_color)
+                color = NO_COLOR;
+            else
+                pet_color(offset);
+            gmap->glyphflags |= (MG_PET | MG_MALE);
+        } else if ((offset = (glyph - GLYPH_MON_FEM_OFF)) >= 0) {
+            gmap->sym.symidx = mons[offset].mlet + SYM_OFF_M;
+            if (has_rogue_color) {
+                color = NO_COLOR;
+            } else {
+                mon_color(offset);
+            }
+            gmap->glyphflags |= MG_FEMALE;
+        } else if ((offset = (glyph - GLYPH_MON_MALE_OFF)) >= 0) {
+            gmap->sym.symidx = mons[offset].mlet + SYM_OFF_M;
+            if (has_rogue_color) {
+                color = CLR_YELLOW;
+            } else {
+                mon_color(offset);
+            }
+            gmap->glyphflags |= MG_MALE;
+        }
+        /* This was requested by a blind player to enhance screen reader use
+         */
+        if (sysopt.accessibility == 1 && (gmap->glyphflags & MG_PET) != 0) {
+            int pet_override = ((g.glyphmap_perlevel_flags & GMAP_ROGUELEVEL)
+                         ? g.ov_rogue_syms[SYM_PET_OVERRIDE + SYM_OFF_X]
+                         : g.ov_primary_syms[SYM_PET_OVERRIDE + SYM_OFF_X]);
+
+            if (g.showsyms[pet_override] != ' ')
+                gmap->sym.symidx = SYM_PET_OVERRIDE + SYM_OFF_X;
+        }
+#ifdef TEXTCOLOR
+        /* Turn off color if no color defined, or rogue level w/o PC graphics.
+         */
+        if ((!has_color(color)
+             || ((g.glyphmap_perlevel_flags & GMAP_ROGUELEVEL)
+                 && !has_rogue_color)) || !iflags.use_color)
+#endif
+            color = NO_COLOR;
+        gmap->sym.color = color;
+    }
+    g.glyph_reset_timestamp = g.moves;
 }
 
 /* ------------------------------------------------------------------------ */
@@ -2419,10 +2806,10 @@ map_glyphinfo(xchar x, xchar y, int glyph,
 #ifdef WA_VERBOSE
 
 static const char *type_to_name(int);
-static void error4(int, int, int, int, int, int);
+static void error4(coordxy, coordxy, int, int, int, int);
 
 static int bad_count[MAX_TYPE]; /* count of positions flagged as bad */
-static const char *type_names[MAX_TYPE] = {
+static const char *const type_names[MAX_TYPE] = {
     "STONE", "VWALL", "HWALL", "TLCORNER", "TRCORNER", "BLCORNER", "BRCORNER",
     "CROSSWALL", "TUWALL", "TDWALL", "TLWALL", "TRWALL", "DBWALL", "TREE",
     "SDOOR", "SCORR", "POOL", "MOAT", "WATER", "DRAWBRIDGE_UP", "LAVAPOOL",
@@ -2438,7 +2825,7 @@ type_to_name(int type)
 }
 
 static void
-error4(int x, int y, int a, int b, int c, int dd)
+error4(coordxy x, coordxy y, int a, int b, int c, int dd)
 {
     pline("set_wall_state: %s @ (%d,%d) %s%s%s%s",
           type_to_name(levl[x][y].typ), x, y,
@@ -2454,7 +2841,7 @@ error4(int x, int y, int a, int b, int c, int dd)
  * Things that are ambiguous: lava
  */
 static int
-check_pos(int x, int y, int which)
+check_pos(coordxy x, coordxy y, int which)
 {
     int type;
 
@@ -2470,7 +2857,7 @@ check_pos(int x, int y, int which)
 /*ARGSUSED*/
 #ifdef WA_VERBOSE
 static boolean
-more_than_one(int x, int y, int a, int b, int c)
+more_than_one(coordxy x, coordxy y, coordxy a, coordxy b, coordxy c)
 {
     if ((a && (b | c)) || (b && (a | c)) || (c && (a | b))) {
         error4(x, y, a, b, c, 0);
@@ -2487,11 +2874,11 @@ more_than_one(int x, int y, int a, int b, int c)
 static int
 set_twall(
 #ifdef WA_VERBOSE
-          int x0, int y0, /* used #if WA_VERBOSE */
+          coordxy x0, coordxy y0, /* used #if WA_VERBOSE */
 #else
-          int x0 UNUSED, int y0 UNUSED,
+          coordxy x0 UNUSED, coordxy y0 UNUSED,
 #endif
-          int x1, int y1, int x2, int y2, int x3, int y3)
+          coordxy x1, coordxy y1, coordxy x2, coordxy y2, coordxy x3, coordxy y3)
 {
     int wmode, is_1, is_2, is_3;
 
@@ -2508,7 +2895,7 @@ set_twall(
 
 /* Return wall mode for a horizontal or vertical wall. */
 static int
-set_wall(int x, int y, int horiz)
+set_wall(coordxy x, coordxy y, int horiz)
 {
     int wmode, is_1, is_2;
 
@@ -2529,9 +2916,9 @@ set_wall(int x, int y, int horiz)
 
 /* Return a wall mode for a corner wall. (x4,y4) is the "inner" position. */
 static int
-set_corn(int x1, int y1, int x2, int y2, int x3, int y3, int x4, int y4)
+set_corn(coordxy x1, coordxy y1, coordxy x2, coordxy y2, coordxy x3, coordxy y3, coordxy x4, coordxy y4)
 {
-    int wmode, is_1, is_2, is_3, is_4;
+    coordxy wmode, is_1, is_2, is_3, is_4;
 
     is_1 = check_pos(x1, y1, 1);
     is_2 = check_pos(x2, y2, 1);
@@ -2557,9 +2944,9 @@ set_corn(int x1, int y1, int x2, int y2, int x3, int y3, int x4, int y4)
 
 /* Return mode for a crosswall. */
 static int
-set_crosswall(int x, int y)
+set_crosswall(coordxy x, coordxy y)
 {
-    int wmode, is_1, is_2, is_3, is_4;
+    coordxy wmode, is_1, is_2, is_3, is_4;
 
     is_1 = check_pos(x - 1, y - 1, 1);
     is_2 = check_pos(x + 1, y - 1, 1);
@@ -2590,13 +2977,66 @@ set_crosswall(int x, int y)
     return wmode;
 }
 
+/* called for every <x,y> by set_wall_state() and for specific <x,y> during
+   vault wall repair */
+void
+xy_set_wall_state(coordxy x, coordxy y)
+{
+    coordxy wmode;
+    struct rm *lev = &levl[x][y];
+
+    switch (lev->typ) {
+    case SDOOR:
+        wmode = set_wall(x, y, (coordxy) lev->horizontal);
+        break;
+    case VWALL:
+        wmode = set_wall(x, y, 0);
+        break;
+    case HWALL:
+        wmode = set_wall(x, y, 1);
+        break;
+    case TDWALL:
+        wmode = set_twall(x, y, x, y - 1, x - 1, y + 1, x + 1, y + 1);
+        break;
+    case TUWALL:
+        wmode = set_twall(x, y, x, y + 1, x + 1, y - 1, x - 1, y - 1);
+        break;
+    case TLWALL:
+        wmode = set_twall(x, y, x + 1, y, x - 1, y - 1, x - 1, y + 1);
+        break;
+    case TRWALL:
+        wmode = set_twall(x, y, x - 1, y, x + 1, y + 1, x + 1, y - 1);
+        break;
+    case TLCORNER:
+        wmode = set_corn(x - 1, y - 1, x, y - 1, x - 1, y, x + 1, y + 1);
+        break;
+    case TRCORNER:
+        wmode = set_corn(x, y - 1, x + 1, y - 1, x + 1, y, x - 1, y + 1);
+        break;
+    case BLCORNER:
+        wmode = set_corn(x, y + 1, x - 1, y + 1, x - 1, y, x + 1, y - 1);
+        break;
+    case BRCORNER:
+        wmode = set_corn(x + 1, y, x + 1, y + 1, x, y + 1, x - 1, y - 1);
+        break;
+    case CROSSWALL:
+        wmode = set_crosswall(x, y);
+        break;
+
+    default:
+        wmode = -1; /* don't set wall info */
+        break;
+    }
+
+    if (wmode >= 0)
+        lev->wall_info = (lev->wall_info & ~WM_MASK) | wmode;
+}
+
 /* Called from mklev.  Scan the level and set the wall modes. */
 void
 set_wall_state(void)
 {
-    int x, y;
-    int wmode;
-    struct rm *lev;
+    coordxy x, y;
 
 #ifdef WA_VERBOSE
     for (x = 0; x < MAX_TYPE; x++)
@@ -2604,64 +3044,15 @@ set_wall_state(void)
 #endif
 
     for (x = 0; x < COLNO; x++)
-        for (lev = &levl[x][0], y = 0; y < ROWNO; y++, lev++) {
-            switch (lev->typ) {
-            case SDOOR:
-                wmode = set_wall(x, y, (int) lev->horizontal);
-                break;
-            case VWALL:
-                wmode = set_wall(x, y, 0);
-                break;
-            case HWALL:
-                wmode = set_wall(x, y, 1);
-                break;
-            case TDWALL:
-                wmode = set_twall(x, y, x, y - 1, x - 1, y + 1, x + 1, y + 1);
-                break;
-            case TUWALL:
-                wmode = set_twall(x, y, x, y + 1, x + 1, y - 1, x - 1, y - 1);
-                break;
-            case TLWALL:
-                wmode = set_twall(x, y, x + 1, y, x - 1, y - 1, x - 1, y + 1);
-                break;
-            case TRWALL:
-                wmode = set_twall(x, y, x - 1, y, x + 1, y + 1, x + 1, y - 1);
-                break;
-            case TLCORNER:
-                wmode =
-                    set_corn(x - 1, y - 1, x, y - 1, x - 1, y, x + 1, y + 1);
-                break;
-            case TRCORNER:
-                wmode =
-                    set_corn(x, y - 1, x + 1, y - 1, x + 1, y, x - 1, y + 1);
-                break;
-            case BLCORNER:
-                wmode =
-                    set_corn(x, y + 1, x - 1, y + 1, x - 1, y, x + 1, y - 1);
-                break;
-            case BRCORNER:
-                wmode =
-                    set_corn(x + 1, y, x + 1, y + 1, x, y + 1, x - 1, y - 1);
-                break;
-            case CROSSWALL:
-                wmode = set_crosswall(x, y);
-                break;
-
-            default:
-                wmode = -1; /* don't set wall info */
-                break;
-            }
-
-            if (wmode >= 0)
-                lev->wall_info = (lev->wall_info & ~WM_MASK) | wmode;
-        }
+        for (y = 0; y < ROWNO; y++)
+            xy_set_wall_state(x, y);
 
 #ifdef WA_VERBOSE
     /* check if any bad positions found */
     for (x = y = 0; x < MAX_TYPE; x++)
         if (bad_count[x]) {
             if (y == 0) {
-                y = 1; /* only print once */
+                y = 1; /* only prcoordxy once */
                 pline("set_wall_type: wall mode problems with: ");
             }
             pline("%s %d;", type_names[x], bad_count[x]);
@@ -2671,30 +3062,36 @@ set_wall_state(void)
 
 /* ------------------------------------------------------------------------ */
 /* This matrix is used here and in vision.c. */
-unsigned char seenv_matrix[3][3] = { { SV2, SV1, SV0 },
-                                     { SV3, SVALL, SV7 },
-                                     { SV4, SV5, SV6 } };
+const seenV seenv_matrix[3][3] = {
+    { SV2, SV1,   SV0 },
+    { SV3, SVALL, SV7 },
+    { SV4, SV5,   SV6 }
+};
 
 #define sign(z) ((z) < 0 ? -1 : ((z) > 0 ? 1 : 0))
 
 /* Set the seen vector of lev as if seen from (x0,y0) to (x,y). */
 static void
-set_seenv(struct rm *lev,
-          int x0, int y0, int x, int y) /* from, to */
+set_seenv(
+    struct rm *lev,
+    coordxy x0, coordxy y0, /* from */
+    coordxy x, coordxy y)   /*  to  */
 {
-    int dx = x - x0, dy = y0 - y;
+    coordxy dx = x - x0, dy = y0 - y;
 
     lev->seenv |= seenv_matrix[sign(dy) + 1][sign(dx) + 1];
 }
 
 /* Called by blackout(vault.c) when vault guard removes temporary corridor,
-   turning spot <x0,y0> back into stone; <x1,y1> is an adjacent spot. */
+   turning spot <x0,y0> back coordxyo stone; <x1,y1> is an adjacent spot. */
 void
-unset_seenv(struct rm *lev,                 /* &levl[x1][y1] */
-            int x0, int y0, int x1, int y1) /* from, to; abs(x1-x0)==1
-                                               && abs(y0-y1)==1 */
+unset_seenv(
+    struct rm *lev,         /* &levl[x1][y1] */
+    coordxy x0, coordxy y0, /* from */
+    coordxy x1, coordxy y1) /*  to; abs(x1-x0)==1 && abs(y0-y1)==1 */
+
 {
-    int dx = x1 - x0, dy = y0 - y1;
+    coordxy dx = x1 - x0, dy = y0 - y1;
 
     lev->seenv &= ~seenv_matrix[dy + 1][dx + 1];
 }
@@ -2762,16 +3159,44 @@ t_warn(struct rm *lev)
     static const char warn_str[] = "wall_angle: %s: case %d: seenv = 0x%x";
     const char *wname;
 
-    if (lev->typ == TUWALL)
+    /* 3.7: non-T_wall cases added after shop repair (via breaching a wall,
+       using locking magic to put a door there, then unlocking the door;
+       D_CLOSED carried over to the wall) triggered warning for "unknown" */
+    switch (lev->typ) {
+    case TUWALL:
         wname = "tuwall";
-    else if (lev->typ == TLWALL)
+        break;
+    case TLWALL:
         wname = "tlwall";
-    else if (lev->typ == TRWALL)
+        break;
+    case TRWALL:
         wname = "trwall";
-    else if (lev->typ == TDWALL)
+        break;
+    case TDWALL:
         wname = "tdwall";
-    else
+        break;
+    case VWALL:
+        wname = "vwall";
+        break;
+    case HWALL:
+        wname = "hwall";
+        break;
+    case TLCORNER:
+        wname = "tlcorner";
+        break;
+    case TRCORNER:
+        wname = "trcorner";
+        break;
+    case BLCORNER:
+        wname = "blcorner";
+        break;
+    case BRCORNER:
+        wname = "brcorner";
+        break;
+    default:
         wname = "unknown";
+        break;
+    }
     impossible(warn_str, wname, lev->wall_info & WM_MASK,
                (unsigned int) lev->seenv);
 }
@@ -3092,4 +3517,16 @@ wall_angle(struct rm *lev)
     return idx;
 }
 
+/*
+ * c++ 20 has problems with some of the display.h macros because
+ * comparisons and bit-fiddling and math between different enums
+ * is deprecated.
+ * Create function versions of some of the macros used in some
+ * NetHack c++ source files (Qt) for use there.
+ */
+int
+fn_cmap_to_glyph(int cmap)
+{
+    return cmap_to_glyph(cmap);
+}
 /*display.c*/

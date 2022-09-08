@@ -1,0 +1,18 @@
+###############################################################################
+# howto build & install single user NetHack on turnip
+
+# setup
+sudo apt update
+sudo apt install build-essential
+sudo apt install libncurses-dev
+
+cd ~/projects/nethack
+make spotless
+cd sys/unix
+sh setup.sh hints/avocado
+cd ../..
+make fetch-lua
+make all
+make install
+cd doc
+sudo make manpages

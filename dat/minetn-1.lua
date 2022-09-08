@@ -1,4 +1,4 @@
--- NetHack 3.7	mines.des	$NHDT-Date: 1432512783 2015/05/25 00:13:03 $  $NHDT-Branch: master $:$NHDT-Revision: 1.25 $
+-- NetHack 3.7	mines minetn-1.lua	$NHDT-Date: 1652196030 2022/05/10 15:20:30 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.8 $
 --	Copyright (c) 1989-95 by Jean-Christophe Collet
 --	Copyright (c) 1991-95 by M. Stephenson
 -- NetHack may be freely redistributed.  See license for details.
@@ -11,7 +11,7 @@
 
 des.level_flags("mazelevel")
 
-des.level_init({ style="mines", fg=".", bg=" ", smoothed=true ,joined=true, lit="random", walled=true })
+des.level_init({ style="mines", fg=".", bg=" ", smoothed=true, joined=true, walled=true })
 
 des.map([[
 .....................................
@@ -107,11 +107,11 @@ des.object({ id = "tallow candle", coord = place[4], quantity = math.random(1,2)
 -- go ahead and leave a lamp next to one corpse to be suggestive
 -- and some empty wands...
 des.object("oil lamp",place[2])
-des.object({ id = "striking", coord = place[1], buc="uncursed", spe=0 })
-des.object({ id = "striking", coord = place[3], buc="uncursed", spe=0 })
-des.object({ id = "striking", coord = place[4], buc="uncursed", spe=0 })
-des.object({ id = "magic missile", coord = place[4], buc="uncursed", spe=0 })
-des.object({ id = "magic missile", coord = place[5], buc="uncursed", spe=0 })
+des.object({ id = "wand of striking", coord = place[1], buc="uncursed", spe=0 })
+des.object({ id = "wand of striking", coord = place[3], buc="uncursed", spe=0 })
+des.object({ id = "wand of striking", coord = place[4], buc="uncursed", spe=0 })
+des.object({ id = "wand of magic missile", coord = place[4], buc="uncursed", spe=0 })
+des.object({ id = "wand of magic missile", coord = place[5], buc="uncursed", spe=0 })
 
 -- the Orcish Army
 
@@ -120,18 +120,18 @@ local near_temple = selection.area(17,8, 23,14) & inside
 
 for i=1,5 + math.random(1 - 1,1*10) do
    if percent(50) then
-      des.monster({ id = "orc-captain", coord = { inside:rndcoord(1) }, peaceful=0 });
+      des.monster({ id = "orc-captain", coord = inside:rndcoord(1), peaceful=0 });
    else
       if percent(80) then
-         des.monster({ id = "Uruk-hai", coord = { inside:rndcoord(1) }, peaceful=0 })
+         des.monster({ id = "Uruk-hai", coord = inside:rndcoord(1), peaceful=0 })
       else
-         des.monster({ id = "Mordor orc", coord = { inside:rndcoord(1) }, peaceful=0 })
+         des.monster({ id = "Mordor orc", coord = inside:rndcoord(1), peaceful=0 })
       end
    end
 end
 -- shamans can be hanging out in/near the temple
 for i=1,math.random(2 - 1,2*3) do
-   des.monster({ id = "orc shaman", coord = { near_temple:rndcoord(0) }, peaceful=0 });
+   des.monster({ id = "orc shaman", coord = near_temple:rndcoord(0), peaceful=0 });
 end
 -- these are not such a big deal
 -- to run into outside the bars

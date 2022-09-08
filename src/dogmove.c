@@ -1,4 +1,4 @@
-/* NetHack 3.7	dogmove.c	$NHDT-Date: 1609617569 2021/01/02 19:59:29 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.96 $ */
+/* NetHack 3.7	dogmove.c	$NHDT-Date: 1646688063 2022/03/07 21:21:03 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.112 $ */
 /* Copyright (c) Stichting Mathematisch Centrum, Amsterdam, 1985. */
 /*-Copyright (c) Robert Patrick Rankin, 2012. */
 /* NetHack may be freely redistributed.  See license for details. */
@@ -7,6 +7,11 @@
 
 #include "mfndpos.h"
 
+#define DOG_HUNGRY      300
+#define DOG_WEAK        500
+#define DOG_STARVE      750
+
+static void dog_starve(struct monst *);
 static boolean dog_hunger(struct monst *, struct edog *);
 static int dog_invent(struct monst *, struct edog *, int);
 static int dog_goal(struct monst *, struct edog *, int, int, int);
@@ -14,16 +19,28 @@ static struct monst *find_targ(struct monst *, int, int, int);
 static int find_friends(struct monst *, struct monst *, int);
 static struct monst *best_target(struct monst *);
 static long score_targ(struct monst *, struct monst *);
-static boolean can_reach_location(struct monst *, xchar, xchar, xchar,
-                                  xchar);
-static boolean could_reach_item(struct monst *, xchar, xchar);
+static boolean can_reach_location(struct monst *, coordxy, coordxy, coordxy,
+                                  coordxy);
+static boolean could_reach_item(struct monst *, coordxy, coordxy);
 static void quickmimic(struct monst *);
 
 /* pick a carried item for pet to drop */
 struct obj *
 droppables(struct monst *mon)
 {
-    struct obj *obj, *wep, dummy, *pickaxe, *unihorn, *key;
+    /*
+     * 'key|pickaxe|&c = &dummy' is used to make various creatures
+     * that can't use a key/pick-axe/&c behave as if they are already
+     * holding one so that any other such item in their inventory will
+     * be considered a duplicate and get treated as a normal candidate
+     * for dropping.
+     *
+     * This could be 'auto', but then 'gcc -O2' warns that this function
+     * might return the address of a local variable.  It's mistaken,
+     * &dummy is never returned.  'static' is simplest way to shut it up.
+     */
+    static struct obj dummy;
+    struct obj *obj, *wep, *pickaxe, *unihorn, *key;
 
     dummy = cg.zeroobj;
     dummy.otyp = GOLD_PIECE; /* not STRANGE_OBJECT or tools of interest */
@@ -120,10 +137,10 @@ static NEARDATA const char nofetch[] = { BALL_CLASS, CHAIN_CLASS, ROCK_CLASS,
                                          0 };
 
 
-static void wantdoor(int, int, genericptr_t);
+static void wantdoor(coordxy, coordxy, genericptr_t);
 
 boolean
-cursed_object_at(int x, int y)
+cursed_object_at(coordxy x, coordxy y)
 {
     struct obj *otmp;
 
@@ -198,19 +215,19 @@ dog_nutrition(struct monst *mtmp, struct obj *obj)
 int
 dog_eat(struct monst *mtmp,
         struct obj *obj, /* if unpaid, then thrown or kicked by hero */
-        int x,           /* dog's starting location, */
-        int y,           /*  might be different from current */
+        coordxy x,       /* dog's starting location, */
+        coordxy y,       /* might be different from current */
         boolean devour)
 {
     register struct edog *edog = EDOG(mtmp);
     boolean poly, grow, heal, eyes, slimer, deadmimic;
     int nutrit, res, corpsenm;
     long oprice;
-    char objnambuf[BUFSZ];
+    char objnambuf[BUFSZ], *obj_name;
 
     objnambuf[0] = '\0';
-    if (edog->hungrytime < g.monstermoves)
-        edog->hungrytime = g.monstermoves;
+    if (edog->hungrytime < g.moves)
+        edog->hungrytime = g.moves;
     nutrit = dog_nutrition(mtmp, obj);
 
     deadmimic = (obj->otyp == CORPSE && (obj->corpsenm == PM_SMALL_MIMIC
@@ -272,26 +289,33 @@ dog_eat(struct monst *mtmp,
            pet as "it".  However, we want "it" if invisible/unsensed
            pet eats visible food. */
         if (sawpet || (seeobj && canspotmon(mtmp))) {
+            /* call distant_name() for possible side-effects even if the
+               result won't be printed */
+            obj_name = distant_name(obj, doname);
             if (tunnels(mtmp->data))
                 pline("%s digs in.", noit_Monnam(mtmp));
             else
                 pline("%s %s %s.", noit_Monnam(mtmp),
-                      devour ? "devours" : "eats", distant_name(obj, doname));
-        } else if (seeobj)
-            pline("It %s %s.", devour ? "devours" : "eats",
-                  distant_name(obj, doname));
+                      devour ? "devours" : "eats", obj_name);
+        } else if (seeobj) {
+            obj_name = distant_name(obj, doname);
+            pline("It %s %s.", devour ? "devours" : "eats", obj_name);
+        }
     }
     if (obj->unpaid) {
         Strcpy(objnambuf, xname(obj));
         iflags.suppress_price--;
     }
+    /* some monsters that eat items could eat a container with contents */
+    if (Has_contents(obj))
+        meatbox(mtmp, obj);
     /* It's a reward if it's DOGFOOD and the player dropped/threw it.
        We know the player had it if invlet is set. -dlc */
     if (dogfood(mtmp, obj) == DOGFOOD && obj->invlet)
 #ifdef LINT
         edog->apport = 0;
 #else
-        edog->apport += (int) (200L / ((long) edog->dropdist + g.monstermoves
+        edog->apport += (int) (200L / ((long) edog->dropdist + g.moves
                                        - edog->droptime));
 #endif
     if (mtmp->data == &mons[PM_RUST_MONSTER] && obj->oerodeproof) {
@@ -300,9 +324,11 @@ dog_eat(struct monst *mtmp,
             costly_alteration(obj, COST_DEGRD);
         obj->oerodeproof = 0;
         mtmp->mstun = 1;
-        if (canseemon(mtmp) && flags.verbose) {
-            pline("%s spits %s out in disgust!", Monnam(mtmp),
-                  distant_name(obj, doname));
+        if (canseemon(mtmp)) {
+            obj_name = distant_name(obj, doname); /* (see above) */
+            if (Verbose(0, dog_eat))
+                pline("%s spits %s out in disgust!",
+                      Monnam(mtmp), obj_name);
         }
     } else if (obj == uball) {
         unpunish();
@@ -334,7 +360,8 @@ dog_eat(struct monst *mtmp,
     if (poly || slimer) {
         struct permonst *ptr = slimer ? &mons[PM_GREEN_SLIME] : 0;
 
-        (void) newcham(mtmp, ptr, FALSE, cansee(mtmp->mx, mtmp->my));
+        (void) newcham(mtmp, ptr,
+                       cansee(mtmp->mx, mtmp->my) ? NC_SHOW_MSG : 0);
     }
 
     /* limit "instant" growth to prevent potential abuse */
@@ -353,13 +380,26 @@ dog_eat(struct monst *mtmp,
     return 1;
 }
 
+static void
+dog_starve(struct monst *mtmp)
+{
+    if (mtmp->mleashed && mtmp != u.usteed)
+        Your("leash goes slack.");
+    else if (cansee(mtmp->mx, mtmp->my))
+        pline("%s starves.", Monnam(mtmp));
+    else
+        You_feel("%s for a moment.",
+                    Hallucination ? "bummed" : "sad");
+    mondied(mtmp);
+}
+
 /* hunger effects -- returns TRUE on starvation */
 static boolean
 dog_hunger(struct monst *mtmp, struct edog *edog)
 {
-    if (g.monstermoves > edog->hungrytime + 500) {
+    if (g.moves > edog->hungrytime + DOG_WEAK) {
         if (!carnivorous(mtmp->data) && !herbivorous(mtmp->data)) {
-            edog->hungrytime = g.monstermoves + 500;
+            edog->hungrytime = g.moves + DOG_WEAK;
             /* but not too high; it might polymorph */
         } else if (!edog->mhpmax_penalty) {
             /* starving pets are limited in healing */
@@ -369,8 +409,10 @@ dog_hunger(struct monst *mtmp, struct edog *edog)
             mtmp->mhpmax = newmhpmax;
             if (mtmp->mhp > mtmp->mhpmax)
                 mtmp->mhp = mtmp->mhpmax;
-            if (DEADMONSTER(mtmp))
-                goto dog_died;
+            if (DEADMONSTER(mtmp)) {
+                dog_starve(mtmp);
+                return TRUE;
+            }
             if (cansee(mtmp->mx, mtmp->my))
                 pline("%s is confused from hunger.", Monnam(mtmp));
             else if (couldsee(mtmp->mx, mtmp->my))
@@ -378,18 +420,10 @@ dog_hunger(struct monst *mtmp, struct edog *edog)
             else
                 You_feel("worried about %s.", y_monnam(mtmp));
             stop_occupation();
-        } else if (g.monstermoves > edog->hungrytime + 750
+        } else if (g.moves > edog->hungrytime + DOG_STARVE
                    || DEADMONSTER(mtmp)) {
- dog_died:
-            if (mtmp->mleashed && mtmp != u.usteed)
-                Your("leash goes slack.");
-            else if (cansee(mtmp->mx, mtmp->my))
-                pline("%s starves.", Monnam(mtmp));
-            else
-                You_feel("%s for a moment.",
-                         Hallucination ? "bummed" : "sad");
-            mondied(mtmp);
-            return  TRUE;
+            dog_starve(mtmp);
+            return TRUE;
         }
     }
     return FALSE;
@@ -401,10 +435,10 @@ dog_hunger(struct monst *mtmp, struct edog *edog)
 static int
 dog_invent(struct monst *mtmp, struct edog *edog, int udist)
 {
-    register int omx, omy, carryamt = 0;
+    int omx, omy, carryamt = 0;
     struct obj *obj, *otmp;
 
-    if (mtmp->msleeping || !mtmp->mcanmove)
+    if (helpless(mtmp))
         return 0;
 
     omx = mtmp->mx;
@@ -421,7 +455,7 @@ dog_invent(struct monst *mtmp, struct edog *edog, int udist)
                 if (edog->apport > 1)
                     edog->apport--;
                 edog->dropdist = udist; /* hpscdi!jon */
-                edog->droptime = g.monstermoves;
+                edog->droptime = g.moves;
             }
     } else {
         if ((obj = g.level.objects[omx][omy]) != 0
@@ -429,7 +463,9 @@ dog_invent(struct monst *mtmp, struct edog *edog, int udist)
 #ifdef MAIL_STRUCTURES
             && obj->otyp != SCR_MAIL
 #endif
-            ) {
+            /* avoid special items; once hero picks them up, they'll cease
+               being special and become eligible for normal monst activity */
+            && !(is_mines_prize(obj) || is_soko_prize(obj))) {
             int edible = dogfood(mtmp, obj);
 
             if ((edible <= CADAVER
@@ -446,9 +482,18 @@ dog_invent(struct monst *mtmp, struct edog *edog, int udist)
                         otmp = obj;
                         if (carryamt != obj->quan)
                             otmp = splitobj(obj, carryamt);
-                        if (cansee(omx, omy) && flags.verbose)
-                            pline("%s picks up %s.", Monnam(mtmp),
-                                  distant_name(otmp, doname));
+                        if (cansee(omx, omy)) {
+                            /* call distant_name() for possible side-effects
+                               even if the result won't be printed; should be
+                               done before extract+pickup for distant_name()
+                               -> doname() -> xname() -> find_artifact()
+                               while otmp is still on floor */
+                            char *otmpname = distant_name(otmp, doname);
+
+                            if (Verbose(0, dog_invent))
+                                pline("%s picks up %s.",
+                                      Monnam(mtmp), otmpname);
+                        }
                         obj_extract_self(otmp);
                         newsym(omx, omy);
                         (void) mpickobj(mtmp, otmp);
@@ -472,10 +517,10 @@ static int
 dog_goal(register struct monst *mtmp, struct edog *edog,
          int after, int udist, int whappr)
 {
-    register int omx, omy;
+    register coordxy omx, omy;
     boolean in_masters_sight, dog_has_minvent;
     register struct obj *obj;
-    xchar otyp;
+    xint16 otyp;
     int appr;
 
     /* Steeds don't move on their own will */
@@ -496,7 +541,7 @@ dog_goal(register struct monst *mtmp, struct edog *edog,
 #define DDIST(x, y) (dist2(x, y, omx, omy))
 #define SQSRCHRADIUS 5
         int min_x, max_x, min_y, max_y;
-        register int nx, ny;
+        coordxy nx, ny;
 
         g.gtyp = UNDEF; /* no goal as yet */
         g.gx = g.gy = 0;  /* suppress 'used before set' message */
@@ -549,10 +594,10 @@ dog_goal(register struct monst *mtmp, struct edog *edog,
 
     /* follow player if appropriate */
     if (g.gtyp == UNDEF || (g.gtyp != DOGFOOD && g.gtyp != APPORT
-                          && g.monstermoves < edog->hungrytime)) {
+                          && g.moves < edog->hungrytime)) {
         g.gx = u.ux;
         g.gy = u.uy;
-        if (after && udist <= 4 && g.gx == u.ux && g.gy == u.uy)
+        if (after && udist <= 4 && u_at(g.gx, g.gy))
             return -2;
         appr = (udist >= 9) ? 1 : (mtmp->mflee) ? -1 : 0;
         if (udist > 1) {
@@ -560,20 +605,39 @@ dog_goal(register struct monst *mtmp, struct edog *edog,
                 || (dog_has_minvent && rn2(edog->apport)))
                 appr = 1;
         }
-        /* if you have dog food it'll follow you more closely */
-        if (appr == 0)
-            for (obj = g.invent; obj; obj = obj->nobj)
-                if (dogfood(mtmp, obj) == DOGFOOD) {
-                    appr = 1;
-                    break;
+        /* if you have dog food it'll follow you more closely; if you are
+           on stairs (or ladder) or on or next to a magic portal, it will
+           behave as if you have dog food */
+        if (appr == 0) {
+            if (On_stairs(u.ux, u.uy)) {
+                appr = 1;
+            } else {
+                for (obj = g.invent; obj; obj = obj->nobj)
+                    if (dogfood(mtmp, obj) == DOGFOOD) {
+                        appr = 1;
+                        break;
+                    }
+                if (appr == 0) {
+                    struct trap *t;
+
+                    /* assume at most one magic portal per level;
+                       [should this be limited to known portals?] */
+                    for (t = g.ftrap; t; t = t->ntrap)
+                        if (t->ttyp == MAGIC_PORTAL) {
+                            if (/*t->tseen &&*/ distu(t->tx, t->ty) <= 2)
+                                appr = 1;
+                            break;
+                        }
                 }
+            }
+        }
     } else
         appr = 1; /* gtyp != UNDEF */
     if (mtmp->mconf)
         appr = 0;
 
 #define FARAWAY (COLNO + 2) /* position outside screen */
-    if (g.gx == u.ux && g.gy == u.uy && !in_masters_sight) {
+    if (u_at(g.gx, g.gy) && !in_masters_sight) {
         register coord *cp;
 
         cp = gettrack(omx, omy);
@@ -860,12 +924,12 @@ dog_move(register struct monst *mtmp,
     int i, j, k;
     register struct edog *edog = EDOG(mtmp);
     struct obj *obj = (struct obj *) 0;
-    xchar otyp;
+    xint16 otyp;
     boolean has_edog, cursemsg[9], do_eat = FALSE;
     boolean better_with_displacing = FALSE;
-    xchar nix, niy;      /* position mtmp is (considering) moving to */
-    register int nx, ny; /* temporary coordinates */
-    xchar cnt, uncursedcnt, chcnt;
+    coordxy nix, niy;      /* position mtmp is (considering) moving to */
+    coordxy nx, ny; /* temporary coordinates */
+    xint16 cnt, uncursedcnt, chcnt;
     int chi = -1, nidist, ndist;
     coord poss[9];
     long info[9], allowflags;
@@ -883,19 +947,19 @@ dog_move(register struct monst *mtmp,
     omx = mtmp->mx;
     omy = mtmp->my;
     if (has_edog && dog_hunger(mtmp, edog))
-        return 2; /* starved */
+        return MMOVE_DIED; /* starved */
 
     udist = distu(omx, omy);
     /* Let steeds eat and maybe throw rider during Conflict */
     if (mtmp == u.usteed) {
         if (Conflict && !resist_conflict(mtmp)) {
             dismount_steed(DISMOUNT_THROWN);
-            return 1;
+            return MMOVE_MOVED;
         }
         udist = 1;
     } else if (!udist)
         /* maybe we tamed him while being swallowed --jgm */
-        return 0;
+        return MMOVE_NOTHING;
 
     nix = omx; /* set before newdogpos */
     niy = omy;
@@ -905,18 +969,18 @@ dog_move(register struct monst *mtmp,
     if (has_edog) {
         j = dog_invent(mtmp, edog, udist);
         if (j == 2)
-            return 2; /* died */
+            return MMOVE_DIED; /* died */
         else if (j == 1)
             goto newdogpos; /* eating something */
 
-        whappr = (g.monstermoves - edog->whistletime < 5);
+        whappr = (g.moves - edog->whistletime < 5);
     } else
         whappr = 0;
 
     appr = dog_goal(mtmp, has_edog ? edog : (struct edog *) 0, after, udist,
                     whappr);
     if (appr == -2)
-        return 0;
+        return MMOVE_NOTHING;
 
     if (Conflict && !resist_conflict(mtmp)) {
         if (!has_edog) {
@@ -924,7 +988,7 @@ dog_move(register struct monst *mtmp,
              * it disappears, angrily, and sends in some nasties
              */
             lose_guardian_angel(mtmp);
-            return 2; /* current monster is gone */
+            return MMOVE_DIED; /* current monster is gone */
         }
     }
 #if 0 /* [this is now handled in dochug()] */
@@ -952,7 +1016,8 @@ dog_move(register struct monst *mtmp,
         uncursedcnt++;
     }
 
-    better_with_displacing = should_displace(mtmp, poss, info, cnt, g.gx, g.gy);
+    better_with_displacing = should_displace(mtmp, poss, info, cnt,
+                                             g.gx, g.gy);
 
     chcnt = 0;
     chi = -1;
@@ -981,7 +1046,12 @@ dog_move(register struct monst *mtmp,
              * 60% to 80%:  up to level
              * 40% to 60%:  up to level - 1
              * 25% to 40%:  up to level - 2
-             *  below 25%:  prevented from attacking at all by a different case
+             *  below 25%:  won't attack peacefuls of any level (different case)
+             *  below 20%:  up to level - 3
+             *
+             * note that balk's maximum value is +3, as it is the lowest level
+             * the pet will balk at attacking rather than the highest level they
+             * are willing to attack; note the >= used when comparing it.
              */
             int balk = mtmp->m_lev + ((5 * mtmp->mhp) / mtmp->mhpmax) - 2;
 
@@ -999,25 +1069,25 @@ dog_move(register struct monst *mtmp,
                 continue;
 
             if (after)
-                return 0; /* hit only once each move */
+                return MMOVE_NOTHING; /* hit only once each move */
 
             g.notonhead = 0;
             mstatus = mattackm(mtmp, mtmp2);
 
             /* aggressor (pet) died */
             if (mstatus & MM_AGR_DIED)
-                return 2;
+                return MMOVE_DIED;
 
             if ((mstatus & MM_HIT) && !(mstatus & MM_DEF_DIED) && rn2(4)
-                && mtmp2->mlstmv != g.monstermoves
+                && mtmp2->mlstmv != g.moves
                 && !onscary(mtmp->mx, mtmp->my, mtmp2)
                 /* monnear check needed: long worms hit on tail */
                 && monnear(mtmp2, mtmp->mx, mtmp->my)) {
                 mstatus = mattackm(mtmp2, mtmp); /* return attack */
                 if (mstatus & MM_DEF_DIED)
-                    return 2;
+                    return MMOVE_DIED;
             }
-            return 3;
+            return MMOVE_DONE;
         }
         if ((info[i] & ALLOW_MDISP) && MON_AT(nx, ny)
             && better_with_displacing && !undesirable_disp(mtmp, nx, ny)) {
@@ -1026,8 +1096,8 @@ dog_move(register struct monst *mtmp,
 
             mstatus = mdisplacem(mtmp, mtmp2, FALSE); /* displace monster */
             if (mstatus & MM_DEF_DIED)
-                return 2;
-            return 0;
+                return MMOVE_DIED;
+            return MMOVE_NOTHING;
         }
 
         {
@@ -1056,13 +1126,15 @@ dog_move(register struct monst *mtmp,
 
         /* dog eschews cursed objects, but likes dog food */
         /* (minion isn't interested; `cursemsg' stays FALSE) */
-        if (has_edog)
+        if (has_edog) {
+            boolean can_reach_food = could_reach_item(mtmp, nx, ny);
             for (obj = g.level.objects[nx][ny]; obj; obj = obj->nexthere) {
                 if (obj->cursed) {
                     cursemsg[i] = TRUE;
-                } else if ((otyp = dogfood(mtmp, obj)) < MANFOOD
-                         && (otyp < ACCFOOD
-                             || edog->hungrytime <= g.monstermoves)) {
+                } else if (can_reach_food
+                           && (otyp = dogfood(mtmp, obj)) < MANFOOD
+                           && (otyp < ACCFOOD
+                               || edog->hungrytime <= g.moves)) {
                     /* Note: our dog likes the food so much that he
                      * might eat it even when it conceals a cursed object */
                     nix = nx;
@@ -1073,16 +1145,18 @@ dog_move(register struct monst *mtmp,
                     goto newdogpos;
                 }
             }
+        }
         /* didn't find something to eat; if we saw a cursed item and
            aren't being forced to walk on it, usually keep looking */
         if (cursemsg[i] && !mtmp->mleashed && uncursedcnt > 0
             && rn2(13 * uncursedcnt))
             continue;
 
-        /* lessen the chance of backtracking to previous position(s) */
-        /* This causes unintended issues for pets trying to follow
-           the hero. Thus, only run it if not leashed and >5 tiles
-           away. */
+        /*
+         * Lessen the chance of backtracking to previous position(s).
+         * This causes unintended issues for pets trying to follow the
+         * hero.  Thus, only run it if not leashed and >5 tiles away.
+         */
         if (!mtmp->mleashed && distmin(mtmp->mx, mtmp->my, u.ux, u.uy) > 5) {
             k = has_edog ? uncursedcnt : cnt;
             for (j = 0; j < MTSZ && j < k - 1; j++)
@@ -1118,12 +1192,11 @@ dog_move(register struct monst *mtmp,
         if (!mtmp->isminion) {
             struct edog *dog = EDOG(mtmp);
 
-            hungry = (g.monstermoves > (dog->hungrytime + 300));
+            hungry = (g.moves > (dog->hungrytime + DOG_HUNGRY));
         }
 
         /* Identify the best target in a straight line from the pet;
-         * if there is such a target, we'll let the pet attempt an
-         * attack.
+         * if there is such a target, we'll let the pet attempt an attack.
          */
         mtarg = best_target(mtmp);
 
@@ -1133,19 +1206,20 @@ dog_move(register struct monst *mtmp,
 
             if (mtarg == &g.youmonst) {
                 if (mattacku(mtmp))
-                    return 2;
+                    return MMOVE_DIED;
                 /* Treat this as the pet having initiated an attack even if it
-                 * didn't, so it will lose its move. This isn't entirely fair,
-                 * but mattacku doesn't distinguish between "did not attack" and
-                 * "attacked but didn't die" cases, and this is preferable to
-                 * letting the pet attack the player and continuing to move */
+                 * didn't, so it will lose its move.  This isn't entirely fair,
+                 * but mattacku doesn't distinguish between "did not attack"
+                 * and "attacked but didn't die" cases, and this is preferable
+                 * to letting the pet attack the player and continuing to move.
+                 */
                 mstatus = MM_HIT;
             } else {
                 mstatus = mattackm(mtmp, mtarg);
 
                 /* Shouldn't happen, really */
                 if (mstatus & MM_AGR_DIED)
-                    return 2;
+                    return MMOVE_DIED;
 
                 /* Allow the targeted nasty to strike back - if
                  * the targeted beast doesn't have a ranged attack,
@@ -1154,7 +1228,7 @@ dog_move(register struct monst *mtmp,
                 if ((mstatus & MM_HIT) && !(mstatus & MM_DEF_DIED)
                     && rn2(4) && mtarg != &g.youmonst) {
 
-                    /* Can monster see? If it can, it can retaliate
+                    /* Can monster see?  If it can, it can retaliate
                      * even if the pet is invisible, since it'll see
                      * the direction from which the ranged attack came;
                      * if it's blind or unseeing, it can't retaliate
@@ -1162,22 +1236,22 @@ dog_move(register struct monst *mtmp,
                     if (mtarg->mcansee && haseyes(mtarg->data)) {
                         mstatus = mattackm(mtarg, mtmp);
                         if (mstatus & MM_DEF_DIED)
-                            return 2;
+                            return MMOVE_DIED;
                     }
                 }
             }
-            /* Only return 3 if the pet actually made a ranged attack, and thus
-             * should lose the rest of its move.
+            /* Only return 3 if the pet actually made a ranged attack, and
+             * thus should lose the rest of its move.
              * There's a chain of assumptions here:
-             * 1. score_targ and best_target will never select a monster that
-             *    can be attacked in melee, so the mattackm call can only ever
-             *    try ranged options
-             * 2. if the only attacks available to mattackm are ranged options,
-             *    and the monster cannot make a ranged attack, it will return
-             *    MM_MISS.
+             * 1. score_targ and best_target will never select a monster
+             *    that can be attacked in melee, so the mattackm call can
+             *    only ever try ranged options
+             * 2. if the only attacks available to mattackm are ranged
+             *    options, and the monster cannot make a ranged attack, it
+             *    will return MM_MISS.
              */
             if (mstatus != MM_MISS)
-                return 3;
+                return MMOVE_DONE;
         }
     }
 
@@ -1192,12 +1266,12 @@ dog_move(register struct monst *mtmp,
                 m_unleash(mtmp, FALSE);
             }
             (void) mattacku(mtmp);
-            return 3;
+            return MMOVE_DONE;
         }
         if (!m_in_out_region(mtmp, nix, niy))
-            return 1;
+            return MMOVE_MOVED;
         if (m_digweapon_check(mtmp, nix,niy))
-            return 0;
+            return MMOVE_NOTHING;
 
         /* insert a worm_move() if worms ever begin to eat things */
         wasseen = canseemon(mtmp);
@@ -1215,17 +1289,14 @@ dog_move(register struct monst *mtmp,
             pline("%s %s reluctantly over %s.", noit_Monnam(mtmp),
                   vtense((char *) 0, locomotion(mtmp->data, "step")), what);
         }
-        for (j = MTSZ - 1; j > 0; j--)
-            mtmp->mtrack[j] = mtmp->mtrack[j - 1];
-        mtmp->mtrack[0].x = omx;
-        mtmp->mtrack[0].y = omy;
+        mon_track_add(mtmp, omx, omy);
         /* We have to know if the pet's going to do a combined eat and
          * move before moving it, but it can't eat until after being
          * moved.  Thus the do_eat flag.
          */
         if (do_eat) {
             if (dog_eat(mtmp, obj, omx, omy, FALSE) == 2)
-                return 2;
+                return MMOVE_DIED;
         }
     } else if (mtmp->mleashed && distu(omx, omy) > 4) {
         /* an incredible kludge, but the only way to keep pooch near
@@ -1241,12 +1312,12 @@ dog_move(register struct monst *mtmp,
             goto dognext;
 
         i = xytod(nx, ny);
-        for (j = (i + 7) % 8; j < (i + 1) % 8; j++) {
+        for (j = DIR_LEFT(i); j < DIR_RIGHT(i); j++) {
             dtoxy(&cc, j);
             if (goodpos(cc.x, cc.y, mtmp, 0))
                 goto dognext;
         }
-        for (j = (i + 6) % 8; j < (i + 2) % 8; j++) {
+        for (j = DIR_LEFT2(i); j < DIR_RIGHT2(i); j++) {
             dtoxy(&cc, j);
             if (goodpos(cc.x, cc.y, mtmp, 0))
                 goto dognext;
@@ -1255,18 +1326,18 @@ dog_move(register struct monst *mtmp,
         cc.y = mtmp->my;
  dognext:
         if (!m_in_out_region(mtmp, nix, niy))
-            return 1;
+            return MMOVE_MOVED;
         remove_monster(mtmp->mx, mtmp->my);
         place_monster(mtmp, cc.x, cc.y);
         newsym(cc.x, cc.y);
         set_apparxy(mtmp);
     }
-    return 1;
+    return MMOVE_MOVED;
 }
 
 /* check if a monster could pick up objects from a location */
 static boolean
-could_reach_item(struct monst *mon, xchar nx, xchar ny)
+could_reach_item(struct monst *mon, coordxy nx, coordxy ny)
 {
     if ((!is_pool(nx, ny) || is_swimmer(mon->data))
         && (!is_lava(nx, ny) || likes_lava(mon->data))
@@ -1283,7 +1354,7 @@ could_reach_item(struct monst *mon, xchar nx, xchar ny)
  * calls deep.
  */
 static boolean
-can_reach_location(struct monst *mon, xchar mx, xchar my, xchar fx, xchar fy)
+can_reach_location(struct monst *mon, coordxy mx, coordxy my, coordxy fx, coordxy fy)
 {
     int i, j;
     int dist;
@@ -1319,7 +1390,7 @@ can_reach_location(struct monst *mon, xchar mx, xchar my, xchar fx, xchar fy)
 
 /* do_clear_area client */
 static void
-wantdoor(int x, int y, genericptr_t distance)
+wantdoor(coordxy x, coordxy y, genericptr_t distance)
 {
     int ndist, *dist_ptr = (int *) distance;
 
@@ -1352,9 +1423,9 @@ void
 finish_meating(struct monst *mtmp)
 {
     mtmp->meating = 0;
-    if (M_AP_TYPE(mtmp) && mtmp->mappearance && mtmp->cham == NON_PM) {
+    if (M_AP_TYPE(mtmp) && mtmp->mappearance && mtmp->data->mlet != S_MIMIC) {
         /* was eating a mimic and now appearance needs resetting */
-        mtmp->m_ap_type = 0;
+        mtmp->m_ap_type = M_AP_NOTHING;
         mtmp->mappearance = 0;
         newsym(mtmp->mx, mtmp->my);
     }

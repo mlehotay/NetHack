@@ -3,6 +3,11 @@
 # Copyright (c) 2018 by Robert Patrick Rankin
 # NetHack may be freely redistributed.  See license for details.
 
+#
+# Note: as of nethack 3.7, 'lev_comp' and 'dgn_comp' are no longer present
+#	so use of yacc and lex to build them is no longer required.
+#
+
 # Root of source tree:
 NHSROOT=..
 
@@ -177,9 +182,12 @@ ONAMING = $(OBJDIR)/drawing.o $(OMONOBJ)
 # dynamic memory allocation
 CALLOC = ../src/alloc.c panic.c
 OALLOC = $(OBJDIR)/alloc.o panic.o
+# build time info
+CDATE = ../src/date.c
+ODATE = $(OBJDIR)/date.o
 
 # object files for makedefs
-MAKEOBJS = makedefs.o $(OMONOBJ)
+MAKEOBJS = makedefs.o $(OMONOBJ) $(ODATE) $(OALLOC)
 
 # object files for recovery utility
 RECOVOBJS = recover.o
@@ -206,20 +214,28 @@ TARGET_CXXFLAGS = $(CXXFLAGS)
 makedefs:	$(MAKEOBJS) mdgrep.h
 	$(CLINK) $(LFLAGS) -o makedefs $(MAKEOBJS)
 
-makedefs.o: makedefs.c ../src/mdlib.c $(CONFIG_H) ../include/permonst.h \
-		../include/objclass.h ../include/monsym.h \
+
+# note: the headers listed here are maintained manually rather than via
+#	'make depend'; only the ones which are directly included by
+#	makedefs.c are listed, without various nested ones that they include;
+#	for makedefs (but not for nethack's core), mdlib.c gets included
+#	rather than be compiled separately
+makedefs.o: makedefs.c ../src/mdlib.c $(CONFIG_H) \
+		../include/permonst.h ../include/objclass.h \
 		../include/artilist.h ../include/dungeon.h ../include/obj.h \
-		../include/monst.h ../include/you.h ../include/flag.h \
-		../include/dlb.h ../include/patchlevel.h
+		../include/monst.h ../include/monsters.h ../include/objects.h \
+		../include/you.h ../include/context.h ../include/flag.h \
+		../include/dlb.h ../include/patchlevel.h mdgrep.h
 	$(CC) $(CFLAGS) -c makedefs.c -o $@
 
 # Don't require perl to build; that is why mdgrep.h is spelled wrong below.
 mdgreph: mdgrep.pl
 	perl mdgrep.pl
 
-../include/onames.h: makedefs
+# These are for reference purposes only. They aren't required in the build.
+../include/onames.h: makedefs ../include/objects.h
 	./makedefs -o
-../include/pm.h: makedefs
+../include/pm.h: makedefs ../include/monsters.h
 	./makedefs -p
 
 lintdefs:
@@ -248,7 +264,8 @@ lintdgn:
 recover: $(RECOVOBJS)
 	$(CLINK) $(LFLAGS) -o recover $(RECOVOBJS) $(LIBS)
 
-recover.o: recover.c $(CONFIG_H) ../include/date.h
+recover.o: recover.c $(CONFIG_H)
+	$(CC) $(CFLAGS) -c recover.c -o $@
 
 
 #	dependencies for dlb
@@ -256,7 +273,7 @@ recover.o: recover.c $(CONFIG_H) ../include/date.h
 dlb:	$(DLBOBJS)
 	$(CLINK) $(LFLAGS) -o dlb $(DLBOBJS) $(LIBS)
 
-dlb_main.o: dlb_main.c $(CONFIG_H) ../include/dlb.h ../include/date.h
+dlb_main.o: dlb_main.c $(CONFIG_H) ../include/dlb.h
 	$(CC) $(CFLAGS) -c dlb_main.c -o $@
 
 
@@ -294,49 +311,41 @@ tile2beos: tile2beos.o $(TEXT_IO)
 #  that without mucking about with extra OS-specific CFLAGS and/or LFLAGS
 #tilemap: ../win/share/tilemap.c $(HACK_H)
 #	$(CC) $(CFLAGS) $(LFLAGS) -o tilemap ../win/share/tilemap.c $(LIBS)
-tilemap: tilemap.o
-	$(CLINK) $(LFLAGS) -o tilemap tilemap.o $(LIBS)
+tilemap: tilemap.o $(OBJDIR)/objects.o $(OBJDIR)/monst.o $(OBJDIR)/drawing.o
+	$(CLINK) $(LFLAGS) -o tilemap tilemap.o $(OBJDIR)/objects.o  \
+		$(OBJDIR)/monst.o  $(OBJDIR)/drawing.o $(LIBS)
 ../src/tile.c: tilemap
 	./tilemap
 
-../include/tile.h: ../win/share/tile.h
-	cp ../win/share/tile.h ../include/tile.h
-tiletext.o: ../win/share/tiletext.c $(CONFIG_H) ../include/tile.h
-	$(CC) $(CFLAGS) -c ../win/share/tiletext.c -o $@
-tiletxt.c: ./Makefile
-	@echo '/* alternate compilation for tilemap.c to create tiletxt.o' > tiletxt.c
-	@echo '   that does not rely on "cc -c -o tiletxt.o tilemap.c"'	 >> tiletxt.c
-	@echo '   since many pre-POSIX compilers did not support that */' >> tiletxt.c
-	echo '#define TILETEXT'			 >> tiletxt.c
-	echo '#include "../win/share/tilemap.c"' >> tiletxt.c
-	@echo '/*tiletxt.c*/'			 >> tiletxt.c
-tiletxt.o: tiletxt.c ../win/share/tilemap.c $(HACK_H)
-	$(CC) $(CFLAGS) -c tiletxt.c -o $@
+tiletext.o: ../win/share/tiletext.c $(CONFIG_H) ../win/share/tile.h
+	$(CC) $(CFLAGS) -I../win/share -c ../win/share/tiletext.c -o $@
+tiletxt.o: ../win/share/tiletxt.c ../win/share/tilemap.c $(HACK_H)
+	$(CC) $(CFLAGS) -I../win/share -c ../win/share/tiletxt.c -o $@
 tilemap.o: ../win/share/tilemap.c $(HACK_H)
 	$(CC) $(CFLAGS) -c ../win/share/tilemap.c -o $@
 
-gifread.o: ../win/share/gifread.c $(CONFIG_H) ../include/tile.h
-	$(CC) $(CFLAGS) -c ../win/share/gifread.c -o $@
-ppmwrite.o: ../win/share/ppmwrite.c $(CONFIG_H) ../include/tile.h
-	$(CC) $(CFLAGS) -c ../win/share/ppmwrite.c -o $@
+gifread.o: ../win/share/gifread.c $(CONFIG_H) ../win/share/tile.h
+	$(CC) $(CFLAGS) -I../win/share -c ../win/share/gifread.c -o $@
+ppmwrite.o: ../win/share/ppmwrite.c $(CONFIG_H) ../win/share/tile.h
+	$(CC) $(CFLAGS) -I../win/share -c ../win/share/ppmwrite.c -o $@
 
-tile2bmp.o: ../win/share/tile2bmp.c $(HACK_H) ../include/tile.h
-	$(CC) $(CFLAGS) -c ../win/share/tile2bmp.c -o $@
+tile2bmp.o: ../win/share/tile2bmp.c $(HACK_H) ../win/share/tile.h
+	$(CC) $(CFLAGS) -I../win/share -c ../win/share/tile2bmp.c -o $@
 
-tile2x11.o: ../win/X11/tile2x11.c $(HACK_H) ../include/tile.h \
+tile2x11.o: ../win/X11/tile2x11.c $(HACK_H) ../win/share/tile.h \
 						../include/tile2x11.h
-	$(CC) $(CFLAGS) -c ../win/X11/tile2x11.c -o $@
+	$(CC) $(CFLAGS) -I../win/share -c ../win/X11/tile2x11.c -o $@
 
-tile2img.o: ../win/gem/tile2img.c $(HACK_H) ../include/tile.h \
+tile2img.o: ../win/gem/tile2img.c $(HACK_H) ../win/share/tile.h \
 						../include/bitmfile.h
-	$(CC) $(CFLAGS) -c ../win/gem/tile2img.c -o $@
+	$(CC) $(CFLAGS) -I../win/share -c ../win/gem/tile2img.c -o $@
 xpm2img.o: ../win/gem/xpm2img.c $(HACK_H) ../include/bitmfile.h
 	$(CC) $(CFLAGS) -c ../win/gem/xpm2img.c -o $@
 bitmfile.o: ../win/gem/bitmfile.c ../include/bitmfile.h
 	$(CC) $(CFLAGS) -c ../win/gem/bitmfile.c -o $@
 
-tile2beos.o: ../win/BeOS/tile2beos.cpp $(HACK_H) ../include/tile.h
-	$(CXX) $(CFLAGS) -c ../win/BeOS/tile2beos.cpp -o $@
+tile2beos.o: ../win/BeOS/tile2beos.cpp $(HACK_H) ../win/share/tile.h
+	$(CXX) $(CFLAGS) -I../win/share -c ../win/BeOS/tile2beos.cpp -o $@
 
 # note: tileedit.cpp was developed for Qt2 and will not compile using Qt5
 tileedit.o: ../win/Qt/tileedit.cpp
@@ -357,18 +366,30 @@ tileedit: tileedit.o $(TEXT_IO)
 # in util...
 
 # make sure host object files from src are available when needed
+# (note: these dependencies have been copied from Makefile.src so only come
+# indirectly from 'make depend', hence are subject to bit rot as src changes)
 $(OBJDIR)/alloc.o: ../src/alloc.c $(CONFIG_H)
 	$(CC) $(CFLAGS) -c ../src/alloc.c -o $@
-$(OBJDIR)/drawing.o: ../src/drawing.c $(CONFIG_H)
+$(OBJDIR)/drawing.o: ../src/drawing.c $(CONFIG_H) ../include/color.h \
+		../include/rm.h ../include/objclass.h ../include/defsym.h \
+		../include/objects.h ../include/sym.h
 	$(CC) $(CFLAGS) -c ../src/drawing.c -o $@
-$(OBJDIR)/decl.o: ../src/decl.c $(CONFIG_H)
+$(OBJDIR)/decl.o: ../src/decl.c $(HACK_H)
 	$(CC) $(CFLAGS) -c ../src/decl.c -o $@
-$(OBJDIR)/monst.o: ../src/monst.c $(CONFIG_H)
+$(OBJDIR)/monst.o: ../src/monst.c $(CONFIG_H) ../include/permonst.h \
+		../include/align.h ../include/monattk.h ../include/monflag.h \
+		../include/monsters.h ../include/sym.h ../include/defsym.h \
+		../include/color.h
 	$(CC) $(CFLAGS) -c ../src/monst.c -o $@
-$(OBJDIR)/objects.o: ../src/objects.c $(CONFIG_H)
+$(OBJDIR)/objects.o: ../src/objects.c $(CONFIG_H) ../include/obj.h \
+		../include/prop.h ../include/skills.h ../include/color.h \
+		../include/objclass.h ../include/defsym.h ../include/objects.h
 	$(CC) $(CFLAGS) -c ../src/objects.c -o $@
 $(OBJDIR)/dlb.o: ../src/dlb.c $(CONFIG_H) ../include/dlb.h
 	$(CC) $(CFLAGS) -c ../src/dlb.c -o $@
+# this differs substantially from what Makefile.src specifies
+$(OBJDIR)/date.o: ../src/date.c $(CONFIG_H)
+	$(CC) $(CFLAGS) -c ../src/date.c -o $@
 
 # make sure hack.h dependencies get transitive information
 $(HACK_H): $(CONFIG_H)
@@ -385,7 +406,6 @@ clean:
 	-rm -f *.o
 
 spotless: clean
-	-rm -f ../include/tile.h tiletxt.c
 	-rm -f makedefs recover dlb
 	-rm -f gif2txt txt2ppm tile2x11 tile2img.ttp xpm2img.ttp \
 		tilemap tileedit tile2bmp

@@ -18,12 +18,15 @@
         char *          lcase           (char *)
         char *          ucase           (char *)
         char *          upstart         (char *)
+        char *          upwords         (char *)
         char *          mungspaces      (char *)
         char *          trimspaces      (char *)
         char *          strip_newline   (char *)
         char *          stripchars      (char *, const char *, const char *)
         char *          stripdigits     (char *)
+        unsigned        Strlen_         (const char *str, const char *, int)
         char *          eos             (char *)
+        boolean         str_start_is    (const char *, const char *, boolean)
         boolean         str_end_is      (const char *, const char *)
         int             str_lines_maxlen (const char *)
         char *          strkitten       (char *,char)
@@ -71,7 +74,6 @@
         void            strbuf_reserve  (strbuf *, int)
         void            strbuf_empty    (strbuf *)
         void            strbuf_nl_to_crlf (strbuf_t *)
-        char *          nonconst        (const char *, char *)
         int             swapbits        (int, int, int)
         void            shuffle_int_array (int *, int)
         void            nh_snprintf     (const char *, int, char *, size_t,
@@ -147,6 +149,25 @@ upstart(char *s)
     return s;
 }
 
+/* capitalize first letter of every word in a string (in place) */
+char *
+upwords(char *s)
+{
+    char *p;
+    boolean space = TRUE;
+
+    for (p = s; *p; p++)
+        if (*p == ' ') {
+            space = TRUE;
+        } else if (space && letter(*p)) {
+            *p = highc(*p);
+            space = FALSE;
+        } else {
+            space = FALSE;
+        }
+    return s;
+}
+
 /* remove excess whitespace from a string buffer (in place) */
 char *
 mungspaces(char *bp)
@@ -208,6 +229,40 @@ eos(register char *s)
     return s;
 }
 
+/* like strlen(3) but returns unsigned and panics if string is unreasonably long */
+unsigned
+Strlen_(const char *str, const char *file, int line){
+    size_t len = strnlen(str, LARGEST_INT);
+
+    if (len == LARGEST_INT)
+        panic("%s:%d string too long", file, line);
+    return (unsigned) len;
+}
+
+/* determine whether 'str' starts with 'chkstr', possibly ignoring case;
+ * panics on huge strings */
+boolean
+str_start_is(const char *str, const char *chkstr, boolean caseblind)
+{
+    int n = LARGEST_INT;
+
+    while (n--) {
+        char t1, t2;
+        if (!*str)
+            return (*chkstr == 0); /* chkstr >= str */
+        else if (!*chkstr)
+            return TRUE; /* chkstr < str */
+        t1 = caseblind ? lowc(*str) : *str;
+        t2 = caseblind ? lowc(*chkstr) : *chkstr;
+        str++, chkstr++;
+        if (t1 != t2)
+            return FALSE;
+    }
+    if (n == 0)
+        panic("string too long");
+    return TRUE;
+}
+
 /* determine whether 'str' ends in 'chkstr' */
 boolean
 str_end_is(const char *str, const char *chkstr)
@@ -219,7 +274,7 @@ str_end_is(const char *str, const char *chkstr)
     return FALSE;
 }
 
-/* return the max line length from buffer comprising of newline-separated strings */
+/* return max line length from buffer comprising newline-separated strings */
 int
 str_lines_maxlen(const char *str)
 {
@@ -349,7 +404,9 @@ ing_suffix(const char *s)
         Strcpy(onoff, p);
         *p = '\0';
     }
-    if (p >= &buf[3] && !index(vowel, *(p - 1))
+    if (p >= &buf[2] && !strcmpi(p - 2, "er")) { /* slither + ing */
+        /* nothing here */
+    } else if (p >= &buf[3] && !index(vowel, *(p - 1))
         && index(vowel, *(p - 2)) && !index(vowel, *(p - 3))) {
         /* tip -> tipp + ing */
         *p = *(p - 1);
@@ -396,9 +453,10 @@ onlyspace(const char *s)
 
 /* expand tabs into proper number of spaces (in place) */
 char *
-tabexpand(char *sbuf) /* assumed to be [BUFSZ] but can be smaller provided that
-                       * expanded string fits; expansion bigger than BUFSZ-1
-                       * will be truncated */
+tabexpand(
+    char *sbuf) /* assumed to be [BUFSZ] but can be smaller provided that
+                 * expanded string fits; expansion bigger than BUFSZ-1
+                 * will be truncated */
 {
     char buf[BUFSZ + 10];
     register char *bp, *s = sbuf;
@@ -521,10 +579,11 @@ strsubst(char *bp, const char *orig, const char *replacement)
    if N is 0, substitute all occurrences; returns the number of subsitutions;
    maximum output length is BUFSZ (BUFSZ-1 chars + terminating '\0') */
 int
-strNsubst(char *inoutbuf,   /* current string, and result buffer */
-          const char *orig, /* old substring; if "" then insert in front of Nth char */
-          const char *replacement, /* new substring; if "" then delete old substring */
-          int n) /* which occurrence to replace; 0 => all */
+strNsubst(
+    char *inoutbuf,   /* current string, and result buffer */
+    const char *orig, /* old substring; if "", insert in front of Nth char */
+    const char *replacement, /* new substring; if "", delete old substring */
+    int n) /* which occurrence to replace; 0 => all */
 {
     char *bp, *op, workbuf[BUFSZ];
     const char *rp;
@@ -611,7 +670,7 @@ rounddiv(long x, int y)
         divsgn = -divsgn;
         x = -x;
     }
-    r = x / y;
+    r = (int) (x / y);
     m = x % y;
     if (2 * m >= y)
         r++;
@@ -621,9 +680,9 @@ rounddiv(long x, int y)
 
 /* distance between two points, in moves */
 int
-distmin(int x0, int y0, int x1, int y1)
+distmin(coordxy x0, coordxy y0, coordxy x1, coordxy y1)
 {
-    register int dx = x0 - x1, dy = y0 - y1;
+    coordxy dx = x0 - x1, dy = y0 - y1;
 
     if (dx < 0)
         dx = -dx;
@@ -637,9 +696,9 @@ distmin(int x0, int y0, int x1, int y1)
 
 /* square of euclidean distance between pair of pts */
 int
-dist2(int x0, int y0, int x1, int y1)
+dist2(coordxy x0, coordxy y0, coordxy x1, coordxy y1)
 {
-    register int dx = x0 - x1, dy = y0 - y1;
+    coordxy dx = x0 - x1, dy = y0 - y1;
 
     return dx * dx + dy * dy;
 }
@@ -690,7 +749,7 @@ pmatch_internal(const char *patrn, const char *strng,
      *  Simple pattern matcher:  '*' matches 0 or more characters, '?' matches
      *  any single character.  Returns TRUE if 'strng' matches 'patrn'.
      */
-pmatch_top:
+ pmatch_top:
     if (!sk) {
         s = *strng++;
         p = *patrn++; /* get next chars and pre-advance */
@@ -732,7 +791,9 @@ pmatchi(const char *patrn, const char *strng)
     return pmatch_internal(patrn, strng, TRUE, (const char *) 0);
 }
 
-/* case-insensitive wildcard fuzzymatch */
+#if 0
+/* case-insensitive wildcard fuzzymatch;
+   NEVER WORKED AS INTENDED but fortunately isn't needed */
 boolean
 pmatchz(const char *patrn, const char *strng)
 {
@@ -741,6 +802,7 @@ pmatchz(const char *patrn, const char *strng)
 
     return pmatch_internal(patrn, strng, TRUE, fuzzychars);
 }
+#endif
 
 #ifndef STRNCMPI
 /* case insensitive counted string comparison */
@@ -847,24 +909,15 @@ fuzzymatch(const char *s1, const char *s2, const char *ignore_chars,
  *  - determination of what files are "very old"
  */
 
-/* TIME_type: type of the argument to time(); we actually use &(time_t) */
-#if defined(BSD) && !defined(POSIX_TYPES)
-#define TIME_type long *
-#else
+/* TIME_type: type of the argument to time(); we actually use &(time_t);
+   you might need to define either or both of these to 'long *' in *conf.h */
+#ifndef TIME_type
 #define TIME_type time_t *
 #endif
-/* LOCALTIME_type: type of the argument to localtime() */
-#if (defined(ULTRIX) && !(defined(ULTRIX_PROTO) || defined(NHSTDC))) \
-    || (defined(BSD) && !defined(POSIX_TYPES))
-#define LOCALTIME_type long *
-#else
+#ifndef LOCALTIME_type
 #define LOCALTIME_type time_t *
 #endif
 
-#if defined(AMIGA) && !defined(AZTEC_C) && !defined(__SASC_60) \
-    && !defined(_DCC) && !defined(__GNUC__)
-extern struct tm *localtime(time_t *);
-#endif
 static struct tm *getlt(void);
 
 /* Sets the seed for the random number generator */
@@ -884,14 +937,15 @@ static void
 set_random(unsigned long seed,
            int (*fn)(int) UNUSED)
 {
-    /* the types are different enough here that sweeping the different
-     * routine names into one via #defines is even more confusing
+    /*
+     * The types are different enough here that sweeping the different
+     * routine names into one via #defines is even more confusing.
      */
 # ifdef RANDOM /* srandom() from sys/share/random.c */
     srandom((unsigned int) seed);
 # else
-#  if defined(__APPLE__) || defined(BSD) || defined(LINUX) || defined(ULTRIX) \
-    || defined(CYGWIN32) /* system srandom() */
+#  if defined(__APPLE__) || defined(BSD) || defined(LINUX) \
+    || defined(ULTRIX) || defined(CYGWIN32) /* system srandom() */
 #   if defined(BSD) && !defined(POSIX_TYPES) && defined(SUNOS4)
     (void)
 #   endif
@@ -1024,12 +1078,8 @@ yyyymmddhhmmss(time_t date)
     if (date == 0)
         lt = getlt();
     else
-#if (defined(ULTRIX) && !(defined(ULTRIX_PROTO) || defined(NHSTDC))) \
-    || defined(BSD)
-        lt = localtime((long *) (&date));
-#else
-        lt = localtime(&date);
-#endif
+        lt = localtime((LOCALTIME_type) &date);
+
     /* just in case somebody's localtime supplies (year % 100)
        rather than the expected (year - 1900) */
     if (lt->tm_year < 70)
@@ -1220,19 +1270,6 @@ strbuf_nl_to_crlf(strbuf_t *strbuf)
     }
 }
 
-char *
-nonconst(const char *str, char *buf, size_t bufsz)
-{
-    char *retval = emptystr;
-
-    if (str && buf)
-        if (strlen(str) <= (bufsz - 1)) {
-	    Strcpy(buf, str);
-            retval = buf;
-        }
-    return retval;
-}
-
 /* swapbits(val, bita, bitb) swaps bit a with bit b in val */
 int
 swapbits(int val, int bita, int bitb)
@@ -1265,15 +1302,17 @@ DISABLE_WARNING_FORMAT_NONLITERAL
  * Wrap reasons:
  *   1. If there are any platform issues, we have one spot to fix them -
  *      snprintf is a routine with a troubling history of bad implementations.
- *   2. Add combersome error checking in one spot.  Problems with text wrangling
- *      do not have to be fatal.
+ *   2. Add combersome error checking in one spot.  Problems with text
+ *      wrangling do not have to be fatal.
  *   3. Gcc 9+ will issue a warning unless the return value is used.
  *      Annoyingly, explicitly casting to void does not remove the error.
  *      So, use the result - see reason #2.
  */
 void
-nh_snprintf(const char *func, int line, char *str, size_t size,
-            const char *fmt, ...)
+nh_snprintf(
+    const char *func, int line,
+    char *str, size_t size,
+    const char *fmt, ...)
 {
     va_list ap;
     int n;
@@ -1285,15 +1324,59 @@ nh_snprintf(const char *func, int line, char *str, size_t size,
     n = vsnprintf(str, size, fmt, ap);
 #endif
     va_end(ap);
-    if (n < 0 || (size_t)n >= size) { /* is there a problem? */
+    if (n < 0 || (size_t) n >= size) { /* is there a problem? */
         impossible("snprintf %s: func %s, file line %d",
-                   n < 0 ? "format error"
-                         : "overflow",
+                   (n < 0) ? "format error" : "overflow",
                    func, line);
-        str[size-1] = 0; /* make sure it is nul terminated */
+        str[size - 1] = '\0'; /* make sure it is nul terminated */
     }
 }
 
 RESTORE_WARNING_FORMAT_NONLITERAL
+
+#ifdef ENHANCED_SYMBOLS
+
+/* Unicode routines */
+
+int
+unicodeval_to_utf8str(int uval, uint8 *buffer, size_t bufsz)
+{
+    //    static uint8 buffer[7];
+    uint8 *b = buffer;
+
+    if (bufsz < 5)
+        return 0;
+    /*
+     *   Binary   Hex        Comments
+     *   0xxxxxxx 0x00..0x7F Only byte of a 1-byte character encoding
+     *   10xxxxxx 0x80..0xBF Continuation byte : one of 1-3 bytes following
+     * first 110xxxxx 0xC0..0xDF First byte of a 2-byte character encoding
+     *   1110xxxx 0xE0..0xEF First byte of a 3-byte character encoding
+     *   11110xxx 0xF0..0xF7 First byte of a 4-byte character encoding
+     */
+    *b = '\0';
+    if (uval < 0x80) {
+        *b++ = uval;
+    } else if (uval < 0x800) {
+        *b++ = 192 + uval / 64;
+        *b++ = 128 + uval % 64;
+    } else if (uval - 0xd800u < 0x800) {
+        return 0;
+    } else if (uval < 0x10000) {
+        *b++ = 224 + uval / 4096;
+        *b++ = 128 + uval / 64 % 64;
+        *b++ = 128 + uval % 64;
+    } else if (uval < 0x110000) {
+        *b++ = 240 + uval / 262144;
+        *b++ = 128 + uval / 4096 % 64;
+        *b++ = 128 + uval / 64 % 64;
+        *b++ = 128 + uval % 64;
+    } else {
+        return 0;
+    }
+    *b = '\0'; /* NUL terminate */
+    return 1;
+}
+#endif /* ENHANCED_SYMBOLS */
 
 /*hacklib.c*/

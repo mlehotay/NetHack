@@ -1,9 +1,9 @@
-/* NetHack 3.7	winX.h	$NHDT-Date: 1613272633 2021/02/14 03:17:13 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.45 $ */
+/* NetHack 3.7	winX.h	$NHDT-Date: 1643491525 2022/01/29 21:25:25 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.52 $ */
 /* Copyright (c) Dean Luick, 1992                                 */
 /* NetHack may be freely redistributed.  See license for details. */
 
 /*
- * Definitions for the X11 window-port.  See doc/window.doc for details on
+ * Definitions for the X11 window-port.  See doc/window.txt for details on
  * the window interface.
  */
 #ifndef WINX_H
@@ -61,6 +61,7 @@ struct text_map_info_t {
 
 struct tile_glyph_info_t {
     unsigned short glyph;
+    unsigned short tileidx;
     unsigned glyphflags;
 };
 
@@ -80,7 +81,7 @@ struct tile_map_info_t {
 struct map_info_t {
     Dimension viewport_width,     /* Saved viewport size, so we can */
         viewport_height;          /*   clip to cursor on a resize.  */
-    unsigned char t_start[ROWNO], /* Starting column for new info. */
+    coordxy t_start[ROWNO],         /* Starting column for new info. */
         t_stop[ROWNO];            /* Ending column for new info. */
 
     boolean is_tile; /* true if currently using tiles */
@@ -446,21 +447,20 @@ extern void X11_putstr(winid, int, const char *);
 extern void X11_display_file(const char *, boolean);
 extern void X11_start_menu(winid, unsigned long);
 extern void X11_add_menu(winid, const glyph_info *, const ANY_P *, char,
-                         char, int, const char *, unsigned int);
+                         char, int, int, const char *, unsigned int);
 extern void X11_end_menu(winid, const char *);
 extern int X11_select_menu(winid, int, MENU_ITEM_P **);
-extern void X11_update_inventory(int);
 extern void X11_mark_synch(void);
 extern void X11_wait_synch(void);
 #ifdef CLIPPING
 extern void X11_cliparound(int, int);
 #endif
-extern void X11_print_glyph(winid, xchar, xchar, const glyph_info *,
+extern void X11_print_glyph(winid, coordxy, coordxy, const glyph_info *,
                             const glyph_info *);
 extern void X11_raw_print(const char *);
 extern void X11_raw_print_bold(const char *);
 extern int X11_nhgetch(void);
-extern int X11_nh_poskey(int *, int *, int *);
+extern int X11_nh_poskey(coordxy *, coordxy *, int *);
 extern void X11_nhbell(void);
 extern int X11_doprev_message(void);
 extern char X11_yn_function_core(const char *, const char *, char, unsigned);
@@ -486,5 +486,7 @@ extern void genl_outrip(winid, int, time_t);
 #endif
 
 extern void X11_preference_update(const char *);
+extern void X11_update_inventory(int);
+extern win_request_info *X11_ctrl_nhwindow(winid, int, win_request_info *);
 
 #endif /* WINX_H */

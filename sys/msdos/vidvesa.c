@@ -19,8 +19,7 @@
 
 #define FIRST_TEXT_COLOR 240
 
-extern int total_tiles_used; /* tile.c */
-
+extern int total_tiles_used, Tile_corr, Tile_unexplored;  /* from tile.c */
 struct VesaCharacter {
     int colour;
     int chr;
@@ -85,18 +84,20 @@ static struct map_struct {
     int ch;
     int attr;
     unsigned special;
+    short int tileidx;
 } map[ROWNO][COLNO]; /* track the glyphs */
 
-#define vesa_clearmap()                                   \
-    {                                                     \
-        int x, y;                                         \
-        for (y = 0; y < ROWNO; ++y)                       \
-            for (x = 0; x < COLNO; ++x) {                 \
-                map[y][x].glyph = cmap_to_glyph(S_stone); \
-                map[y][x].ch = S_stone;                   \
-                map[y][x].attr = 0;                       \
-                map[y][x].special = 0;                    \
-            }                                             \
+#define vesa_clearmap()                                         \
+    {                                                           \
+        int x, y;                                               \
+        for (y = 0; y < ROWNO; ++y)                             \
+            for (x = 0; x < COLNO; ++x) {                       \
+                map[y][x].glyph = GLYPH_UNEXPLORED;             \
+                map[y][x].ch = glyph2ttychar(GLYPH_UNEXPLORED); \
+                map[y][x].attr = 0;                             \
+                map[y][x].special = 0;                          \
+                map[y][x].tileidx = Tile_unexplored;            \
+            }                                                   \
     }
 #define TOP_MAP_ROW 1
 
@@ -104,22 +105,22 @@ static int viewport_cols = 40;
 static int viewport_rows = ROWNO;
 
 static const struct Pixel defpalette[] = {    /* Colors for text and the position bar */
-	{ 0x00, 0x00, 0x00, 0xff }, /* CLR_BLACK */
-	{ 0xaa, 0x00, 0x00, 0xff }, /* CLR_RED */
-	{ 0x00, 0xaa, 0x00, 0xff }, /* CLR_GREEN */
-	{ 0x99, 0x40, 0x00, 0xff }, /* CLR_BROWN */
-	{ 0x00, 0x00, 0xaa, 0xff }, /* CLR_BLUE */
-	{ 0xaa, 0x00, 0xaa, 0xff }, /* CLR_MAGENTA */
-	{ 0x00, 0xaa, 0xaa, 0xff }, /* CLR_CYAN */
-	{ 0xaa, 0xaa, 0xaa, 0xff }, /* CLR_GRAY */
-	{ 0x55, 0x55, 0x55, 0xff }, /* NO_COLOR */
-	{ 0xff, 0x90, 0x00, 0xff }, /* CLR_ORANGE */
-	{ 0x00, 0xff, 0x00, 0xff }, /* CLR_BRIGHT_GREEN */
-	{ 0xff, 0xff, 0x00, 0xff }, /* CLR_YELLOW */
-	{ 0x00, 0x00, 0xff, 0xff }, /* CLR_BRIGHT_BLUE */
-	{ 0xff, 0x00, 0xff, 0xff }, /* CLR_BRIGHT_MAGENTA */
-	{ 0x00, 0xff, 0xff, 0xff }, /* CLR_BRIGHT_CYAN */
-	{ 0xff, 0xff, 0xff, 0xff }  /* CLR_WHITE */
+        { 0x00, 0x00, 0x00, 0xff }, /* CLR_BLACK */
+        { 0xaa, 0x00, 0x00, 0xff }, /* CLR_RED */
+        { 0x00, 0xaa, 0x00, 0xff }, /* CLR_GREEN */
+        { 0x99, 0x40, 0x00, 0xff }, /* CLR_BROWN */
+        { 0x00, 0x00, 0xaa, 0xff }, /* CLR_BLUE */
+        { 0xaa, 0x00, 0xaa, 0xff }, /* CLR_MAGENTA */
+        { 0x00, 0xaa, 0xaa, 0xff }, /* CLR_CYAN */
+        { 0xaa, 0xaa, 0xaa, 0xff }, /* CLR_GRAY */
+        { 0x55, 0x55, 0x55, 0xff }, /* NO_COLOR */
+        { 0xff, 0x90, 0x00, 0xff }, /* CLR_ORANGE */
+        { 0x00, 0xff, 0x00, 0xff }, /* CLR_BRIGHT_GREEN */
+        { 0xff, 0xff, 0x00, 0xff }, /* CLR_YELLOW */
+        { 0x00, 0x00, 0xff, 0xff }, /* CLR_BRIGHT_BLUE */
+        { 0xff, 0x00, 0xff, 0xff }, /* CLR_BRIGHT_MAGENTA */
+        { 0x00, 0xff, 0xff, 0xff }, /* CLR_BRIGHT_CYAN */
+        { 0xff, 0xff, 0xff, 0xff }  /* CLR_WHITE */
 };
 
 /* Information about the selected VESA mode */
@@ -667,14 +668,13 @@ vesa_xputc(char ch, int attr)
 #if defined(USE_TILES)
 /* Place tile represent. a glyph at current location */
 void
-vesa_xputg(int glyphnum, int ch,
-           unsigned special) /* special feature: corpse, invis, detected, pet, ridden -
-                                hack.h */
+vesa_xputg(const glyph_info *glyphinfo)
 {
+    int glyphnum = glyphinfo->glyph, ch = glyphinfo->ttychar;
+    unsigned special = glyphinfo->gm.glyphflags;
     int col, row;
     int attr;
     int ry;
-    int tilenum = 0;
 
     row = currow;
     col = curcol;
@@ -685,6 +685,7 @@ vesa_xputg(int glyphnum, int ch,
     map[ry][col].glyph = glyphnum;
     map[ry][col].ch = ch;
     map[ry][col].special = special;
+    map[ry][col].tileidx = glyphinfo->gm.tileidx;
     attr = (g_attribute == 0) ? attrib_gr_normal : g_attribute;
     map[ry][col].attr = attr;
     if (iflags.traditional_view) {
@@ -696,10 +697,7 @@ vesa_xputg(int glyphnum, int ch,
             if (!iflags.over_view && map[ry][col].special)
                 decal_packed(packcell, special);
 #endif
-            tilenum = glyph2tile[glyphnum];
-            if (map[ry][col].special & MG_FEMALE)
-                tilenum++;
-            vesa_DisplayCell(tilenum, col - clipx, ry - clipy);
+            vesa_DisplayCell(glyphinfo->gm.tileidx, col - clipx, ry - clipy);
         }
     }
     if (col < (CO - 1))
@@ -807,7 +805,7 @@ vesa_redrawmap(void)
         for (cy = 0; cy < ROWNO; ++cy) {
             for (py = 0; py < vesa_oview_height; ++py) {
                 for (cx = 0; cx < COLNO; ++cx) {
-                    tile = vesa_oview_tiles[glyph2tile[map[cy][cx].glyph]];
+                    tile = vesa_oview_tiles[map[cy][cx].tileidx];
                     vesa_WritePixelRow(offset + p_row_width * cx, tile + p_row_width * py, p_row_width);
                 }
                 x = COLNO * vesa_oview_width;
@@ -827,7 +825,7 @@ vesa_redrawmap(void)
         for (cy = clipy; cy <= (unsigned) clipymax && cy < ROWNO; ++cy) {
             for (py = 0; py < (unsigned) iflags.wc_tile_height; ++py) {
                 for (cx = clipx; cx <= (unsigned) clipxmax && cx < COLNO; ++cx) {
-                    tile = vesa_tiles[glyph2tile[map[cy][cx].glyph]];
+                    tile = vesa_tiles[map[cy][cx].tileidx];
                     vesa_WritePixelRow(offset + p_row_width * (cx - clipx), tile + p_row_width * py, p_row_width);
                 }
                 x = (cx - clipx) * iflags.wc_tile_width;
@@ -996,6 +994,8 @@ decal_packed(const struct TileImage *gp, unsigned special)
 }
 #endif
 
+DISABLE_WARNING_FORMAT_NONLITERAL
+
 /*
  * Open tile files,
  * initialize the SCREEN, switch it to graphics mode,
@@ -1048,7 +1048,7 @@ vesa_Init(void)
     vesa_mode = 0xFFFF; /* might want an 8 bit mode after loading tiles */
     vesa_detect();
     if (vesa_mode == 0xFFFF) {
-        raw_printf("Reverting to TTY mode, no VESA mode available.",
+        raw_printf("%s (%d)", "Reverting to TTY mode, no VESA mode available.",
                    tilefailure);
         wait_synch();
         iflags.usevga = 0;
@@ -1164,6 +1164,8 @@ vesa_Init(void)
     }
     free_tiles();
 }
+
+RESTORE_WARNING_FORMAT_NONLITERAL
 
 /* Set the size of the map viewport */
 static void

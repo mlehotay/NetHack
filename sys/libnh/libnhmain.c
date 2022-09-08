@@ -60,6 +60,7 @@ int
 main(int argc, char *argv[])
 
 #else /* !__EMSCRIPTEN__ */
+int nhmain(int argc, char *argv[]);
 
 int
 nhmain(int argc, char *argv[])
@@ -360,7 +361,7 @@ process_options(int argc, char *argv[])
                 || !strcmpi(*argv, "-debug")) {
                 wizard = TRUE, discover = FALSE;
             } else if (!strncmpi(*argv, "-DECgraphics", l)) {
-                load_symset("DECGraphics", PRIMARY);
+                load_symset("DECGraphics", PRIMARYSET);
                 switch_symbols(TRUE);
             } else {
                 raw_printf("Unknown option: %.60s", *argv);
@@ -390,7 +391,7 @@ process_options(int argc, char *argv[])
         case 'I':
         case 'i':
             if (!strncmpi(*argv, "-IBMgraphics", l)) {
-                load_symset("IBMGraphics", PRIMARY);
+                load_symset("IBMGraphics", PRIMARYSET);
                 load_symset("RogueIBM", ROGUESET);
                 switch_symbols(TRUE);
             } else {

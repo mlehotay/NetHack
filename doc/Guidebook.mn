@@ -1,4 +1,4 @@
-.\" $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.414 $ $NHDT-Date: 1613011698 2021/02/11 02:48:18 $
+.\" $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.464 $ $NHDT-Date: 1655461129 2022/06/17 10:18:49 $
 .\"
 .\" This is an excerpt from the 'roff' man page from the 'groff' package.
 .\" Guidebook.mn currently does *not* fully adhere to these guidelines.
@@ -35,7 +35,8 @@
 .ds vr "NetHack 3.7
 .ds f0 "\*(vr
 .ds f1
-.ds f2 "March 25, 2021
+.\"DO NOT REMOVE NH_DATESUB .ds f2 "DATE(%B %-d, %Y)
+.ds f2 "August 21, 2022
 .
 .\" A note on some special characters:
 .\" \(lq = left double quote
@@ -414,7 +415,13 @@ Movement modifiers:
 .lp ""
 Other conditions and modifiers exist, but there isn't enough room to
 display them with the other status fields.
-The \(oq\(haX\(cq command shows all relevant status conditions.
+.pg
+.in -5n .\" outdent this paragraph
+The \f(CR#attributes\fP command (default key \f(CR\(haX\fP) will show
+all current status information in unabbreviated format.
+It also shows other information which might be included on the status
+lines if those had more room.
+.in 0 .\" reset indentation
 .hn 2
 The message line (top)
 .pg
@@ -650,7 +657,8 @@ a menu of several sorting alternatives (which sets a new value for the
 .op sortdiscoveries
 option).
 .lp ""
-A few other commands (eat food, offer sacrifice, apply tinning-kit) use
+A few other commands (eat food, offer sacrifice, apply tinning-kit,
+drink/quaff, dip) use
 the \(oq\f(CRm\fP\(cq prefix to skip checking for applicable objects on
 the floor and go straight to checking inventory,
 or (for \(lq#loot\(rq to remove a saddle),
@@ -660,13 +668,24 @@ In debug mode (aka \(lqwizard mode\(rq), the \(oqm\(cq prefix may also be
 used with the \(lq#teleport\(rq and \(lq#wizlevelport\(rq commands.
 .lp F[yuhjklbn]
 Prefix:  fight a monster (even if you only guess one is there).
-.lp M[yuhjklbn]
-Prefix:  move far, no pickup.
 .lp "g[yuhjklbn]"
 Prefix:  move until something interesting is found.
-.lp "G[yuhjklbn] or <CONTROL->[yuhjklbn]"
-Prefix:  same as \(oqg\(cq, but forking of corridors is not considered
+.lp "G[yuhjklbn] or <Control>+[yuhjklbn]"
+Prefix:  similar to \(oqg\(cq, but forking of corridors is not considered
 interesting.
+.lp ""
+Note:  <Control>+<key> means holding the <Control> or <Ctrl> key
+down like <Shift> while typing and releasing <key>, then releasing
+<Control>. \(ha<key> is used as shorthand elsewhere in the Guidebook to mean
+the same thing.  Control characters are case-insensitive so \(hax and \(haX are
+the same.
+.lp "M[yuhjklbn]"
+Old versions supported \(oq\f(CRM\fP\(cq as a movement prefix which
+combined the effect of \(oq\f(CRm\fP\(cq with \f(CR<Control>\fP+<direction>.
+That is no longer supported as a prefix but similar effect can be achieved
+by using \(oq\f(CRm\fP\(cq and \f(CRG\fP<direction> in combination.
+\f(CRm\fP can also be used in combination with \f(CRg\fP<direction>,
+\f(CR<Control>\fP+<direction>, or \f(CR<Shift>\fP+<direction>.
 .lp _
 Travel to a map location via a shortest-path algorithm.
 .lp ""
@@ -675,13 +694,14 @@ is computed over map locations the hero knows about (e.g. seen or
 previously traversed).
 If there is no known path, a guess is made instead.
 Stops on most of
-the same conditions as the \(oqG\(cq command, but without picking up
-objects, similar to the \(oqM\(cq command.
+the same conditions as the \(oq\f(CRG\fP\(cq prefix, but without picking up
+objects, so implicitly forces the \(oq\f(CRm\fP\(cq prefix.
 For ports with mouse
 support, the command is also invoked when a mouse-click takes place on a
 location other than the current position.
 .lp .
-Wait or rest, do nothing for one turn. Precede with the \(oqm\(cq prefix
+Wait or rest, do nothing for one turn.
+Precede with the \(oqm\(cq prefix
 to wait for a turn even next to a hostile monster, if
 .op safe_wait
 is on.
@@ -689,14 +709,15 @@ is on.
 Apply (use) a tool (pick-axe, key, lamp...).
 .lp ""
 If used on a wand, that wand will be broken, releasing its magic in the
-process.  Confirmation is required.
+process.
+Confirmation is required.
 .lp A
 Remove one or more worn items, such as armor.
 .lp ""
 Use \(oqT\(cq (take off) to take off only one piece of armor
 or \(oqR\(cq (remove) to take off only one accessory.
 .lp \(haA
-Redo the previous command.
+Repeat the previous command.
 .lp c
 Close a door.
 .lp C
@@ -714,7 +735,7 @@ Drop several things.
 .lp ""
 In answer to the question
 .lp ""
-\(lqWhat kinds of things do you want to drop? [!%= BUCXaium]\(rq
+\(lqWhat kinds of things do you want to drop? [!%= BUCXPaium]\(rq
 .lp ""
 you should type zero or more object symbols possibly followed by
 \(oqa\(cq and/or \(oqi\(cq and/or \(oqu\(cq and/or \(oqm\(cq.
@@ -729,6 +750,8 @@ drop all objects known to be uncursed.
 drop all objects known to be cursed.
 .PL DX
 drop all objects of unknown B/U/C status.
+.PL DP
+drop objects picked up last.
 .PL Da
 drop all objects, without asking for confirmation.
 .PL Di
@@ -741,10 +764,13 @@ use a menu to pick which object(s) to drop.
 drop only unpaid food.
 .PE
 The last example shows a combination.
-There are three categories of object filtering: class (\(oq!\(cq for
+There are four categories of object filtering: class (\(oq!\(cq for
 potions, \(oq?\(cq for scrolls, and so on), shop status (\(oqu\(cq for
-unpaid, in other words, owned by the shop), and bless/curse state
-(\(oqB\(cq, \(oqU\(cq, \(oqC\(cq, and \(oqX\(cq as shown above).
+unpaid, in other words, owned by the shop), bless/curse state
+(\(oqB\(cq, \(oqU\(cq, \(oqC\(cq, and \(oqX\(cq as shown above),
+and novelty (\(oqP\(cq, recently picked up items; controlled by picking
+up or dropping things rather than by any time factor).
+.lp ""
 If you specify more than one value in a category (such as \(lq!?\(rq for
 potions and scrolls or \(lqBU\(rq for blessed and uncursed), an inventory
 object will meet the criteria if it matches any of the specified
@@ -797,6 +823,13 @@ If your wielded weapon has the throw-and-return property, your quiver
 is empty, and
 .op autoquiver
 is false, you will throw that wielded weapon instead of filling the quiver.
+This will also automatically use a polearm if wielded.
+If
+.op fireassist
+is true, firing will automatically try to wield a launcher (for example,
+a bow or a sling) matching the ammo in the quiver; this might take multiple
+turns, and get interrupted by a monster.
+Remember to swap back to your main melee weapon afterwards.
 .lp ""
 See also \(oqt\(cq (throw) for more general throwing and shooting.
 .lp i
@@ -820,6 +853,8 @@ list all items known to be uncursed;
 list all items known to be cursed;
 .PL IX
 list all items whose bless/curse status is unknown;
+.PL IP
+list items picked up last;
 .PL I$
 count your money.
 .PE
@@ -838,6 +873,7 @@ The available options
 are listed later in this Guidebook.
 Options are usually set before the game rather than with the \(oqO\(cq
 command; see the section on options below.
+Precede \(oqO\(cq with the \(oqm\(cq prefix to show advanced options.
 .lp \(haO
 Show overview.
 .lp ""
@@ -866,13 +902,17 @@ For some interfaces, the behavior can be varied via the
 option.
 .lp q
 Quaff (drink) something (potion, water, etc).
+.lp ""
+When there is a fountain or sink present, it asks whether to drink
+from that.
+If that is declined, then it offers a chance to choose a potion from
+inventory.
+Precede \(oqq\(cq with the \(oqm\(cq prefix to skip asking about
+drinking from a fountain or sink.
 .lp Q
 Select an object for your quiver, quiver sack, or just generally at
 the ready (only one of these is available at a time).
 You can then throw this (or one of these) using the \(oqf\(cq command.
-.lp ""
-(In versions prior to 3.3 this was the command to quit
-the game, which has been moved to \(lq#quit\(rq.)
 .lp r
 Read a scroll or spellbook.
 .lp R
@@ -927,7 +967,7 @@ If you throw an arrow while not wielding a bow, you are throwing
 it by hand and it will generally be less effective than when shot.
 .lp ""
 See also \(oqf\(cq (fire) for throwing or shooting an item pre-selected
-via the \(oqQ\(cq (quiver) command.
+via the \(oqQ\(cq (quiver) command, with some extra assistance.
 .lp T
 Take off armor.
 .lp ""
@@ -1203,10 +1243,16 @@ Autocompletes.
 Default key is \(oqM-C\(cq.
 .lp ""
 See the section below entitled \(lqConduct\(rq for details.
+.lp #debugfuzzer
+Start the fuzz tester.
+Debug mode only.
 .lp "#dip     "
 Dip an object into something.
 Autocompletes.
 Default key is \(oqM-d\(cq.
+.lp ""
+The \(oqm\(cq prefix skips dipping into a fountain or pool if there
+is one at your location.
 .lp "#down    "
 Go down a staircase.
 Default key is \(oq>\(cq.
@@ -1236,8 +1282,14 @@ To really switch to explore mode, respond with \f(CRy\fP.
 You can set the
 .op paranoid_confirmation:quit
 option to require a response of \f(CRyes\fP instead.
+.lp "#fight   "
+Prefix key to force fight a direction, even if you see nothing
+to fight there.
+Default key is \(oqF\(cq, or \(oq\-\(cq with
+.op number_pad
 .lp "#fire    "
-Fire ammunition from quiver.
+Fire ammunition from quiver, possibly autowielding a launcher,
+or hit with a wielded polearm.
 Default key is \(oqf\(cq.
 .lp "#force   "
 Force a lock.
@@ -1341,6 +1393,13 @@ Default key is \(oqo\(cq.
 .lp "#options "
 Show and change option settings.
 Default key is \(oqO\(cq.
+Precede with the \(oqm\(cq prefix to show advanced options.
+.lp #optionsfull
+Show advanced game option settings.
+No default key.
+Precede with the \(oqm\(cq prefix to execute the simpler options command.
+(Mainly useful if you use \f(CRBINDING=O:optionsfull\fP to switch
+\(oq\f(CRO\fP\(cq from simple options back to traditional advanced options.)
 .lp #overview
 Display information you've discovered about the dungeon.
 Any visited
@@ -1404,10 +1463,12 @@ Default key is \(oqP\(cq.
 .lp "#quaff   "
 Quaff (drink) something.
 Default key is \(oqq\(cq.
+.lp ""
+The \(oqm\(cq prefix skips drinking from a fountain or sink if there
+is one at your location.
 .lp "#quit    "
 Quit the program without saving your game.
 Autocompletes.
-Default key is \(oqM-q\(cq.
 .lp ""
 Since using this command by accident would throw away the current game,
 you are asked to confirm your intent before quitting.
@@ -1430,6 +1491,17 @@ is on.
 .lp "#remove  "
 Remove an accessory (ring, amulet, etc).
 Default key is \(oqR\(cq.
+.lp "#repeat  "
+Repeat the previous command.
+Default key is \(oq\(haA\(cq.
+.lp "#reqmenu "
+Prefix key to modify the behaviour or request menu from some commands.
+Prevents autopickup when used with movement commands.
+Default key is \(oqm\(cq.
+.lp "#retravel"
+Travel to a previously selected travel destination.
+Default key is \(oqC-_\(cq.
+See also #travel.
 .lp "#ride    "
 Ride (or stop riding) a saddled creature.
 Autocompletes.
@@ -1438,6 +1510,24 @@ Default key is \(oqM-R\(cq.
 Rub a lamp or a stone.
 Autocompletes.
 Default key is \(oqM-r\(cq.
+.lp "#run     "
+Prefix key to run towards a direction.
+Default key is \(oqG\(cq when
+.op number_pad
+is off,
+\(oq5\(cq when
+.op number_pad
+is set to 1 or 3,
+otherwise \(oqM-5\(cq when it is set to 2 or 4.
+.lp "#rush    "
+Prefix key to rush towards a direction.
+Default is \(oqg\(cq when
+.op number_pad
+is off,
+\(oqM-5\(cq when
+.op number_pad
+is set to 1 or 3,
+otherwise \(oq5\(cq when it is set to 2 or 4.
 .lp "#save    "
 Save the game and exit the program.
 Default key is \(oqS\(cq.
@@ -1555,6 +1645,7 @@ When picking a target with cursor and the
 .op autodescribe
 option is on, the top line will show \(lq(no travel path)\(rq if
 your character does not know of a path to that location.
+See also #retravel.
 .lp "#turn    "
 Turn undead away.
 Autocompletes.
@@ -1629,9 +1720,13 @@ Debug mode only.
 Bury objects under and around you.
 Autocompletes.
 Debug mode only.
+.lp #wizcast
+Cast any spell.
+Debug mode only.
 .lp #wizdetect
-Search for hidden things (secret doors or traps or unseen monsters)
+Reveal hidden things (secret doors or traps or unseen monsters)
 within a modest radius.
+No time elapses.
 Autocompletes.
 Debug mode only.
 Default key is \(oq\(haE\(cq.
@@ -1648,6 +1743,12 @@ Debug mode only.
 Default key is \(oq\(haI\(cq.
 .lp #wizintrinsic
 Set one or more intrinsic attributes.
+Autocompletes.
+Debug mode only.
+.lp "#wizkill "
+Remove monsters from play by just pointing at them.
+By default the hero gets credit or blame for killing the targets.
+Precede this command with the \(oq\f(CRm\fP\(cq prefix to override that.
 Autocompletes.
 Debug mode only.
 .lp #wizlevelport
@@ -1759,8 +1860,6 @@ option is enabled)
 #overview
 .lp M-p
 #pray
-.lp M-q
-#quit
 .lp M-r
 #rub
 .lp M-R
@@ -1797,6 +1896,7 @@ option is on, some additional letter commands are available:
 .lp u
 #untrap
 .
+.BR 1 \"blank line for extra separation; plain text output looks better
 .hn 1
 Rooms and corridors
 .pg
@@ -2259,11 +2359,11 @@ location ordinarily wouldn't be seen any more.
 Objects
 .pg
 When you find something in the dungeon, it is common to want to pick
-it up.  In NetHack, this is accomplished automatically by walking over
-the object (unless you turn off the
+it up.  In NetHack, this is accomplished by using the \(oq,\(cq command.
+If
 .op autopickup
-option (see below), or move with the \(oqm\(cq prefix (see above)), or
-manually by using the \(oq,\(cq command.
+option is on, you will automatically pick up the object
+by walking over, unless you move with the \(oqm\(cq prefix.
 .pg
 If you're carrying too many items, NetHack will tell you so and you won't
 be able to pick up anything more.
@@ -2420,7 +2520,7 @@ Some of the more obscure weapons (such as the \fIaklys\fP,
 appendix to \fIUnearthed Arcana\fP, an AD&D supplement.
 .pg
 The commands to use weapons are \(oqw\(cq (wield), \(oqt\(cq (throw),
-\(oqf\(cq (fire, an alternate way of throwing), \(oqQ\(cq (quiver),
+\(oqf\(cq (fire), \(oqQ\(cq (quiver),
 \(oqx\(cq (exchange), \(oqX\(cq (twoweapon), and \(lq#enhance\(rq
 (see below).
 .hn 3
@@ -2462,6 +2562,9 @@ If your quiver is empty,
 .op autoquiver
 is false, and you are wielding a weapon which returns when thrown,
 you will throw that weapon instead of filling the quiver.
+The fire command also has extra assistance, if
+.op fireassist
+is on it will try to wield a launcher matching the ammo in the quiver.
 .pg
 Some characters have the ability to throw or shoot a volley of multiple
 items (from the same stack) in a single action.
@@ -2899,24 +3002,32 @@ choosing what to wear or take off.
 .hn 2
 Gems (\(oq*\(cq)
 .pg
-Some gems are valuable, and can be sold for a lot of gold.  They are also
-a far more efficient way of carrying your riches.  Valuable gems increase
-your score if you bring them with you when you exit.
+Some gems are valuable, and can be sold for a lot of gold.
+They are also a far more efficient way of carrying your riches.
+Valuable gems increase your score if you bring them with you when you exit.
 .pg
 Other small rocks are also categorized as gems, but they are much less
-valuable.  All rocks, however, can be used as projectile weapons (if you
-have a sling).  In the most desperate of cases, you can still throw them
-by hand.
+valuable.
+All rocks, however, can be used as projectile weapons (if you have a sling).
+In the most desperate of cases, you can still throw them by hand.
 .hn 2
 Large rocks (\(oq\`\(cq)
 .pg
-Statues and boulders are not particularly useful, and are generally
-heavy.  It is rumored that some statues are not what they seem.
+Statues and boulders are not particularly useful, and are generally heavy.
+It is rumored that some statues are not what they seem.
 .pg
 Boulders occasionally block your path.
 You can push one forward (by attempting to walk onto its spot)
 when nothing blocks \fIits\fP path, or you can
 smash it into a pile of small rocks with breaking magic or a pick-axe.
+It is possible to move onto a boulder's location if certain conditions
+are met; ordinarily one of those conditions is that pushing it any
+further be blocked.
+Using the move-without-picking-up prefix (default key \(oq\f(CRm\fP\(cq)
+prior to the direction of movement will attempt to move to a boulder's
+location without pushing it in addition to the prefix's usual action of
+suppressing auto-pickup at the destination.
+.pg
 Very large humanoids (giants and their ilk) have been known to pick up
 boulders and use them as missile weapons.
 .pg
@@ -3183,6 +3294,9 @@ Explored to the bottom of the Gnomish Mines and found a special item there.
 .fi
 .PL Medusa
 Defeated Medusa.
+.PL Tune
+Discovered the tune that can be used to open and close the drawbridge on
+the Castle level.
 .PL Bell
 Acquired the Bell of Opening.
 .PL Gehennom
@@ -3234,6 +3348,11 @@ corresponding achievement.
 The \fIMedusa\fP achievement is recorded if she dies for any reason,
 even if you are not directly responsible, and only if she dies.
 .pg
+The 5-note \fItune\fP can be learned via trial and error with a musical
+instrument played closely
+enough\(embut not too close!\(emto
+the Castle level's drawbridge or can be given to you via prayer boon.
+.pg
 \fIBlind\fP and \fINudist\fP are also conducts, and they can only be
 enabled by setting the correspondingly named option in NETHACKOPTIONS
 or run-time configuration file prior to game start.
@@ -3269,17 +3388,17 @@ operating systems.
 On
 .UX ,
 Linux,
-and Mac OS X it is \(lq.nethackrc\(rq in the user's home directory.
+and macOS it is \(lq.nethackrc\(rq in the user's home directory.
 The file may not exist, but it is a normal ASCII text file and
 can be created with any text editor.
 .pg
 On Windows, it is \(lq.nethackrc\(rq in the folder
-\(lq\\%USERPROFILE%\\NetHack\\3.6\(rq.  The file may not exist,
+\(lq\\%USERPROFILE%\\NetHack\\3.7\(rq.  The file may not exist,
 but it is a normal ASCII text file can can be created with any
 text editor.
 After running NetHack for the first time, you should find a default
 template for the configuration file named \(lq.nethackrc.template\(rq
-in \(lq\\%USERPROFILE%\\NetHack\\3.6\(rq.
+in \(lq\\%USERPROFILE%\\NetHack\\3.7\(rq.
 If you had not created the configuration file, NetHack will create
 the configuration file for you using the default template file.
 .pg
@@ -3367,8 +3486,8 @@ Set exceptions to the
 option.
 See the \(lqConfiguring Autopickup Exceptions\(rq section.
 .lp BINDINGS
-Change the key bindings of some special keys, menu accelerators, or
-extended commands.
+Change the key bindings of some special keys, menu accelerators,
+extended commands, or mouse buttons.
 You can specify multiple bindings.
 Format is key followed by the command, separated by a colon.
 See the \(lqChanging Key Bindings\(rq section for more information.
@@ -3555,16 +3674,20 @@ Persistent.
 .lp autoopen
 Walking into a closed door attempts to open it (default true).
 Persistent.
-.lp "autopickup  "
-Automatically pick up things onto which you move (default on).
+.lp autopickup
+Automatically pick up things onto which you move (default off).
 Persistent.
 .lp ""
 See
 .op pickup_types
 and also
 .op autopickup_exception
-to refine the behavior.
-.lp "autoquiver  "
+for ways to refine the behavior.
+.lp ""
+Note: prior to version 3.7, the default for
+.op autopickup
+was \fIon\fP.
+.lp autoquiver
 This option controls what happens when you attempt the \(oqf\(cq (fire)
 command when nothing is quivered or readied (default false).
 When true, the computer will fill
@@ -3578,9 +3701,39 @@ If no weapon is found or the option is
 false, the \(oqt\(cq (throw) command is executed instead.
 Persistent.
 .lp autounlock
-Walking into a locked door or looting a locked container while carrying
-an unlocking tool (such as a key) will ask whether to use that tool to
-unlock the door or container (default true).
+Controls what action to take when attempting to walk into a locked door
+or to loot a locked container.
+Takes a plus-sign separated list of values:
+.PS Apply-Key
+.PL Untrap
+prompt about whether to attempt to find a trap;
+it might fail to find one even when present; if it does find one, it
+will ask whether you want to try to disarm the trap; if you decline,
+your character will forget that the door or box is trapped;
+.PL Apply-Key
+if carrying a key or other unlocking tool, prompt about using it;
+.PL Kick
+kick the door (if you omit untrap or decline to attempt untrap and
+you omit apply-key or you lack a key or you decline to use the key;
+has no effect on containers);
+.PL Force
+try to force a container's lid with your currently
+wielded weapon (if you omit untrap or decline to attempt untrap and
+you omit apply-key or you lack a key or you decline to use the key;
+has no effect on doors);
+.PL None
+none of the above; can't be combined with the other choices.
+.PE
+Omitting the value is treated as if \f(CRautounlock:apply-key\fP.
+Preceding \f(CRautounlock\fP with \(oq!\(cq or \(lqno\(rq is treated as
+\f(CRautounlock:none\fP.
+.lp ""
+Applying a key might set off a trap if the door or container is trapped.
+Successfully kicking a door will break it and wake up nearby monsters.
+Successfully forcing a container open will break its lock and might also
+destroy some of its contents or damage your weapon or both.
+.lp ""
+The default is Apply-Key.
 Persistent.
 .lp blind
 Start the character permanently blind (default false).
@@ -3603,9 +3756,6 @@ for more details.
 .lp checkpoint
 Save game state after each level change, for possible recovery after
 program crash (default on).  Persistent.
-.lp clicklook
-Allows looking at things on the screen by navigating the mouse
-over them and clicking the right mouse button (default off).
 .lp cmdassist
 Have the game provide some additional command assistance for
 new players if it detects some anticipated mistakes (default on).
@@ -3690,6 +3840,10 @@ extended ones (off).
 .lp female
 An obsolete synonym for \(lqgender:female\(rq.
 Cannot be set with the \(oqO\(cq command.
+.lp fireassist
+This option controls what happens when you attempt the \(oqf\(cq (fire)
+and don't have an appropriate launcher, such as a bow or a sling, wielded.
+If on, you will automatically wield the launcher. Default is on.
 .lp fixinv
 An object's inventory letter sticks to it when it's dropped (default on).
 If this is off, dropping an object shifts all the remaining inventory letters.
@@ -3965,7 +4119,7 @@ symbols for the various object types.
 Any omitted types are filled in at the end from the previous order.
 .lp paranoid_confirmation
 A space separated list of specific situations where alternate
-prompting is desired.  The default is paranoid_confirmation:pray.
+prompting is desired.  The default is \(lqparanoid_confirmation:pray swim\(rq.
 .PS Were-change
 .PL Confirm
 for any prompts which are set to require \(lqyes\(rq rather than \(oqy\(cq,
@@ -3995,6 +4149,8 @@ than immediately praying; on by default;
 .PL Remove
 require selection from inventory for \(oqR\(cq and \(oqT\(cq
 commands even when wearing just one applicable item.
+.PL swim
+prevent walking into water or lava.
 .PL all
 turn on all of the above.
 .PE
@@ -4261,7 +4417,7 @@ Persistent.
 When pausing momentarily for display effect, such as with explosions and
 moving objects, use a timer rather than sending extra characters to the
 screen.
-(Applies to \(lqtty\(rq interface only; \(lqX11\(rq interface always
+(Applies to \(lqtty\(rq and \(lqcurses\(rq interfaces only; \(lqX11\(rq interface always
 uses a timer based delay.
 The default is on if configured into the program.)
 Persistent.
@@ -4388,7 +4544,7 @@ to \fITrue\fP forces
 to be \fIFalse\fP.
 .lp color
 If NetHack can, it should display color if it can for different monsters,
-objects, and dungeon features.
+objects, and dungeon features (default on).
 .lp eight_bit_tty
 If NetHack can, it should pass eight-bit character values (for example,
 specified with the
@@ -4486,6 +4642,10 @@ for smaller sizes if they are too big.
 Default is the current window size.
 .lp tile_file
 Specify the name of an alternative tile file to override the default.
+.lp ""
+Note: the X11 interface uses X resources rather than NetHack's options
+to select an alternate tile file.
+See \f(CRNetHack.ad\fP, the sample X \(lqapplication defaults\(rq file.
 .lp tile_height
 Specify the preferred height of each tile in a tile capable port.
 .lp tile_width
@@ -4562,11 +4722,10 @@ Platform-specific Customization options
 .pg
 Here are explanations of options that are used by specific platforms or ports
 to customize and change the port behavior.
-.lp altkeyhandler
-Select an alternate keystroke handler dll to load (Win32 tty NetHack only).
-The name of the handler is specified without the .dll extension and without
-any path information.
-Cannot be set with the \(oqO\(cq command.
+.lp altkeyhandling
+Select an alternate way to handle keystrokes (Win32 tty NetHack only).
+The name of the handling type is one of \(lqdefault\(rq, \(lqray\(rq,
+\(lq340\(rq.
 .lp altmeta
 On Amiga, this option controls whether typing \(lqAlt\(rq plus another key
 functions as a meta-shift for that key (default on).
@@ -4592,7 +4751,7 @@ keys to move) on machines with an IBM PC compatible BIOS ROM (default off,
 OS/2, PC, and ST NetHack only).
 .lp flush
 (default off, Amiga NetHack only).
-.lp "MACgraphics"
+.lp MACgraphics
 (default on, Mac NetHack only).
 .lp page_wait
 (default on, Mac NetHack only).
@@ -4714,7 +4873,8 @@ menu accelerator keys, and extended commands, by using BIND stanzas in the
 configuration file.
 Format is key, followed by the command to bind to, separated by a colon.
 The key can be a single character (\(lqx\(rq), a control key (\(lq\(haX\(rq,
-\(lqC-x\(rq), a meta key (\(lqM-x\(rq), or a three-digit decimal ASCII code.
+\(lqC-x\(rq), a meta key (\(lqM-x\(rq), a mouse button,
+or a three-digit decimal ASCII code.
 .pg
 For example:
 .sd
@@ -4734,6 +4894,9 @@ The menu control or accelerator keys can also be rebound via OPTIONS lines
 in the configuration file.
 You cannot bind object symbols or selection letters into menu accelerators.
 Some interfaces only support some of the menu accelerators.
+.lp "Mouse buttons"
+You can bind \(lqmouse1\(rq or \(lqmouse2\(rq to \(lqnothing\(rq,
+\(lqtherecmdmenu\(rq, \(lqclicklook\(rq, or \(lqmouseaction\(rq.
 .lp "Special command keys"
 Below are the special commands you can rebind.
 Some of them can be bound to
@@ -4747,29 +4910,23 @@ With
 .op number_pad
 only.
 Default is \(oqn\(cq.
-.lp doinv
-Show inventory.
-With
-.op number_pad
-only.
-Default is \(oq0\(cq.
-.lp fight
-Prefix key to force fight a direction.
-Default is \(oqF\(cq.
-.lp fight.numpad
-Prefix key to force fight a direction.
-With
-.op number_pad
-only.
-Default is \(oq\-\(cq.
 .lp getdir.help
 When asked for a direction, the key to show the help.
 Default is \(oq?\(cq.
+.lp getdir.mouse
+When asked for a direction, the key to initiate a simulated mouse click.
+You will be asked to pick a location.
+Use movement keystrokes to move the cursor around the map, then type
+the getpos.pick.once key (default \(oq\f(CR,\fP\(cq)
+or the getpos.pick key (default \(oq\f(CR.\fP\(cq)
+to finish as if performing a left or right click.
+Only useful when using the \f(CR#therecmdmenu\fP command.
+Default is \(oq_\(cq. \" underscore
 .lp getdir.self
 When asked for a direction, the key to target yourself.
 Default is \(oq.\(cq.
 .lp getdir.self2
-When asked for a direction, the key to target yourself.
+When asked for a direction, an alternate key to target yourself.
 Default is \(oqs\(cq.
 .lp getpos.autodescribe
 When asked for a location, the key to toggle autodescribe.
@@ -4820,10 +4977,14 @@ Default is \(oq\(dq\(cq. \" double quote
 .lp getpos.pick
 When asked for a location, the key to choose the location, and possibly
 ask for more info.
+When simulating a mouse click after being asked for a direction (see
+getdir.mouse above), the key to use to respond as right click.
 Default is \(oq.\(cq.
 .lp getpos.pick.once
 When asked for a location, the key to choose the location, and skip asking
 for more info.
+When simulating a mouse click after being asked for a direction,
+the key to respond as left click.
 Default is \(oq,\(cq.
 .lp getpos.pick.quick
 When asked for a location, the key to choose the location, skip asking for
@@ -4852,49 +5013,6 @@ Default is \(oqz\(cq.
 .lp getpos.valid.prev
 When asked for a location, the key to go to previous closest valid location.
 Default is \(oqZ\(cq.
-.lp nopickup
-Prefix key to move without picking up items.
-Default is \(oqm\(cq.
-.lp redraw
-Key to redraw the screen.
-Default is \(oq\(haR\(cq.
-.lp redraw.numpad
-Key to redraw the screen.
-With
-.op number_pad
-only.
-Default is \(oq\(haL\(cq.
-.lp repeat
-Key to repeat previous command.
-Default is \(oq\(haA\(cq.
-.lp reqmenu
-Prefix key to request menu from some commands.
-Default is \(oqm\(cq.
-.lp run
-Prefix key to run towards a direction.
-Default is \(oqG\(cq.
-.lp run.nopickup
-Prefix key to run towards a direction without picking up items on the way.
-Default is \(oqM\(cq.
-.lp run.numpad
-Prefix key to run towards a direction.
-With
-.op number_pad
-only.
-.lp ""
-Default is \(oq5\(cq when number_pad is set to 1 or 3,
-otherwise \(oqM-5\(cq when it is set to 2 or 4.
-.lp rush
-Prefix key to rush towards a direction.
-Default is \(oqg\(cq.
-.lp rush.numpad
-Prefix key to rush towards a direction.
-With
-.op number_pad
-only.
-.lp ""
-Default is \(oqM-5\(cq when number_pad is set to 1 or 3,
-otherwise \(oq5\(cq when it is set to 2 or 4.
 .hn 2
 Configuring Message Types
 .pg
@@ -5020,7 +5138,9 @@ An entry that maps a sound file to a user-specified message pattern.
 Each SOUND entry is broken down into the following parts:
 .PS "sound index"
 .PL MESG
-message window mapping (the only one supported in 3.6);
+message window mapping (the only one supported in 3.7);
+.PL msgtype
+optional; message type to use, see \(lqConfiguring Message Types\(rq
 .PL pattern
 the pattern to match;
 .PL "sound file"
@@ -5032,6 +5152,15 @@ optional; the index corresponding to a sound file.
 .PE
 .lp ""
 The pattern should be a POSIX extended regular expression.
+.pg
+For example:
+.sd
+.si
+SOUNDDIR=C:\\nethack\\sounds
+SOUND=MESG "This door is locked" "lock.wav" 100
+SOUND=MESG hide "^You miss the " "swing.wav" 75
+.ei
+.ed
 .pg
 .hn 2
 Configuring Status Hilites
@@ -5266,6 +5395,10 @@ b	S_blob	(blob)
 (	S_boomright	(boomerang open right)
 \`	S_boulder	(boulder)
 \-	S_brcorn	(bottom right corner)
+>	S_brdnladder	(branch ladder down)
+>	S_brdnstair	(branch staircase down)
+<	S_brupladder	(branch ladder up)
+<	S_brupstair	(branch staircase up)
 C	S_centaur	(centaur)
 \&_	S_chain	(iron chain)
 #	S_cloud	(cloud)
@@ -5283,15 +5416,15 @@ d	S_dog	(dog or other canine)
 D	S_dragon	(dragon)
 ;	S_eel	(sea monster)
 E	S_elemental	(elemental)
-/	S_explode1	(explosion top left)
-\-	S_explode2	(explosion top center)
-\\	S_explode3	(explosion top right)
-|	S_explode4	(explosion middle left)
-\ 	S_explode5	(explosion middle center)
-|	S_explode6	(explosion middle right)
-\\	S_explode7	(explosion bottom left)
-\-	S_explode8	(explosion bottom center)
-/	S_explode9	(explosion bottom right)
+/	S_expl_tl	(explosion top left)
+\-	S_expl_tc	(explosion top center)
+\\	S_expl_tr	(explosion top right)
+|	S_expl_ml	(explosion middle left)
+\ 	S_expl_mc	(explosion middle center)
+|	S_expl_mr	(explosion middle right)
+\\	S_expl_bl	(explosion bottom left)
+\-	S_expl_bc	(explosion bottom center)
+/	S_expl_br	(explosion bottom right)
 e	S_eye	(eye or sphere)
 \(ha	S_falling_rock_trap	(falling rock trap)
 f	S_feline	(cat or other feline)
@@ -5442,6 +5575,41 @@ So S_rock is only used for boulders and not used at all if
 overridden by the more specific S_boulder.
 .pg
 .hn 2
+Customizing Map Glyph Representations Using Unicode
+.pg
+If your platform or terminal supports the display of UTF-8 character
+sequences, you can customize your game display by assigning Unicode
+codepoint values and \fIred-green-blue\fP colors to glyph
+representations. The customizations can be specified for use with a symset that
+has a UTF8 handler within the symbols file such as the enhanced1 set, or 
+individually within your nethack.rc file.
+
+.pg
+The format for defining a glyph representation is:
+.SD n
+\f(CROPTIONS=glyph:glyphid\fIU+nnnn\fP/\fIR-G-B\fP\fP
+.ED
+.pg
+The window port that is active needs to provide support for displaying
+UTF-8 character sequences and explicit red-green-blue colors in order
+for the glyph representation to be visible.
+For example, the following line in your configuration file will cause
+the glyph representation for glyphid G_pool to use Unicode codepoint
+U+224B and the color represented by R-G-B value 0-0-160
+.SD n
+\f(CROPTIONS=glyph:G_pool/U+224B/0-0-160\fP
+.ED
+The list of acceptable glyphid's can be produced by 
+\fBnethack \-\-dumpglyphids\fP.
+Individual NetHack glyphs can be specified using the G_ prefix,
+or you can use an S_ symbol for a glyphid and store the custom
+representation for all NetHack glyphs that would map to that
+particular symbol.
+
+You will need to select a symset with a UTF8 handler to enable the
+display of the customizations, such as the Enhanced symset.
+.pg
+.hn 2
 Configuring NetHack for Play by the Blind
 .pg
 NetHack can be set up to use only standard ASCII characters for making
@@ -5471,29 +5639,10 @@ the capability, set the environment variable NETHACK_MSGHANDLER to an
 executable, which will be executed with the game message as the program's
 only parameter.
 .pg
-While it is not difficult for experienced users to edit the \fBdefaults.nh\fP
-file to accomplish this, novices may find this task somewhat daunting.
-Included within the \(lqsymbols\(rq file of all official distributions
-of NetHack is a symset called \fBNHAccess\fP.
-Selecting that symset in your
-configuration file will cause the game to run in a manner accessible
-to the blind.
-After you have gained some experience with the game
-and with editing files, you may want to alter settings via \fBSYMBOLS=\fP
-and \fBROGUESYMBOLS=\fP
-in your configuration file to better suit your preferences.
-See the previous section for the special symbols S_pet_override
-to force a consistent symbol for all pets and
-S_hero_override to force a unique symbol for the player character
-if \fBaccessibility\fP is enabled in the sysconf file.
-.pg
 The most crucial settings to make the game more accessible are:
 .pg
-.lp symset:NHAccess
+.lp symset:plain
 Load a symbol set appropriate for use by blind players.
-.lp roguesymset:NHAccess
-Load a symbol set for the rogue level that is appropriate for
-use by blind players.
 .lp menustyle:traditional
 This will assist in the interface to speech synthesizers.
 .lp nomenu_overlay
@@ -5504,6 +5653,8 @@ If this is the case, disable the
 .op number_pad
 option and use the traditional
 Rogue-like commands.
+.lp paranoid_confirmation:swim
+Prevent walking into water or lava.
 .lp autodescribe
 Automatically describe the terrain under the cursor when targeting.
 .lp mention_walls
@@ -5583,7 +5734,7 @@ CHECK_SAVE_UID\ =\ 0 or 1 to disable or enable, respectively, the UID
 (used identification number) checking for save files (to verify that the
 user who is restoring is the same one who saved).
 .pg
-The following options affect the score file:
+The following four options affect the score file:
 .pg
 .lp
 PERSMAX\ =\ Maximum number of entries for one person.
@@ -5598,38 +5749,54 @@ to identify unique people for the score file.
 MAX_STATUENAME_RANK\ =\ Maximum number of score file entries to use for
 random statue names (default is 10).
 .lp
-ACCESSIBILITY\ =\ 0 or 1 to disable or enable, respectively, the ability for players 
-to set S_pet_override and S_hero_override symbols in their configuration file.
+ACCESSIBILITY\ =\ 0 or 1 to disable or enable, respectively, the ability
+for players to set S_pet_override and S_hero_override symbols in their
+configuration file.
 .lp
 PORTABLE_DEVICE_PATHS\ =\ 0 or 1 Windows OS only, the game will look
-for all of its external files, and write to all of its output files in one place
-rather than at the standard locations.
+for all of its external files, and write to all of its output files in
+one place rather than at the standard locations.
 .lp
 DUMPLOGFILE\ =\ A filename where the end-of-game dumplog is saved.
-Not defining this will prevent dumplog from being created. Only available
-if your game is compiled with DUMPLOG. Allows the following placeholders:
+Not defining this will prevent dumplog from being created.
+Only available if your game is compiled with DUMPLOG.
+Allows the following placeholders:
+.in +4n
 .\" note: %M is not an entry in the table, but 'M' is the widest letter
 .PS %M
 .\" \f(CR = set font to constant-width Roman; approximation of {\tt ...} in TeX
-.PL %%
+.PL \f(CR%%\fP
 literal \(oq\f(CR%\fP\(cq
-.PL %v
-version (eg. \(lq\f(CR3.6.3\-0\fP\(rq)
-.PL %u
+.PL \f(CR%v\fP
+version (eg. \(lq\f(CR3.7.0\-0\fP\(rq)
+.PL \f(CR%u\fP
 game UID
-.PL %t
+.PL \f(CR%t\fP
 game start time, UNIX timestamp format
-.PL %T
+.PL \f(CR%T\fP
 current time, UNIX timestamp format
-.PL %d
+.PL \f(CR%d\fP
 game start time, YYYYMMDDhhmmss format
-.PL %D
+.PL \f(CR%D\fP
 current time, YYYYMMDDhhmmss format
-.PL %n
+.PL \f(CR%n\fP
 player name
-.PL %N
+.PL \f(CR%N\fP
 first character of player name
 .PE
+.in -4n
+.lp
+LIVELOG\ =\ A bit-mask of types of events that should be written to
+the \fIlivelog\fP file if one is present.
+The sample \fIsysconf\fP file accompanying the program contains a
+comment which lists the meaning of the various bits used.
+Intended for server systems supporting simultaneous play by multiple
+players (to be clear, each one running a separate single player game),
+for displaying their game progress to observers.
+Only relevant if the program was built with LIVELOG enabled.
+When available, it should be left commented out on single player
+installations because over time the file could grow to be extremely
+large unless it is actively maintained.
 .
 .hn 1
 Scoring

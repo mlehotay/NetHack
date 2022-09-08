@@ -150,7 +150,7 @@ static struct trobj Tourist[] = {
     { 0, 0, 0, 0, 0 }
 };
 static struct trobj Valkyrie[] = {
-    { LONG_SWORD, 1, WEAPON_CLASS, 1, UNDEF_BLESS },
+    { SPEAR, 1, WEAPON_CLASS, 1, UNDEF_BLESS },
     { DAGGER, 0, WEAPON_CLASS, 1, UNDEF_BLESS },
     { SMALL_SHIELD, 3, ARMOR_CLASS, 1, UNDEF_BLESS },
     { FOOD_RATION, 0, FOOD_CLASS, 1, 0 },
@@ -237,7 +237,6 @@ static const struct def_skill Skill_A[] = {
     { P_KNIFE, P_BASIC },
     { P_PICK_AXE, P_EXPERT },
     { P_SHORT_SWORD, P_BASIC },
-    { P_SCIMITAR, P_SKILLED },
     { P_SABER, P_EXPERT },
     { P_CLUB, P_SKILLED },
     { P_QUARTERSTAFF, P_SKILLED },
@@ -263,8 +262,7 @@ static const struct def_skill Skill_B[] = {
     { P_BROAD_SWORD, P_SKILLED },
     { P_LONG_SWORD, P_SKILLED },
     { P_TWO_HANDED_SWORD, P_EXPERT },
-    { P_SCIMITAR, P_SKILLED },
-    { P_SABER, P_BASIC },
+    { P_SABER, P_SKILLED },
     { P_CLUB, P_SKILLED },
     { P_MACE, P_SKILLED },
     { P_MORNING_STAR, P_SKILLED },
@@ -308,7 +306,6 @@ static const struct def_skill Skill_H[] = {
     { P_DAGGER, P_SKILLED },
     { P_KNIFE, P_EXPERT },
     { P_SHORT_SWORD, P_SKILLED },
-    { P_SCIMITAR, P_BASIC },
     { P_SABER, P_BASIC },
     { P_CLUB, P_SKILLED },
     { P_MACE, P_BASIC },
@@ -333,7 +330,6 @@ static const struct def_skill Skill_K[] = {
     { P_BROAD_SWORD, P_SKILLED },
     { P_LONG_SWORD, P_EXPERT },
     { P_TWO_HANDED_SWORD, P_SKILLED },
-    { P_SCIMITAR, P_BASIC },
     { P_SABER, P_SKILLED },
     { P_CLUB, P_BASIC },
     { P_MACE, P_SKILLED },
@@ -400,7 +396,6 @@ static const struct def_skill Skill_R[] = {
     { P_BROAD_SWORD, P_SKILLED },
     { P_LONG_SWORD, P_SKILLED },
     { P_TWO_HANDED_SWORD, P_BASIC },
-    { P_SCIMITAR, P_SKILLED },
     { P_SABER, P_SKILLED },
     { P_CLUB, P_SKILLED },
     { P_MACE, P_SKILLED },
@@ -454,7 +449,6 @@ static const struct def_skill Skill_S[] = {
     { P_BROAD_SWORD, P_SKILLED },
     { P_LONG_SWORD, P_EXPERT },
     { P_TWO_HANDED_SWORD, P_EXPERT },
-    { P_SCIMITAR, P_BASIC },
     { P_SABER, P_BASIC },
     { P_FLAIL, P_SKILLED },
     { P_QUARTERSTAFF, P_BASIC },
@@ -480,7 +474,6 @@ static const struct def_skill Skill_T[] = {
     { P_BROAD_SWORD, P_BASIC },
     { P_LONG_SWORD, P_BASIC },
     { P_TWO_HANDED_SWORD, P_BASIC },
-    { P_SCIMITAR, P_SKILLED },
     { P_SABER, P_SKILLED },
     { P_MACE, P_BASIC },
     { P_MORNING_STAR, P_BASIC },
@@ -515,12 +508,11 @@ static const struct def_skill Skill_V[] = {
     { P_BROAD_SWORD, P_SKILLED },
     { P_LONG_SWORD, P_EXPERT },
     { P_TWO_HANDED_SWORD, P_EXPERT },
-    { P_SCIMITAR, P_BASIC },
     { P_SABER, P_BASIC },
     { P_HAMMER, P_EXPERT },
     { P_QUARTERSTAFF, P_BASIC },
     { P_POLEARMS, P_SKILLED },
-    { P_SPEAR, P_SKILLED },
+    { P_SPEAR, P_EXPERT },
     { P_TRIDENT, P_BASIC },
     { P_LANCE, P_SKILLED },
     { P_SLING, P_BASIC },
@@ -659,15 +651,13 @@ u_init(void)
     u.umortality = 0;
     u.ugrave_arise = NON_PM;
 
-    u.umonnum = u.umonster = (flags.female && g.urole.femalenum != NON_PM)
-                                 ? g.urole.femalenum
-                                 : g.urole.malenum;
+    u.umonnum = u.umonster = g.urole.mnum;
     u.ulycn = NON_PM;
     set_uasmon();
 
     u.ulevel = 0; /* set up some of the initial attributes */
-    u.uhp = u.uhpmax = newhp();
-    u.uen = u.uenmax = newpw();
+    u.uhp = u.uhpmax = u.uhppeak = newhp();
+    u.uen = u.uenmax = u.uenpeak = newpw();
     u.uspellprot = 0;
     adjabil(0, 1);
     u.ulevel = u.ulevelmax = 1;
@@ -744,7 +734,7 @@ u_init(void)
         skill_init(Skill_K);
         break;
     case PM_MONK: {
-        static short M_spell[] = { SPE_HEALING, SPE_PROTECTION, SPE_SLEEP };
+        static short M_spell[] = { SPE_HEALING, SPE_PROTECTION, SPE_CONFUSE_MONSTER };
 
         Monk[M_BOOK].trotyp = M_spell[rn2(90) / 30]; /* [0..2] */
         ini_inv(Monk);
@@ -939,6 +929,11 @@ u_init(void)
         break;
     }
 
+    /* If we have at least one spell, force starting Pw to be enough,
+       so hero can cast the level 1 spell they should have */
+    if (num_spells() && (u.uenmax < SPELL_LEV_PW(1)))
+        u.uen = u.uenmax = u.uenpeak = u.ueninc[u.ulevel] = SPELL_LEV_PW(1);
+
     return;
 }
 
@@ -1007,8 +1002,9 @@ ini_inv(struct trobj *trop)
 {
     struct obj *obj;
     int otyp, i;
+    boolean got_sp1 = FALSE; /* got a level 1 spellbook? */
 
-	while (trop->trclass) {
+    while (trop->trclass) {
         otyp = (int) trop->trotyp;
         if (otyp != UNDEF_TYP) {
             obj = mksobj(otyp, TRUE, FALSE);
@@ -1049,7 +1045,7 @@ ini_inv(struct trobj *trop)
                       low level players or unbalancing; also
                       spells in restricted skill categories */
                    || (obj->oclass == SPBOOK_CLASS
-                       && (objects[otyp].oc_level > 3
+                       && (objects[otyp].oc_level > (got_sp1 ? 3 : 1)
                            || restricted_spell_discipline(otyp)))
                    || otyp == SPE_NOVEL) {
                 dealloc_obj(obj);
@@ -1058,10 +1054,6 @@ ini_inv(struct trobj *trop)
                 if (++trycnt > 1000)
                     break;
             }
-
-            /* Don't start with +0 or negative rings */
-            if (objects[otyp].oc_charged && obj->spe <= 0)
-                obj->spe = rne(3);
 
             /* Heavily relies on the fact that 1) we create wands
              * before rings, 2) that we create rings before
@@ -1084,14 +1076,21 @@ ini_inv(struct trobj *trop)
             if (obj->oclass == RING_CLASS || obj->oclass == SPBOOK_CLASS)
                 g.nocreate4 = otyp;
         }
+        /* Put post-creation object adjustments that don't depend on whether it
+         * was UNDEF_TYP or not after this. */
 
-        if (g.urace.malenum != PM_HUMAN) {
+        /* Don't start with +0 or negative rings */
+        if (objects[otyp].oc_class == RING_CLASS && objects[otyp].oc_charged
+            && obj->spe <= 0)
+            obj->spe = rne(3);
+
+        if (g.urace.mnum != PM_HUMAN) {
             /* substitute race-specific items; this used to be in
                the 'if (otyp != UNDEF_TYP) { }' block above, but then
                substitutions didn't occur for randomly generated items
                (particularly food) which have racial substitutes */
             for (i = 0; inv_subs[i].race_pm != NON_PM; ++i)
-                if (inv_subs[i].race_pm == g.urace.malenum
+                if (inv_subs[i].race_pm == g.urace.mnum
                     && otyp == inv_subs[i].item_otyp) {
                     debugpline3("ini_inv: substituting %s for %s%s",
                                 OBJ_NAME(objects[inv_subs[i].subs_otyp]),
@@ -1180,6 +1179,10 @@ ini_inv(struct trobj *trop)
         }
         if (obj->oclass == SPBOOK_CLASS && obj->otyp != SPE_BLANK_PAPER)
             initialspell(obj);
+
+        /* First spellbook should be level 1 - did we get it? */
+        if (obj->oclass == SPBOOK_CLASS && objects[obj->otyp].oc_level == 1)
+            got_sp1 = TRUE;
 
         if (--trop->trquan)
             continue; /* make a similar object */

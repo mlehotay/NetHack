@@ -91,7 +91,7 @@ were_beastie(int pm)
 void
 new_were(struct monst *mon)
 {
-    register int pm;
+    int pm;
 
     pm = counter_were(monsndx(mon->data));
     if (pm < LOW_PM) {
@@ -106,7 +106,7 @@ new_were(struct monst *mon)
                                   : pmname(&mons[pm], Mgender(mon)) + 4);
 
     set_mon_data(mon, &mons[pm]);
-    if (mon->msleeping || !mon->mcanmove) {
+    if (helpless(mon)) {
         /* transformation wakens and/or revitalizes */
         mon->msleeping = 0;
         mon->mfrozen = 0; /* not asleep or paralyzed */
@@ -121,10 +121,11 @@ new_were(struct monst *mon)
 
 /* were-creature (even you) summons a horde */
 int
-were_summon(struct permonst *ptr,
-            boolean yours,
-            int *visible, /* number of visible helpers created */
-            char *genbuf)
+were_summon(
+    struct permonst *ptr,
+    boolean yours,
+    int *visible, /* number of visible helpers created */
+    char *genbuf)
 {
     int i, typ, pm = monsndx(ptr);
     struct monst *mtmp;

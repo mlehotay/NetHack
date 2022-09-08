@@ -102,8 +102,6 @@
 #include <conio.h>
 #endif
 
-extern short glyph2tile[];
-
 /* static void vga_NoBorder(int);  */
 void vga_gotoloc(int, int); /* This should be made a macro */
 void vga_backsp(void);
@@ -157,18 +155,22 @@ static struct map_struct {
     int ch;
     int attr;
     unsigned special;
+    short int tileidx;
 } map[ROWNO][COLNO]; /* track the glyphs */
 
-#define vga_clearmap()                                    \
-    {                                                     \
-        int x, y;                                         \
-        for (y = 0; y < ROWNO; ++y)                       \
-            for (x = 0; x < COLNO; ++x) {                 \
-                map[y][x].glyph = cmap_to_glyph(S_stone); \
-                map[y][x].ch = S_stone;                   \
-                map[y][x].attr = 0;                       \
-                map[y][x].special = 0;                    \
-            }                                             \
+extern int total_tiles_used, Tile_corr, Tile_unexplored;  /* from tile.c */
+
+#define vga_clearmap()                                          \
+    {                                                           \
+        int x, y;                                               \
+        for (y = 0; y < ROWNO; ++y)                             \
+            for (x = 0; x < COLNO; ++x) {                       \
+                map[y][x].glyph = GLYPH_UNEXPLORED;             \
+                map[y][x].ch = glyph2ttychar(GLYPH_UNEXPLORED); \
+                map[y][x].attr = 0;                             \
+                map[y][x].special = 0;                          \
+                map[y][x].tileidx = Tile_unexplored;            \
+            }                                                   \
     }
 #define TOP_MAP_ROW 1
 
@@ -179,23 +181,23 @@ static int viewport_size = 40;
 /* static char bittable[8]= {0x01,0x02,0x04,0x08,0x10,0x20,0x40,0x80}; */
 #if 0
 static char defpalette[] = {	/* Default VGA palette         */
-	0x00, 0x00, 0x00,
-	0x00, 0x00, 0xaa,
-	0x00, 0xaa, 0x00,
-	0x00, 0xaa, 0xaa,
-	0xaa, 0x00, 0x00,
-	0xaa, 0x00, 0xaa,
-	0xaa, 0xaa, 0x00,
-	0xaa, 0xaa, 0xaa,
-	0x55, 0x55, 0x55,
-	0xcc, 0xcc, 0xcc,
-	0x00, 0x00, 0xff,
-	0x00, 0xff, 0x00,
-	0xff, 0x00, 0x00,
-	0xff, 0xff, 0x00,
-	0xff, 0x00, 0xff,
-	0xff, 0xff, 0xff
-	};
+        0x00, 0x00, 0x00,
+        0x00, 0x00, 0xaa,
+        0x00, 0xaa, 0x00,
+        0x00, 0xaa, 0xaa,
+        0xaa, 0x00, 0x00,
+        0xaa, 0x00, 0xaa,
+        0xaa, 0xaa, 0x00,
+        0xaa, 0xaa, 0xaa,
+        0x55, 0x55, 0x55,
+        0xcc, 0xcc, 0xcc,
+        0x00, 0x00, 0xff,
+        0x00, 0xff, 0x00,
+        0xff, 0x00, 0x00,
+        0xff, 0xff, 0x00,
+        0xff, 0x00, 0xff,
+        0xff, 0xff, 0xff
+        };
 #endif
 
 #ifndef ALTERNATE_VIDEO_METHOD
@@ -356,18 +358,20 @@ void vga_xputc(char ch, int attr)
 #if defined(USE_TILES)
 /* Place tile represent. a glyph at current location */
 void
-vga_xputg(int glyphnum, int ch,
-          unsigned special) /* special feature: corpse, invis, detected, pet, ridden -
-                               hack.h */
+vga_xputg(const glyph_info *glyphinfo)
 {
+    int glyphnum = glyphinfo->glyph, ch = glyphinfo->ttychar;
+    unsigned special = glyphinfo->gm.glyphflags;
     int col, row;
     int attr;
     int ry;
 
     /* If statue glyph, map to the generic statue */
+#if 0
     if (GLYPH_STATUE_OFF <= glyphnum && glyphnum < GLYPH_STATUE_OFF + NUMMONS) {
         glyphnum = objnum_to_glyph(STATUE);
     }
+#endif
 
     row = currow;
     col = curcol;
@@ -380,6 +384,7 @@ vga_xputg(int glyphnum, int ch,
     map[ry][col].special = special;
     attr = (g_attribute == 0) ? attrib_gr_normal : g_attribute;
     map[ry][col].attr = attr;
+    map[ry][col].tileidx = glyphinfo->gm.tileidx;
     if (iflags.traditional_view) {
         vga_WriteChar((unsigned char) ch, col, row, attr);
     } else if (!iflags.over_view) {
@@ -677,16 +682,14 @@ read_tile_indexes(unsigned glyph, unsigned char (*indexes)[TILE_X])
         glyph = GLYPH_OBJ_OFF + STATUE;
     }
 
-    /* Get the tile from the image */
-    tilenum = glyph2tile[glyph];
     row = currow;
     col = curcol;
     if ((col < 0 || col >= COLNO)
         || (row < TOP_MAP_ROW || row >= (ROWNO + TOP_MAP_ROW)))
         return;
     ry = row - TOP_MAP_ROW;
-    if (map[ry][col].special & MG_FEMALE)
-        tilenum++;
+    /* Get the tile from the image */
+    tilenum = map[ry][col].tileidx;
     tile = get_tile(tilenum);
 
     /* Map to a 16 bit palette; assume colors laid out as in default tileset */
@@ -840,13 +843,13 @@ vga_Finish(void)
 static void 
 vga_NoBorder(int bc)
 {
-	union REGS regs;
+        union REGS regs;
 
-	regs.h.ah = (char)0x10;
-	regs.h.al = (char)0x01;
-	regs.h.bh = (char)bc;
-	regs.h.bl = 0;
-	(void) int86(VIDEO_BIOS, &regs, &regs);	
+        regs.h.ah = (char)0x10;
+        regs.h.al = (char)0x01;
+        regs.h.bh = (char)bc;
+        regs.h.bl = 0;
+        (void) int86(VIDEO_BIOS, &regs, &regs);	
 }
 #endif
 

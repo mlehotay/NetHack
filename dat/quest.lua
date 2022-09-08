@@ -1,4 +1,6 @@
-
+-- NetHack quest.lua	$NHDT-Date: 1652196288 2022/05/10 15:24:48 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.7 $
+-- Copyright (c) 2021 by Pasi Kallinen
+-- NetHack may be freely redistributed.  See license for details.
 -- TODO:
 --  - output = "verbalize"
 --  - export the quest string replacements to lua, instead of %H etc
@@ -126,9 +128,9 @@ Go now!  You are banished from this place.]],
          "\"Thy gaze is so vacant, I thought thee a floating eye!\"",
          "\"Thy head is unfit for a mind flayer to munch upon!\"",
          "\"Only thy reflection could love thee!\"",
-         "\"Hast thou considered masking thy odor?\"",
+         "\"Hast thou considered masking thine odour?\"",
          "\"Hold! Thy face is a most exquisite torture!\"",
-         "\"I wouldst fart in thy direction, but it might improve thy smell!\"",
+         "\"I should fart in thy direction, but it might improve thy smell!\"",
       },
       legacy = {
          synopsis = "[%dC has chosen you to recover the Amulet of Yendor for %dI.]",

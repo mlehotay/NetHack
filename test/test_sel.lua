@@ -40,7 +40,7 @@ function sel_are_equal(sela, selb, msg)
 end
 
 function is_map_at(x,y, mapch, lit)
-   local rm = nh.getmap(x + 1, y); -- + 1 == g.xstart
+   local rm = nh.getmap(x, y); 
    if rm.mapchr ~= mapch then
       error("Terrain at (" .. x .. "," .. y .. ") is not \"" .. mapch .. "\", but \"" .. rm.mapchr .. "\"");
    end
@@ -61,14 +61,15 @@ function test_selection_params()
    sel:set(1, 2);
    sel_pt_ne(sel, 1,2, 1, "test_selection_params 2");
 
-   local x,y = sel:rndcoord(1);
-   if x ~= 1 or y ~= 2 then
-      error("sel:rndcoord returned unset coordinate");
+   local pt = sel:rndcoord(1);
+   if pt.x ~= 1 or pt.y ~= 2 then
+      error("sel:rndcoord returned unset coordinate (" .. pt.x .. "," .. pt.y .. ")");
    end
 
-   x,y = sel:rndcoord(1);
-   if x ~= -2 and y ~= -1 then
-      error("sel:rndcoord returned (" .. x .. "," .. y .. ") coordinate");
+   -- no coordinates in selection, returns -1,-1
+   pt = sel:rndcoord(1);
+   if pt.x ~= -1 or pt.y ~= -1 then
+      error("sel:rndcoord returned (" .. pt.x .. "," .. pt.y .. ") coordinate");
    end
 
    -- OO style
@@ -89,6 +90,8 @@ function test_selection_params()
 
    -- variable as param
    selection.get(sel, 1, 2);
+   selection.get(sel, {1, 2});
+   selection.get(sel, { x = 1, y = 2 });
    selection.set(sel, 1, 2);
    selection.negate(sel);
    selection.percentage(sel, 50);
@@ -114,6 +117,7 @@ function test_selection_params()
    selection.fillrect(1,2, 7,8);
    selection.area(1,2, 7,8);
    selection.floodfill(1,1);
+   selection.floodfill(1,1, true);
    selection.circle(40, 10, 9);
    selection.circle(40, 10, 9, 1);
    selection.ellipse(40, 10, 20, 8);
@@ -220,6 +224,29 @@ function test_sel_logical_xor()
 
    sel_has_n_points(selr, 2, __func__);
 end -- test_sel_logical_xor
+
+function test_sel_subtraction()
+   local __func__ = "test_sel_subtraction";
+   local sela = selection.new();
+   local selb = selection.new();
+
+   sela:set(5,5);
+   sela:set(6,5);
+   sela:set(5,6);
+   sela:set(6,6);
+
+   selb:set(5,5);
+   selb:set(6,6);
+
+   local selr = sela - selb;
+
+   sel_pt_ne(selr, 5,5, 0, __func__);
+   sel_pt_ne(selr, 6,5, 1, __func__);
+   sel_pt_ne(selr, 5,6, 1, __func__);
+   sel_pt_ne(selr, 6,6, 0, __func__);
+
+   sel_has_n_points(selr, 2, __func__);
+end -- test_sel_subtraction
 
 function test_sel_filter_percent()
    local __func__ = "test_sel_filter_percent";
@@ -357,22 +384,35 @@ function test_sel_filter_mapchar()
    sel_has_n_points(seld, 1659, __func__);
 end -- test_sel_filter_mapchar
 
-function test_sel_flood()
-   local __func__ = "test_sel_flood";
-   local sela = selection.new();
-   local sela_clone = sela:clone();
-
+function set_flood_test_pattern()
    des.terrain(selection.negate(), ".");
    des.terrain(5,5, "L");
    des.terrain(6,5, "L");
    des.terrain(7,5, "L");
    des.terrain(8,6, "L");
+end
+
+function test_sel_flood()
+   local __func__ = "test_sel_flood";
+   local sela = selection.new();
+   local sela_clone = sela:clone();
+
+   set_flood_test_pattern();
 
    local selb = selection.floodfill(6,5);
    sel_has_n_points(selb, 3, __func__);
    sel_pt_ne(selb, 5,5, 1, __func__);
    sel_pt_ne(selb, 6,5, 1, __func__);
    sel_pt_ne(selb, 7,5, 1, __func__);
+
+   set_flood_test_pattern();
+
+   local selc = selection.floodfill(6,5, true);
+   sel_has_n_points(selc, 4, __func__);
+   sel_pt_ne(selc, 5,5, 1, __func__);
+   sel_pt_ne(selc, 6,5, 1, __func__);
+   sel_pt_ne(selc, 7,5, 1, __func__);
+   sel_pt_ne(selc, 8,6, 1, __func__);
 end -- test_sel_flood
 
 function test_sel_match()
@@ -427,13 +467,30 @@ function test_sel_iterate()
    is_map_at(5,5, "L");
    is_map_at(7,5, "L");
    is_map_at(9,5, "L");
+
 end
 
+function test_sel_bounds()
+   local __func__ = "test_sel_bounds";
+   local sel = selection.new();
+   sel:set(5, 5);
+   sel:set(7, 5);
+   sel:set(5, 6);
+
+   local rect = sel:bounds();
+   if (rect.lx ~= (5 + 1) or rect.ly ~= 5 or rect.hx ~= (7 + 1) or rect.hy ~= 6) then
+      error(string.format("selection bounds error:(%i,%i-%i,%i)", rect.lx, rect.ly, rect.hx, rect.hy));
+   end
+end
+
+nh.debug_flags({mongen = false, hunger = false, overwrite_stairs = true });
 test_selection_params();
 test_sel_negate();
 test_sel_logical_and();
 test_sel_logical_or();
 test_sel_logical_xor();
+-- addition operator is the same as logical or
+test_sel_subtraction();
 test_sel_filter_percent();
 test_sel_line();
 test_sel_rect();
@@ -444,3 +501,4 @@ test_sel_filter_mapchar();
 test_sel_flood();
 test_sel_match();
 test_sel_iterate();
+test_sel_bounds();

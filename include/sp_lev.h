@@ -1,4 +1,4 @@
-/* NetHack 3.7	sp_lev.h	$NHDT-Date: 1599434249 2020/09/06 23:17:29 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.39 $ */
+/* NetHack 3.7	sp_lev.h	$NHDT-Date: 1622361649 2021/05/30 08:00:49 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.47 $ */
 /* Copyright (c) 1989 by Jean-Christophe Collet			  */
 /* NetHack may be freely redistributed.  See license for details. */
 
@@ -6,6 +6,7 @@
 #define SP_LEV_H
 
 /* wall directions */
+#define W_RANDOM -1
 #define W_NORTH 1
 #define W_SOUTH 2
 #define W_EAST 4
@@ -62,11 +63,6 @@ enum lvlinit_types {
 #define SEL_GRADIENT_RADIAL 0
 #define SEL_GRADIENT_SQUARE 1
 
-/* light states for terrain replacements, specifically for SET_TYPLIT
- * (not used for init_level) */
-#define SET_LIT_RANDOM -1
-#define SET_LIT_NOCHANGE -2
-
 #define SP_COORD_IS_RANDOM 0x01000000L
 /* Humidity flags for get_location() and friends, used with
  * SP_COORD_PACK_RANDOM() */
@@ -101,33 +97,36 @@ struct sp_coder {
  */
 
 #define packed_coord long
+typedef uint32_t getloc_flags_t;
 typedef struct {
-    xchar is_random;
-    long getloc_flags;
+    xint16 is_random;
+    getloc_flags_t getloc_flags;
     int x, y;
 } unpacked_coord;
 
 typedef struct {
-    xchar init_style; /* one of LVLINIT_foo */
+    xint16 init_style; /* one of LVLINIT_foo */
     long flags;
     schar filling;
     boolean init_present, padding;
     char fg, bg;
     boolean smoothed, joined;
-    xchar lit, walled;
+    xint16 lit, walled;
     boolean icedpools;
     int corrwid, wallthick;
     boolean rm_deadends;
 } lev_init;
 
 typedef struct {
-    xchar wall, pos, secret, mask;
+    xint16 wall, pos, secret, mask;
 } room_door;
 
 typedef struct {
     packed_coord coord;
-    xchar x, y, type;
+    coordxy x, y;
+    xint16 type;
     boolean spider_on_web;
+    boolean seen;
 } spltrap;
 
 typedef struct {
@@ -135,12 +134,14 @@ typedef struct {
     short id;
     unsigned int sp_amask; /* splev amask */
     packed_coord coord;
-    xchar x, y, class, appear;
+    coordxy x, y;
+    xint16 class, appear;
     schar peaceful, asleep;
     short female, invis, cancelled, revived, avenge, fleeing, blinded,
         paralyzed, stunned, confused, waiting;
     long seentraps;
     short has_invent;
+    mmflags_nht mm_flags; /* makemon flags */
 } monster;
 
 typedef struct {
@@ -148,7 +149,8 @@ typedef struct {
     int corpsenm;
     short id, spe;
     packed_coord coord;
-    xchar x, y, class, containment;
+    coordxy x, y;
+    xint16 class, containment;
     schar curse_state;
     int quan;
     short buried;
@@ -159,34 +161,35 @@ typedef struct {
 
 typedef struct {
     packed_coord coord;
-    xchar x, y;
+    coordxy x, y;
     unsigned int sp_amask; /* splev amask */
-    xchar shrine;
+    xint16 shrine;
 } altar;
 
 typedef struct {
-    xchar x1, y1, x2, y2;
-    xchar rtype, rlit, rirreg;
+    coordxy x1, y1, x2, y2;
+    xint16 rtype, rlit, rirreg;
 } region;
 
 typedef struct {
-    xchar ter, tlit;
+    xint16 ter, tlit;
 } terrain;
 
 typedef struct {
     struct {
-        xchar room;
-        xchar wall;
-        xchar door;
+        xint16 room;
+        xint16 wall;
+        xint16 door;
     } src, dest;
 } corridor;
 
 typedef struct _room {
     Str_or_Len name;
     Str_or_Len parent;
-    xchar x, y, w, h;
-    xchar xalign, yalign;
-    xchar rtype, chance, rlit, needfill;
+    coordxy x, y;
+    xint16 w, h;
+    xint16 xalign, yalign;
+    xint16 rtype, chance, rlit, needfill;
     boolean joined;
 } room;
 
@@ -194,22 +197,5 @@ struct mapfragment {
     int wid, hei;
     char *data;
 };
-
-#define SET_TYPLIT(x, y, ttyp, llit) \
-    {                                                             \
-        if ((x) >= 1 && (y) >= 0 && (x) < COLNO && (y) < ROWNO) { \
-            if ((ttyp) < MAX_TYPE && levl[(x)][(y)].typ != STAIRS \
-                && levl[(x)][(y)].typ != LADDER)                  \
-                levl[(x)][(y)].typ = (ttyp);                      \
-            if ((ttyp) == LAVAPOOL)                               \
-                levl[(x)][(y)].lit = 1;                           \
-            else if ((schar)(llit) != SET_LIT_NOCHANGE) {         \
-                if ((schar)(llit) == SET_LIT_RANDOM)              \
-                    levl[(x)][(y)].lit = rn2(2);                  \
-                else                                              \
-                    levl[(x)][(y)].lit = (llit);                  \
-            }                                                     \
-        }                                                         \
-    }
 
 #endif /* SP_LEV_H */

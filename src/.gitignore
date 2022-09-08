@@ -1,8 +1,15 @@
 config.h-t
-monstr.c
 hack.h-t
+Qt*.h-t
+monstr.c
+vis_tab.c
 tile.c
 Sysunix
+Sys3B2
+Sysatt
+SysV-AT
+Systos
+SysBe
 nethack
 *.o
 tiles.bmp
@@ -12,4 +19,6 @@ graphicschk
 nhdat
 o
 nhdat*
+date.nmk
+tilemappings.lst
 

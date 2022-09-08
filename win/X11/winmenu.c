@@ -1,4 +1,4 @@
-/* NetHack 3.7	winmenu.c	$NHDT-Date: 1615911117 2021/03/16 16:11:57 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.48 $ */
+/* NetHack 3.7	winmenu.c	$NHDT-Date: 1644531504 2022/02/10 22:18:24 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.50 $ */
 /* Copyright (c) Dean Luick, 1992				  */
 /* NetHack may be freely redistributed.  See license for details. */
 
@@ -271,8 +271,10 @@ menu_key(Widget w, XEvent *event, String *params, Cardinal *num_params)
             }
             ; /* accept */
         } else if (digit(ch)) {
-            /* special case: '0' is also the default ball class */
-            if (ch == '0' && !menu_info->counting
+            /* special case: '0' is also the default ball class;
+               some menus use digits as potential group accelerators
+               but their entries don't rely on counts */
+            if (!menu_info->counting
                 && index(menu_info->curr_menu.gacc, ch))
                 goto group_accel;
             menu_info->menu_count *= 10L;
@@ -501,12 +503,15 @@ select_all(struct xwindow *wp)
 
     reset_menu_count(wp->menu_information);
     for (count = 0, curr = wp->menu_information->curr_menu.base; curr;
-         curr = curr->next, count++)
-        if (curr->identifier.a_void != 0)
-            if (!curr->selected) {
-                invert_line(wp, curr, count, -1L);
-            }
-
+         curr = curr->next, count++) {
+        /* skip 'curr' if not selectable (header or such) or already
+           selected (no need to set) or rejected due to skip-invert test */
+        if (!curr->identifier.a_void
+            || curr->selected
+            || !menuitem_invert_test(1, curr->itemflags, FALSE))
+            continue;
+        invert_line(wp, curr, count, -1L);
+    }
 }
 
 static void
@@ -517,11 +522,15 @@ select_none(struct xwindow *wp)
 
     reset_menu_count(wp->menu_information);
     for (count = 0, curr = wp->menu_information->curr_menu.base; curr;
-         curr = curr->next, count++)
-        if (curr->identifier.a_void != 0)
-            if (curr->selected) {
-                invert_line(wp, curr, count, -1L);
-            }
+         curr = curr->next, count++) {
+        /* skip 'curr' if not selectable (header or such) or already not
+           selected (no need to unset) or rejected due to skip-invert test */
+        if (!curr->identifier.a_void
+            || !curr->selected
+            || !menuitem_invert_test(2, curr->itemflags, TRUE))
+            continue;
+        invert_line(wp, curr, count, -1L);
+    }
 
 }
 
@@ -534,10 +543,12 @@ invert_all(struct xwindow *wp)
     reset_menu_count(wp->menu_information);
     for (count = 0, curr = wp->menu_information->curr_menu.base; curr;
          curr = curr->next, count++) {
-        if (!menuitem_invert_test(0, curr->itemflags, curr->selected))
+        /* skip 'curr' if not selectable (header or such)
+           or rejected due to skip-invert test */
+        if (!curr->identifier.a_void
+            || !menuitem_invert_test(0, curr->itemflags, curr->selected))
             continue;
-        if (curr->identifier.a_void != 0)
-            invert_line(wp, curr, count, -1L);
+        invert_line(wp, curr, count, -1L);
     }
 }
 
@@ -776,6 +787,7 @@ X11_add_menu(winid window,
              char ch,  /* selector letter; 0 if not selectable */
              char gch, /* group accelerator (0 = no group) */
              int attr,
+             int clr UNUSED,
              const char *str,
              unsigned itemflags)
 {
@@ -1274,6 +1286,7 @@ menu_create_entries(struct xwindow *wp, struct menu *curr_menu)
     int how = wp->menu_information->how;
     Arg args[15];
     Cardinal num_args;
+    Dimension cwidth, maxwidth = 0;
 
     for (curr = curr_menu->base; curr; curr = curr->next) {
         char tmpbuf[BUFSZ];
@@ -1285,6 +1298,7 @@ menu_create_entries(struct xwindow *wp, struct menu *curr_menu)
 
         num_args = 0;
         XtSetArg(args[num_args], nhStr(XtNlabel), str); num_args++;
+        XtSetArg(args[num_args], nhStr(XtNjustify), XtJustifyLeft); num_args++;
         XtSetArg(args[num_args], nhStr(XtNleft), XtChainLeft); num_args++;
         XtSetArg(args[num_args], nhStr(XtNright), XtChainLeft); num_args++;
         XtSetArg(args[num_args], nhStr(XtNtop), XtChainTop); num_args++;
@@ -1341,6 +1355,22 @@ menu_create_entries(struct xwindow *wp, struct menu *curr_menu)
             XtAddCallback(linewidget, XtNcallback, menu_select,
                           (XtPointer) curr);
         prevlinewidget = linewidget;
+
+        if (canpick) {
+            /* get the current line width */
+            XtSetArg(args[0], XtNwidth, &cwidth);
+            XtGetValues(curr->w, args, ONE);
+            if (maxwidth < cwidth)
+                maxwidth = cwidth;
+        }
+    }
+
+    /* set all selectable menu entries to the maximum width */
+    if (how != PICK_NONE) {
+        XtSetArg(args[0], XtNwidth, maxwidth);
+        for (curr = curr_menu->base; curr; curr = curr->next)
+            if (curr->identifier.a_void)
+                XtSetValues(curr->w, args, ONE);
     }
 }
 

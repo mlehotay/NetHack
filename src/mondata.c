@@ -1,4 +1,4 @@
-/* NetHack 3.7	mondata.c	$NHDT-Date: 1606473489 2020/11/27 10:38:09 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.87 $ */
+/* NetHack 3.7	mondata.c	$NHDT-Date: 1624322866 2021/06/22 00:47:46 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.98 $ */
 /* Copyright (c) Stichting Mathematisch Centrum, Amsterdam, 1985. */
 /*-Copyright (c) Robert Patrick Rankin, 2011. */
 /* NetHack may be freely redistributed.  See license for details. */
@@ -76,7 +76,7 @@ noattacks(struct permonst* ptr)
 
 /* does monster-type transform into something else when petrified? */
 boolean
-poly_when_stoned(struct permonst* ptr)
+poly_when_stoned(struct permonst *ptr)
 {
     /* non-stone golems turn into stone golems unless latter is genocided */
     return (boolean) (is_golem(ptr) && ptr != &mons[PM_STONE_GOLEM]
@@ -84,20 +84,56 @@ poly_when_stoned(struct permonst* ptr)
     /* allow G_EXTINCT */
 }
 
+/* is 'mon' (possibly youmonst) protected against damage type 'adtype' via
+   wielded weapon or worn dragon scales? [or by virtue of being a dragon?] */
+boolean
+defended(struct monst *mon, int adtyp)
+{
+    struct obj *o, otemp;
+    int mndx;
+    boolean is_you = (mon == &g.youmonst);
+
+    /* is 'mon' wielding an artifact that protects against 'adtyp'? */
+    o = is_you ? uwep : MON_WEP(mon);
+    if (o && o->oartifact && defends(adtyp, o))
+        return TRUE;
+
+    /* if 'mon' is an adult dragon, treat it as if it was wearing scales
+       so that it has the same benefit as a hero wearing dragon scales */
+    mndx = monsndx(mon->data);
+    if (mndx >= PM_GRAY_DRAGON && mndx <= PM_YELLOW_DRAGON) {
+        /* a dragon is its own suit...  if mon is poly'd hero, we don't
+           care about embedded scales (uskin) because being a dragon with
+           embedded scales is no better than just being a dragon */
+        otemp = cg.zeroobj;
+        otemp.oclass = ARMOR_CLASS;
+        otemp.otyp = GRAY_DRAGON_SCALES + (mndx - PM_GRAY_DRAGON);
+        /* defends() and Is_dragon_armor() only care about otyp so ignore
+           the rest of otemp's fields */
+        o = &otemp;
+    } else {
+        /* ordinary case: not an adult dragon */
+        o = is_you ? uarm : which_armor(mon, W_ARM);
+    }
+    /* is 'mon' wearing dragon scales that protect against 'adtyp'? */
+    if (o && Is_dragon_armor(o) && defends(adtyp, o))
+        return TRUE;
+
+    return FALSE;
+}
+
 /* returns True if monster is drain-life resistant */
 boolean
-resists_drli(struct monst* mon)
+resists_drli(struct monst *mon)
 {
     struct permonst *ptr = mon->data;
-    struct obj *wep;
 
     if (is_undead(ptr) || is_demon(ptr) || is_were(ptr)
         /* is_were() doesn't handle hero in human form */
         || (mon == &g.youmonst && u.ulycn >= LOW_PM)
         || ptr == &mons[PM_DEATH] || is_vampshifter(mon))
         return TRUE;
-    wep = (mon == &g.youmonst) ? uwep : MON_WEP(mon);
-    return (boolean) (wep && wep->oartifact && defends(AD_DRLI, wep));
+    return defended(mon, AD_DRLI);
 }
 
 /* True if monster is magic-missile (actually, general magic) resistant */
@@ -270,51 +306,54 @@ can_blnd(
 boolean
 ranged_attk(struct permonst* ptr)
 {
-    register int i, atyp;
-    long atk_mask = (1L << AT_BREA) | (1L << AT_SPIT) | (1L << AT_GAZE);
+    int i;
 
-    /* was: (attacktype(ptr, AT_BREA) || attacktype(ptr, AT_WEAP)
-     *       || attacktype(ptr, AT_SPIT) || attacktype(ptr, AT_GAZE)
-     *       || attacktype(ptr, AT_MAGC));
-     * but that's too slow -dlc
-     */
-    for (i = 0; i < NATTK; i++) {
-        atyp = ptr->mattk[i].aatyp;
-        if (atyp >= AT_WEAP)
+    for (i = 0; i < NATTK; i++)
+        if (DISTANCE_ATTK_TYPE(ptr->mattk[i].aatyp))
             return TRUE;
-        /* assert(atyp < 32); */
-        if ((atk_mask & (1L << atyp)) != 0L)
-            return TRUE;
-    }
     return FALSE;
 }
 
 /* True if specific monster is especially affected by silver weapons */
 boolean
-mon_hates_silver(struct monst* mon)
+mon_hates_silver(struct monst *mon)
 {
     return (boolean) (is_vampshifter(mon) || hates_silver(mon->data));
 }
 
 /* True if monster-type is especially affected by silver weapons */
 boolean
-hates_silver(register struct permonst* ptr)
+hates_silver(struct permonst *ptr)
 {
     return (boolean) (is_were(ptr) || ptr->mlet == S_VAMPIRE || is_demon(ptr)
                       || ptr == &mons[PM_SHADE]
                       || (ptr->mlet == S_IMP && ptr != &mons[PM_TENGU]));
 }
 
+/* True if specific monster is especially affected by blessed objects */
+boolean
+mon_hates_blessings(struct monst *mon)
+{
+    return (boolean) (is_vampshifter(mon) || hates_blessings(mon->data));
+}
+
+/* True if monster-type is especially affected by blessed objects */
+boolean
+hates_blessings(struct permonst *ptr)
+{
+    return (boolean) (is_undead(ptr) || is_demon(ptr));
+}
+
 /* True if specific monster is especially affected by light-emitting weapons */
 boolean
-mon_hates_light(struct monst* mon)
+mon_hates_light(struct monst *mon)
 {
-    return (boolean) (hates_light(mon->data));
+    return (boolean) hates_light(mon->data);
 }
 
 /* True iff the type of monster pass through iron bars */
 boolean
-passes_bars(struct permonst* mptr)
+passes_bars(struct permonst *mptr)
 {
     return (boolean) (passes_walls(mptr) || amorphous(mptr) || unsolid(mptr)
                       || is_whirly(mptr) || verysmall(mptr)
@@ -385,7 +424,7 @@ can_be_strangled(struct monst* mon)
 boolean
 can_track(register struct permonst* ptr)
 {
-    if (uwep && uwep->oartifact == ART_EXCALIBUR)
+    if (u_wield_art(ART_EXCALIBUR))
         return TRUE;
     else
         return (boolean) haseyes(ptr);
@@ -417,7 +456,8 @@ breakarm(register struct permonst* ptr)
 boolean
 sticks(register struct permonst* ptr)
 {
-    return (boolean) (dmgtype(ptr, AD_STCK) || dmgtype(ptr, AD_WRAP)
+    return (boolean) (dmgtype(ptr, AD_STCK)
+                      || (dmgtype(ptr, AD_WRAP) && !attacktype(ptr, AT_ENGL))
                       || attacktype(ptr, AT_HUGS));
 }
 
@@ -655,7 +695,7 @@ struct alt_spl {
 /* figure out what type of monster a user-supplied string is specifying;
    ingore anything past the monster name */
 int
-name_to_mon(const char *in_str, int * gender_name_var)
+name_to_mon(const char *in_str, int *gender_name_var)
 {
     return name_to_monplus(in_str, (const char **) 0, gender_name_var);
 }
@@ -686,7 +726,8 @@ name_to_monplus(
     register int mntmp = NON_PM;
     register char *s, *str, *term;
     char buf[BUFSZ];
-    int len, slen, mgend;
+    int len, mgend, matchgend = -1;
+    size_t slen;
     boolean exact_match = FALSE;
 
     if (remainder_p)
@@ -740,13 +781,16 @@ name_to_monplus(
             { "master of assassin", PM_MASTER_ASSASSIN, NEUTRAL },
             /* Outdated names */
             { "invisible stalker", PM_STALKER, NEUTRAL },
-            { "high-elf", PM_ELVEN_MONARCH, NEUTRAL }, /* PM_HIGH_ELF is obsolete */
+            { "high-elf", PM_ELVEN_MONARCH, NEUTRAL }, /* PM_HIGH_ELF is
+                                                        * obsolete */
             /* other misspellings or incorrect words */
             { "wood-elf", PM_WOODLAND_ELF, NEUTRAL },
             { "wood elf", PM_WOODLAND_ELF, NEUTRAL },
             { "woodland nymph", PM_WOOD_NYMPH, NEUTRAL },
-            { "halfling", PM_HOBBIT, NEUTRAL },    /* potential guess for polyself */
-            { "genie", PM_DJINNI, NEUTRAL }, /* potential guess for ^G/#wizgenesis */
+            { "halfling", PM_HOBBIT, NEUTRAL },    /* potential guess for
+                                                    * polyself */
+            { "genie", PM_DJINNI, NEUTRAL }, /* potential guess for
+                                              * ^G/#wizgenesis */
             /* prefix used to workaround duplicate monster names for
                monsters with alternate forms */
             { "human wererat", PM_HUMAN_WERERAT, NEUTRAL },
@@ -797,7 +841,7 @@ name_to_monplus(
                 && (!str[len] || str[len] == ' ' || str[len] == '\'')) {
                 if (remainder_p)
                     *remainder_p = in_str + (&str[len] - buf);
-                if (gender_name_var != (int *) 0)
+                if (gender_name_var)
                     *gender_name_var = namep->genderhint;
                 return namep->pm_val;
             }
@@ -806,18 +850,17 @@ name_to_monplus(
 
     for (len = 0, i = LOW_PM; i < NUMMONS; i++) {
       for (mgend = MALE; mgend < NUM_MGENDERS; mgend++) {
-        int m_i_len;
+        size_t m_i_len;
 
         if (!mons[i].pmnames[mgend])
             continue;
 
-        m_i_len = (int) strlen(mons[i].pmnames[mgend]);
-        if (m_i_len > len && !strncmpi(mons[i].pmnames[mgend], str, m_i_len)) {
+        m_i_len = strlen(mons[i].pmnames[mgend]);
+        if (m_i_len > (size_t) len && !strncmpi(mons[i].pmnames[mgend], str, (int) m_i_len)) {
             if (m_i_len == slen) {
                 mntmp = i;
-                len = m_i_len;
-                if (gender_name_var != (int *) 0)
-                    *gender_name_var = mgend;
+                len = (int) m_i_len;
+                matchgend = mgend;
                 exact_match = TRUE;
                 break; /* exact match */
             } else if (slen > m_i_len
@@ -831,17 +874,25 @@ name_to_monplus(
                            || !strcmpi(&str[m_i_len], "es")
                            || !strncmpi(&str[m_i_len], "es ", 3))) {
                 mntmp = i;
-                len = m_i_len;
+                len = (int) m_i_len;
+                matchgend = mgend;
             }
         }
       }
       if (exact_match)
         break;
     }
+    /* FIXME: some titles have gender; title_to_mon() doesn't propagate it */
     if (mntmp == NON_PM)
         mntmp = title_to_mon(str, (int *) 0, &len);
     if (len && remainder_p)
         *remainder_p = in_str + (&str[len] - buf);
+    if (gender_name_var && matchgend != -1) {
+        /* don't override with neuter if caller has already specified male
+           or female and we've matched the neuter name */
+        if (*gender_name_var == -1 || matchgend != NEUTRAL)
+            *gender_name_var = matchgend;
+    }
     return mntmp;
 }
 
@@ -1022,6 +1073,7 @@ static const short grownups[][2] = {
     { PM_VAMPIRE, PM_VAMPIRE_LEADER },
     { PM_BAT, PM_GIANT_BAT },
     { PM_BABY_GRAY_DRAGON, PM_GRAY_DRAGON },
+    { PM_BABY_GOLD_DRAGON, PM_GOLD_DRAGON },
     { PM_BABY_SILVER_DRAGON, PM_SILVER_DRAGON },
 #if 0 /* DEFERRED */
     {PM_BABY_SHIMMERING_DRAGON, PM_SHIMMERING_DRAGON},
@@ -1119,18 +1171,18 @@ const struct permonst *
 raceptr(struct monst* mtmp)
 {
     if (mtmp == &g.youmonst && !Upolyd)
-        return &mons[g.urace.malenum];
+        return &mons[g.urace.mnum];
     else
         return mtmp->data;
 }
 
-static const char *levitate[4] = { "float", "Float", "wobble", "Wobble" };
-static const char *flys[4] = { "fly", "Fly", "flutter", "Flutter" };
-static const char *flyl[4] = { "fly", "Fly", "stagger", "Stagger" };
-static const char *slither[4] = { "slither", "Slither", "falter", "Falter" };
-static const char *ooze[4] = { "ooze", "Ooze", "tremble", "Tremble" };
-static const char *immobile[4] = { "wiggle", "Wiggle", "pulsate", "Pulsate" };
-static const char *crawl[4] = { "crawl", "Crawl", "falter", "Falter" };
+static const char *const levitate[4] = { "float", "Float", "wobble", "Wobble" };
+static const char *const flys[4] = { "fly", "Fly", "flutter", "Flutter" };
+static const char *const flyl[4] = { "fly", "Fly", "stagger", "Stagger" };
+static const char *const slither[4] = { "slither", "Slither", "falter", "Falter" };
+static const char *const ooze[4] = { "ooze", "Ooze", "tremble", "Tremble" };
+static const char *const immobile[4] = { "wiggle", "Wiggle", "pulsate", "Pulsate" };
+static const char *const crawl[4] = { "crawl", "Crawl", "falter", "Falter" };
 
 const char *
 locomotion(const struct permonst* ptr, const char* def)
@@ -1164,7 +1216,7 @@ stagger(const struct permonst* ptr, const char* def)
 
 /* return phrase describing the effect of fire attack on a type of monster */
 const char *
-on_fire(struct permonst* mptr, struct attack* mattk)
+on_fire(struct permonst *mptr, struct attack *mattk)
 {
     const char *what;
 
@@ -1200,6 +1252,56 @@ on_fire(struct permonst* mptr, struct attack* mattk)
     return what;
 }
 
+/* similar to on_fire(); creature is summoned in a cloud of <something> */
+const char *
+msummon_environ(struct permonst *mptr, const char **cloud)
+{
+    const char *what;
+    int mndx = ((mptr->mlet == S_ANGEL) ? PM_ANGEL
+                : (mptr->mlet == S_LIGHT) ? PM_YELLOW_LIGHT
+                  : monsndx(mptr));
+
+    *cloud = "cloud"; /* default is "cloud of <something>" */
+    switch (mndx) {
+    case PM_WATER_DEMON:
+    case PM_AIR_ELEMENTAL:
+    case PM_WATER_ELEMENTAL:
+    case PM_FOG_CLOUD:
+    case PM_ICE_VORTEX:
+    case PM_FREEZING_SPHERE:
+        what = "vapor";
+        break;
+    case PM_STEAM_VORTEX:
+        what = "steam";
+        break;
+    case PM_ENERGY_VORTEX:
+    case PM_SHOCKING_SPHERE:
+        *cloud = "shower"; /* "shower of sparks" instead of "cloud of..." */
+        what = "sparks";
+        break;
+    case PM_EARTH_ELEMENTAL:
+    case PM_DUST_VORTEX:
+        what = "dust";
+        break;
+    case PM_FIRE_ELEMENTAL:
+    case PM_FIRE_VORTEX:
+    case PM_FLAMING_SPHERE:
+    /*case PM_SALAMANDER:*/
+        *cloud = "ball"; /* "ball of flame" instead of "cloud of..." */
+        what = "flame";
+        break;
+    case PM_ANGEL: /* actually any 'A'-class */
+    case PM_YELLOW_LIGHT: /* any 'y'-class */
+        *cloud = "flash"; /* "flash of light" instead of "cloud of..." */
+        what = "light";
+        break;
+    default:
+        what = "smoke";
+        break;
+    }
+    return what;
+}
+
 /*
  * Returns:
  *      True if monster is presumed to have a sense of smell.
@@ -1210,7 +1312,7 @@ on_fire(struct permonst* mptr, struct attack* mattk)
  * We're assuming all insects can smell at a distance too.
  */
 boolean
-olfaction(struct permonst* mdat)
+olfaction(struct permonst *mdat)
 {
     if (is_golem(mdat)
         || mdat->mlet == S_EYE /* spheres  */
@@ -1247,7 +1349,7 @@ monstseesu(unsigned long seenres)
 {
     struct monst *mtmp;
 
-    if (seenres == M_SEEN_NOTHING)
+    if (seenres == M_SEEN_NOTHING || u.uswallow)
         return;
 
     for (mtmp = fmon; mtmp; mtmp = mtmp->nmon)
@@ -1268,6 +1370,62 @@ resist_conflict(struct monst* mtmp)
     int resist_chance = min(19, (ACURR(A_CHA) - mtmp->m_lev + u.ulevel));
 
     return (rnd(20) > resist_chance);
+}
+
+/* does monster mtmp know traps of type ttyp */
+boolean
+mon_knows_traps(struct monst *mtmp, int ttyp)
+{
+    if (ttyp == ALL_TRAPS)
+        return (boolean)(mtmp->mtrapseen);
+    else if (ttyp == NO_TRAP)
+        return !(boolean)(mtmp->mtrapseen);
+    else
+        return ((mtmp->mtrapseen & (1L << (ttyp - 1))) != 0);
+}
+
+/* monster mtmp learns all traps of type ttyp */
+void
+mon_learns_traps(struct monst *mtmp, int ttyp)
+{
+    if (ttyp == ALL_TRAPS)
+        mtmp->mtrapseen = ~0L;
+    else if (ttyp == NO_TRAP)
+        mtmp->mtrapseen = 0L;
+    else
+        mtmp->mtrapseen |= (1L << (ttyp - 1));
+}
+
+/* monsters see a trap trigger, and remember it */
+void
+mons_see_trap(struct trap *ttmp)
+{
+    struct monst *mtmp;
+    coordxy tx = ttmp->tx, ty = ttmp->ty;
+    int maxdist = levl[tx][ty].lit ? 7*7 : 2;
+
+    for (mtmp = fmon; mtmp; mtmp = mtmp->nmon) {
+        if (is_animal(mtmp->data) || mindless(mtmp->data)
+            || !haseyes(mtmp->data) || !mtmp->mcansee)
+            continue;
+        if (dist2(mtmp->mx, mtmp->my, tx, ty) > maxdist)
+            continue;
+        if (!m_cansee(mtmp, tx, ty))
+            continue;
+        mon_learns_traps(mtmp, ttmp->ttyp);
+    }
+}
+
+int
+get_atkdam_type(int adtyp)
+{
+    if (adtyp == AD_RBRE) {
+        static const int rnd_breath_typ[] = {
+            AD_MAGM, AD_FIRE, AD_COLD, AD_SLEE,
+            AD_DISN, AD_ELEC, AD_DRST, AD_ACID };
+        return rnd_breath_typ[rn2(SIZE(rnd_breath_typ))];
+    }
+    return adtyp;
 }
 
 /*mondata.c*/

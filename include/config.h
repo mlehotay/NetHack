@@ -173,9 +173,9 @@
 /*
  * Section 2:   Some global parameters and filenames.
  *
- *              LOGFILE, XLOGFILE, NEWS and PANICLOG refer to files in
- *              the playground directory.  Commenting out LOGFILE, XLOGFILE,
- *              NEWS or PANICLOG removes that feature from the game.
+ *              LOGFILE, XLOGFILE, LIVELOGFILE, NEWS and PANICLOG refer to
+ *              files in the playground directory.  Commenting out LOGFILE,
+ *              XLOGFILE, NEWS or PANICLOG removes that feature from the game.
  *
  *              Building with debugging features enabled is now unconditional;
  *              the old WIZARD setting for that has been eliminated.
@@ -265,6 +265,25 @@
 #ifndef PERS_IS_UID
 #define PERS_IS_UID 0 /* 0 = PERSMAX entries per name, 1 = per uid */
 #endif
+
+/*
+ *      NODUMPENUMS
+ *      If there are memory constraints and you don't want to store information
+ *      about the internal enum values for monsters and objects, this can be
+ *      uncommented to define NODUMPENUMS. Doing so will disable the
+ *          nethack --dumpenums
+ *      command line option.
+ */
+/* #define NODUMPENUMS */
+
+/*
+ *      ENHANCED_SYMBOLS
+ *      Support the enhanced display of symbols by utilizing utf8 and 24-bit
+ *      color sequences. Enabled by default, but it can be disabled by
+ *      commenting it out.
+ */
+
+#define ENHANCED_SYMBOLS
 
 /*
  *      If COMPRESS is defined, it should contain the full path name of your
@@ -470,13 +489,6 @@ typedef unsigned char uchar;
 #endif
 #endif
 
-/* The "repeat" key used in cmd.c as NHKF_DOAGAIN; if commented out or the
- * value is changed from C('A') to 0, it won't be bound to any keystroke
- * unless you use the run-time configuration file's BIND directive for it.
- * [Note: C() macro isn't defined yet but it will be before DOAGAIN is used.]
- */
-#define DOAGAIN C('A') /* repeat previous command; default is ^A, '\001' */
-
 /* CONFIG_ERROR_SECURE: If user makes NETHACKOPTIONS point to a file ...
  *  TRUE: Show the first error, nothing else.
  *  FALSE: Show all errors as normal, with line numbers and context.
@@ -545,10 +557,14 @@ typedef unsigned char uchar;
 /* #define TTY_TILES_ESCCODES */
 /* #define TTY_SOUND_ESCCODES */
 
+/* An experimental minimalist inventory list capability under tty if you have
+ * at least 28 additional rows beneath the status window on your terminal  */
+/* #define TTY_PERM_INVENT */
+
 /* NetHack will execute an external program whenever a new message-window
  * message is shown.  The program to execute is given in environment variable
  * NETHACK_MSGHANDLER.  It will get the message as the only parameter.
- * Only available with POSIX_TYPES or GNU C */
+ * Only available with POSIX_TYPES, GNU C, or WIN32 */
 /* #define MSGHANDLER */
 
 /* enable status highlighting via STATUS_HILITE directives in run-time
@@ -557,8 +573,10 @@ typedef unsigned char uchar;
 
 /* #define WINCHAIN */              /* stacked window systems */
 
-/* #define DEBUG_MIGRATING_MONS */  /* add a wizard-mode command to help debug
-                                       migrating monsters */
+#if defined(DEBUG) && !defined(DEBUG_MIGRATING_MONS)
+#define DEBUG_MIGRATING_MONS  /* add a wizard-mode command to help debug
+                                 migrating monsters */
+#endif
 
 /* SCORE_ON_BOTL is neither experimental nor inadequately tested,
    but doesn't seem to fit in any other section... */
@@ -571,7 +589,9 @@ typedef unsigned char uchar;
 
 /* EXTRA_SANITY_CHECKS adds extra impossible calls,
  * probably not useful for normal play */
-/* #define EXTRA_SANITY_CHECKS */
+#if (NH_DEVEL_STATUS != NH_STATUS_RELEASED)
+#define EXTRA_SANITY_CHECKS
+#endif
 
 /* BREADCRUMBS employs the use of predefined compiler macros
  * __FUNCTION__ and __LINE__ to store some caller breadcrumbs
@@ -597,6 +617,21 @@ typedef unsigned char uchar;
 #define EXTRAINFO_FN    "/dgldir/extrainfo-nh370/%n.extrainfo"
 #define MAILCKFREQ 5  /* SIMPLE_MAIL is in unixconf.h */
 #endif
+
+#ifndef NO_CHRONICLE
+/* CHRONICLE - enable #chronicle command, a log of major game events.
+   The logged messages will also appear in DUMPLOG. */
+#define CHRONICLE
+#ifdef CHRONICLE
+/* LIVELOG - log CHRONICLE events into LIVELOGFILE as they happen. */
+/* #define LIVELOG */
+#ifdef LIVELOG
+#define LIVELOGFILE "livelog" /* in-game events recorded, live */
+#endif /* LIVELOG */
+#endif /* CHRONICLE */
+#else
+#undef LIVELOG
+#endif /* NO_CHRONICLE */
 
 /* #define DUMPLOG */  /* End-of-game dump logs */
 #ifdef DUMPLOG
@@ -627,6 +662,10 @@ typedef unsigned char uchar;
 
 #define CONSENT /* for foocubus interactions */
 
+/* TEMPORARY - MAKE UNCONDITIONAL BEFORE RELEASE */
+/* undef this to check if sandbox breaks something */
+#define NHL_SANDBOX
+
 /* End of Section 4 */
 
 #ifdef TTY_TILES_ESCCODES
@@ -635,6 +674,7 @@ typedef unsigned char uchar;
 # endif
 #endif
 
+#include "integer.h"
 #include "global.h" /* Define everything else according to choices above */
 
 #endif /* CONFIG_H */

@@ -1,18 +1,18 @@
 #!/bin/sh
 set -x
 
-if [ -z "$TRAVIS_BUILD_DIR" ]; then
+if [ -z "$CI_BUILD_DIR" ]; then
 	export DJGPP_TOP=$(pwd)/lib/djgpp
 else
-	export DJGPP_TOP="$TRAVIS_BUILD_DIR/lib/djgpp"
+	export DJGPP_TOP="$CI_BUILD_DIR/lib/djgpp"
 fi
 
 if [ -z "$GCCVER" ]; then
-	export GCCVER=gcc1020
+	export GCCVER=gcc1210
 fi
 
 if [ -z "$LUA_VERSION" ]; then
-	export LUA_VERSION=5.4.2
+	export LUA_VERSION=5.4.4
 fi
 
 if [ ! -d "$(pwd)/lib" ]; then
@@ -22,18 +22,21 @@ fi
 
 #DJGPP_URL="https://github.com/andrewwutw/build-djgpp/releases/download/v2.9/"
 #DJGPP_URL="https://github.com/andrewwutw/build-djgpp/releases/download/v3.0/"
-DJGPP_URL="https://github.com/andrewwutw/build-djgpp/releases/download/v3.1/"
+#DJGPP_URL="https://github.com/andrewwutw/build-djgpp/releases/download/v3.1/"
+#DJGPP_URL="https://github.com/andrewwutw/build-djgpp/releases/download/v3.1/"
+DJGPP_URL="https://github.com/andrewwutw/build-djgpp/releases/download/v3.3/"
+
 if [ "$(uname)" = "Darwin" ]; then
     #Mac
     DJGPP_FILE="djgpp-osx-$GCCVER.tar.bz2"
     if [ -z "HINTS" ]; then
-        export HINTS=macOS.2020
+        export HINTS=macOS.370
     fi
 elif [ "$(expr substr $(uname -s) 1 5)" = "Linux" ]; then
     #Linux
     DJGPP_FILE="djgpp-linux64-$GCCVER.tar.bz2"
     if [ -z "$HINTS" ]; then
-        export HINTS=linux.2020
+        export HINTS=linux.370
     fi
 elif [ "$(expr substr $(uname -s) 1 10)" = "MINGW32_NT" ]; then
     #mingw
@@ -86,6 +89,24 @@ fi
 if [ ! -d "pdcurses" ]; then
 	echo "Getting ../pdcurses from https://github.com/wmcbrine/PDCurses.git" ; \
 	git clone --depth 1 https://github.com/wmcbrine/PDCurses.git pdcurses
+fi
+
+if [ ! -d djgpp/djgpp-patch ]; then
+    echo "Getting djlsr205.zip" ;
+    cd djgpp
+    mkdir -p djgpp-patch
+    cd djgpp-patch
+    if [ "$(uname)" = "Darwin" ]; then
+	#Mac
+	curl http://www.mirrorservice.org/sites/ftp.delorie.com/pub/djgpp/current/v2/djlsr205.zip
+    else
+	wget --quiet --no-hsts http://www.mirrorservice.org/sites/ftp.delorie.com/pub/djgpp/current/v2/djlsr205.zip
+    fi
+    ls -l
+    mkdir -p src/libc/go32
+    unzip -p djlsr205.zip src/libc/go32/exceptn.S >src/libc/go32/exceptn.S
+    patch -p0 -l -i ../../../sys/msdos/exceptn.S.patch
+    cd ../../
 fi
 
 cd ../

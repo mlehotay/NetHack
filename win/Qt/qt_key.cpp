@@ -25,10 +25,10 @@ uchar keyValue(QKeyEvent *key_event)
     const int k = key_event->key();
     Qt::KeyboardModifiers mod = key_event->modifiers();
     const QString &txt = key_event->text();
-    QChar ch = !txt.isEmpty() ? txt.at(0) : 0;
+    QChar ch = !txt.isEmpty() ? txt.at(0) : QChar(0);
 
-    if (ch >= 128)
-        ch = 0;
+    if (ch >= QChar(128))
+        ch = QChar(0);
     // on OSX, ascii control codes are not sent, force them
     if (ch == 0 && (mod & Qt::ControlModifier) != 0) {
         if (k >= Qt::Key_A && k <= Qt::Key_Underscore)
@@ -94,7 +94,7 @@ int NetHackQtKeyBuffer::GetAscii()
 
 Qt::KeyboardModifiers NetHackQtKeyBuffer::GetState()
 {
-    if ( Empty() ) return 0;
+    if ( Empty() ) return Qt::NoModifier;
     Qt::KeyboardModifiers r=TopState();
     out=(out+1)%maxkey;
     return r;
@@ -114,7 +114,7 @@ int NetHackQtKeyBuffer::TopAscii() const
 
 Qt::KeyboardModifiers NetHackQtKeyBuffer::TopState() const
 {
-    if ( Empty() ) return 0;
+    if ( Empty() ) return Qt::NoModifier;
     return state[out];
 }
 

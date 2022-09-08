@@ -1,73 +1,37 @@
-/* NetHack 3.7	version.c	$NHDT-Date: 1596498224 2020/08/03 23:43:44 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.74 $ */
+/* NetHack 3.7	version.c	$NHDT-Date: 1655402415 2022/06/16 18:00:15 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.92 $ */
 /* Copyright (c) Stichting Mathematisch Centrum, Amsterdam, 1985. */
 /*-Copyright (c) Michael Allison, 2018. */
 /* NetHack may be freely redistributed.  See license for details. */
 
 #include "hack.h"
 #include "dlb.h"
-#include "date.h"
 
-#if defined(CROSSCOMPILE)
-struct cross_target_s cross_target = {
-    /* https://groups.google.com/forum/#!original/
-       comp.sources.games/91SfKYg_xzI/dGnR3JnspFkJ */
-    "Tue, 28-Jul-87 13:18:57 EDT",
-    "Version 1.0, built Jul 28 13:18:57 1987.",
-    "0000000000000000000000000000000000000000",
-    "master",
-    "1.0.0-0",
-    "NetHack Version 1.0.0-0 - last build Tue Jul 28 13:18:57 1987.",
-    0x01010000UL,
-    0x00000000UL,
-    0x00000000UL,
-    0x00000000UL,
-    0x00000000UL,
-    0x00000000UL,
-    554476737UL,
-};
-#endif /* CROSSCOMPILE */
-
-#if defined(NETHACK_GIT_SHA)
-const char *NetHack_git_sha
-#if !defined(CROSSCOMPILE) || !defined(CROSSCOMPILE_TARGET)
-                = NETHACK_GIT_SHA
-#else
-#ifdef NETHACK_HOST_GIT_SHA
-                = NETHACK_HOST_GIT_SHA
-#endif
-#endif
-;
+#ifndef OPTIONS_AT_RUNTIME
+#define OPTIONS_AT_RUNTIME
 #endif
 
-#if defined(NETHACK_GIT_BRANCH)
-const char *NetHack_git_branch
-#if !defined(CROSSCOMPILE) || !defined(CROSSCOMPILE_TARGET)
-                = NETHACK_GIT_BRANCH
-#else
-#ifdef NETHACK_HOST_GIT_BRANCH
-                = NETHACK_HOST_GIT_BRANCH
-#endif
-#endif
-;
-#endif
-
+extern char *mdlib_version_string(char *, const char *);
 static void insert_rtoption(char *);
 
 /* fill buffer with short version (so caller can avoid including date.h) */
 char *
-version_string(char *buf)
+version_string(char *buf, size_t bufsz)
 {
-    return strcpy(buf, VERSION_STRING);
+    Snprintf(buf, bufsz, "%s",
+             ((nomakedefs.version_string && nomakedefs.version_string[0])
+              ? nomakedefs.version_string
+              /* in case we try to write a paniclog entry after releasing
+                 the 'nomakedefs' data */
+              : mdlib_version_string(buf, ".")));
+    return buf;
 }
 
 /* fill and return the given buffer with the long nethack version string */
 char *
-getversionstring(char *buf)
+getversionstring(char *buf, size_t bufsz)
 {
-    Strcpy(buf, VERSION_ID);
+    Strcpy(buf, nomakedefs.version_id);
 
-#if defined(RUNTIME_PORT_ID) \
-    || defined(NETHACK_GIT_SHA) || defined(NETHACK_GIT_BRANCH)
     {
         int c = 0;
 #if defined(RUNTIME_PORT_ID)
@@ -82,39 +46,38 @@ getversionstring(char *buf)
 #if defined(RUNTIME_PORT_ID)
         tmp = get_port_id(tmpbuf);
         if (tmp)
-            Sprintf(eos(buf), "%s%s", c++ ? "," : "", tmp);
+            Snprintf(eos(buf), (bufsz - strlen(buf)) - 1,
+                     "%s%s", c++ ? "," : "", tmp);
 #endif
-#if defined(NETHACK_GIT_SHA)
-        if (NetHack_git_sha)
-            Sprintf(eos(buf), "%s%s", c++ ? "," : "", NetHack_git_sha);
-#endif
-#if defined(NETHACK_GIT_BRANCH)
+        if (nomakedefs.git_sha)
+            Snprintf(eos(buf), (bufsz - strlen(buf)) - 1,
+                     "%s%s", c++ ? "," : "", nomakedefs.git_sha);
 #if (NH_DEVEL_STATUS != NH_STATUS_RELEASED)
-        if (NetHack_git_branch)
-            Sprintf(eos(buf), "%sbranch:%s",
-                    c++ ? "," : "", NetHack_git_branch);
-#endif
+        if (nomakedefs.git_branch)
+            Snprintf(eos(buf), (bufsz - strlen(buf)) - 1,
+                     "%sbranch:%s",
+                     c++ ? "," : "", nomakedefs.git_branch);
 #endif
         if (c)
-            Strcat(buf, ")");
+            Snprintf(eos(buf), (bufsz - strlen(buf)) - 1,
+                     "%s", ")");
         else /* if nothing has been added, strip " (" back off */
             *p = '\0';
         if (dotoff)
-            Strcat(buf, ".");
+            Snprintf(eos(buf), (bufsz - strlen(buf)) - 1,
+                     "%s", ".");
     }
-#endif /* RUNTIME_PORT_ID || NETHACK_GIT_SHA || NETHACK_GIT_BRANCH */
-
     return buf;
 }
 
-/* the 'v' command */
+/* the #versionshort command */
 int
 doversion(void)
 {
     char buf[BUFSZ];
 
-    pline("%s", getversionstring(buf));
-    return 0;
+    pline("%s", getversionstring(buf, sizeof buf));
+    return ECMD_OK;
 }
 
 /* the '#version' command; also a choice for '?' */
@@ -148,7 +111,7 @@ doextversion(void)
         (const char *) 0
   };
 #endif /*0*/
-#if defined(OPTIONS_AT_RUNTIME) || defined(CROSSCOMPILE_TARGET)
+#if defined(OPTIONS_AT_RUNTIME)
     use_dlb = FALSE;
 #else
     done_rt = TRUE;
@@ -157,7 +120,7 @@ doextversion(void)
     /* instead of using ``display_file(OPTIONS_USED,TRUE)'' we handle
        the file manually so we can include dynamic version info */
 
-    (void) getversionstring(buf);
+    (void) getversionstring(buf, sizeof buf);
     /* if extra text (git info) is present, put it on separate line
        but don't wrap on (x86) */
     if (strlen(buf) >= COLNO)
@@ -242,7 +205,7 @@ doextversion(void)
         (void) dlb_fclose(f);
     display_nhwindow(win, FALSE);
     destroy_nhwindow(win);
-    return 0;
+    return ECMD_OK;
 }
 
 void
@@ -253,7 +216,7 @@ early_version_info(boolean pastebuf)
 
     Snprintf(buf1, sizeof(buf1), "test");
     /* this is early enough that we have to do our own line-splitting */
-    getversionstring(buf1);
+    getversionstring(buf1, sizeof buf1);
     tmp = strstri(buf1, " ("); /* split at start of version info */
     if (tmp) {
         /* retain one buffer so that it all goes into the paste buffer */
@@ -315,7 +278,7 @@ insert_rtoption(char *buf)
     for (i = 0; i < SIZE(rt_opts); ++i) {
         if (strstri(buf, rt_opts[i].token) && *rt_opts[i].value) {
             (void) strsubst(buf, rt_opts[i].token, rt_opts[i].value);
-	}
+        }
         /* we don't break out of the loop after a match; there might be
            other matches on the same line */
     }
@@ -327,40 +290,44 @@ comp_times(long filetime)
 {
     /* BUILD_TIME is constant but might have L suffix rather than UL;
        'filetime' is historically signed but ought to have been unsigned */
-    return (boolean) ((unsigned long) filetime < (unsigned long) BUILD_TIME);
+    return ((unsigned long) filetime < (unsigned long) nomakedefs.build_time);
 }
 #endif
 
 boolean
-check_version(struct version_info *version_data, const char *filename,
-              boolean complain, unsigned long utdflags)
+check_version(
+    struct version_info *version_data,
+    const char *filename,
+    boolean complain,
+    unsigned long utdflags)
 {
     if (
-#ifdef VERSION_COMPATIBILITY
+#ifdef VERSION_COMPATIBILITY /* patchlevel.h */
         version_data->incarnation < VERSION_COMPATIBILITY
-        || version_data->incarnation > VERSION_NUMBER
+        || version_data->incarnation > nomakedefs.version_number
 #else
-        version_data->incarnation != VERSION_NUMBER
+        version_data->incarnation != nomakedefs.version_number
 #endif
         ) {
-        if (complain)
+        if (complain) {
             pline("Version mismatch for file \"%s\".", filename);
+            display_nhwindow(WIN_MESSAGE, TRUE);
+        }
         return FALSE;
     } else if (
-#ifndef IGNORED_FEATURES
-        version_data->feature_set != VERSION_FEATURES
-#else
-        (version_data->feature_set & ~IGNORED_FEATURES)
-            != (VERSION_FEATURES & ~IGNORED_FEATURES)
-#endif
+        (version_data->feature_set & ~nomakedefs.ignored_features)
+            != (nomakedefs.version_features & ~nomakedefs.ignored_features)
         || ((utdflags & UTD_SKIP_SANITY1) == 0
-             && version_data->entity_count != VERSION_SANITY1)
-        || ((utdflags & UTD_CHECKSIZES) &&
-            (version_data->struct_sizes1 != VERSION_SANITY2))
-        || ((utdflags & UTD_CHECKSIZES) &&
-            (version_data->struct_sizes2 != VERSION_SANITY3))) {
-        if (complain)
+             && version_data->entity_count != nomakedefs.version_sanity1)
+        || ((utdflags & UTD_CHECKSIZES) != 0
+            && version_data->struct_sizes1 != nomakedefs.version_sanity2)
+        || ((utdflags & UTD_CHECKSIZES) != 0
+            && version_data->struct_sizes2 != nomakedefs.version_sanity3)
+        ) {
+        if (complain) {
             pline("Configuration incompatibility for file \"%s\".", filename);
+            display_nhwindow(WIN_MESSAGE, TRUE);
+        }
         return FALSE;
     }
     return TRUE;
@@ -371,7 +338,8 @@ check_version(struct version_info *version_data, const char *filename,
 boolean
 uptodate(NHFILE *nhfp, const char *name, unsigned long utdflags)
 {
-    int rlen = 0, cmc = 0, filecmc = 0;
+    ssize_t rlen = 0;
+    int cmc = 0, filecmc = 0;
     struct version_info vers_info;
     boolean verbose = name ? TRUE : FALSE;
     char indicator;
@@ -421,28 +389,26 @@ store_formatindicator(NHFILE *nhfp)
 void
 store_version(NHFILE *nhfp)
 {
-#if !defined(CROSSCOMPILE) || !defined(CROSSCOMPILE_TARGET)
-    static const struct version_info version_data = {
-        VERSION_NUMBER, VERSION_FEATURES,
-        VERSION_SANITY1, VERSION_SANITY2, VERSION_SANITY3
-#else
     struct version_info version_data = {
-        0UL,0UL,0UL,0UL,0Ul
-#endif
+        0UL, 0UL, 0UL, 0UL, 0UL
     };
 
-#if defined(CROSSCOMPILE) && defined(CROSSCOMPILE_TARGET)
-    version_data.incarnation = VERSION_NUMBER;    /* actual version number */
-    version_data.feature_set = VERSION_FEATURES;  /* bitmask of config settings */
-    version_data.entity_count  = VERSION_SANITY1; /* # of monsters and objects */
-    version_data.struct_sizes1 = VERSION_SANITY2; /* size of key structs */
-    version_data.struct_sizes2 = VERSION_SANITY3; /* size of more key structs */
-#endif
+    /* actual version number */
+    version_data.incarnation = nomakedefs.version_number;
+    /* bitmask of config settings */
+    version_data.feature_set = nomakedefs.version_features;
+    /* # of monsters and objects */
+    version_data.entity_count  = nomakedefs.version_sanity1;
+    /* size of key structs */
+    version_data.struct_sizes1 = nomakedefs.version_sanity2;
+    /* size of more key structs */
+    version_data.struct_sizes2 = nomakedefs.version_sanity3;
+
     if (nhfp->structlevel) {
         bufoff(nhfp->fd);
         /* bwrite() before bufon() uses plain write() */
         store_formatindicator(nhfp);
-        bwrite(nhfp->fd,(genericptr_t) &version_data,
+        bwrite(nhfp->fd, (genericptr_t) &version_data,
                (unsigned) (sizeof version_data));
         bufon(nhfp->fd);
     }
@@ -504,10 +470,10 @@ copyright_banner_line(int indx)
     if (indx == 2)
         return COPYRIGHT_BANNER_B;
 #endif
-#ifdef COPYRIGHT_BANNER_C
+
     if (indx == 3)
-        return COPYRIGHT_BANNER_C;
-#endif
+        return nomakedefs.copyright_banner_c;
+
 #ifdef COPYRIGHT_BANNER_D
     if (indx == 4)
         return COPYRIGHT_BANNER_D;

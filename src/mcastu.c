@@ -45,8 +45,6 @@ static boolean is_undirected_spell(unsigned int, int);
 static boolean
 spell_would_be_useless(struct monst *, unsigned int, int);
 
-extern const char *const flash_types[]; /* from zap.c */
-
 /* feedback when frustrated monster couldn't cast a spell */
 static void
 cursetxt(struct monst *mtmp, boolean undirected)
@@ -212,20 +210,20 @@ castmu(register struct monst *mtmp,
                     if (foundyou)
                         impossible(
                        "spellcasting monster found you and doesn't know it?");
-                    return 0;
+                    return MM_MISS;
                 }
                 break;
             }
         } while (--cnt > 0
                  && spell_would_be_useless(mtmp, mattk->adtyp, spellnum));
         if (cnt == 0)
-            return 0;
+            return MM_MISS;
     }
 
     /* monster unable to cast spells? */
     if (mtmp->mcan || mtmp->mspec_used || !ml) {
         cursetxt(mtmp, is_undirected_spell(mattk->adtyp, spellnum));
-        return 0;
+        return MM_MISS;
     }
 
     if (mattk->adtyp == AD_SPEL || mattk->adtyp == AD_CLRC) {
@@ -241,16 +239,16 @@ castmu(register struct monst *mtmp,
         && !is_undirected_spell(mattk->adtyp, spellnum)) {
         pline("%s casts a spell at %s!",
               canseemon(mtmp) ? Monnam(mtmp) : "Something",
-              levl[mtmp->mux][mtmp->muy].typ == WATER ? "empty water"
-                                                      : "thin air");
-        return 0;
+              is_waterwall(mtmp->mux,mtmp->muy) ? "empty water"
+                                                : "thin air");
+        return MM_MISS;
     }
 
     nomul(0);
     if (rn2(ml * 10) < (mtmp->mconf ? 100 : 20)) { /* fumbled attack */
         if (canseemon(mtmp) && !Deaf)
             pline_The("air crackles around %s.", mon_nam(mtmp));
-        return 0;
+        return MM_MISS;
     }
     if (canspotmon(mtmp) || !is_undirected_spell(mattk->adtyp, spellnum)) {
         pline("%s casts a spell%s!",
@@ -276,7 +274,7 @@ castmu(register struct monst *mtmp,
             impossible(
               "%s casting non-hand-to-hand version of hand-to-hand spell %d?",
                        Monnam(mtmp), mattk->adtyp);
-            return 0;
+            return MM_MISS;
         }
     } else if (mattk->damd)
         dmg = d((int) ((ml / 2) + mattk->damn), (int) mattk->damd);
@@ -285,7 +283,7 @@ castmu(register struct monst *mtmp,
     if (Half_spell_damage)
         dmg = (dmg + 1) / 2;
 
-    ret = 1;
+    ret = MM_HIT;
     switch (mattk->adtyp) {
     case AD_FIRE:
         pline("You're enveloped in flames.");
@@ -411,22 +409,26 @@ cast_wizard_spell(struct monst *mtmp, int dmg, int spellnum)
             impossible("bad wizard cloning?");
         break;
     case MGC_SUMMON_MONS: {
-        int count;
+        int count = nasty(mtmp);
 
-        count = nasty(mtmp); /* summon something nasty */
-        if (mtmp->iswiz) {
+        if (!count) {
+            ; /* nothing was created? */
+        } else if (mtmp->iswiz) {
             verbalize("Destroy the thief, my pet%s!", plur(count));
         } else {
-            const char *mappear = (count == 1) ? "A monster appears"
-                                               : "Monsters appear";
+            boolean one = (count == 1);
+            const char *mappear = one ? "A monster appears"
+                                      : "Monsters appear";
 
             /* messages not quite right if plural monsters created but
                only a single monster is seen */
             if (Invis && !perceives(mtmp->data)
                 && (mtmp->mux != u.ux || mtmp->muy != u.uy))
-                pline("%s around a spot near you!", mappear);
+                pline("%s %s a spot near you!", mappear,
+                      one ? "at" : "around");
             else if (Displaced && (mtmp->mux != u.ux || mtmp->muy != u.uy))
-                pline("%s around your displaced image!", mappear);
+                pline("%s %s your displaced image!", mappear,
+                      one ? "by" : "around");
             else
                 pline("%s from nowhere!", mappear);
         }
@@ -531,6 +533,8 @@ cast_wizard_spell(struct monst *mtmp, int dmg, int spellnum)
         mdamageu(mtmp, dmg);
 }
 
+DISABLE_WARNING_FORMAT_NONLITERAL
+
 static void
 cast_cleric_spell(struct monst *mtmp, int dmg, int spellnum)
 {
@@ -613,7 +617,7 @@ cast_cleric_spell(struct monst *mtmp, int dmg, int spellnum)
             if (!enexto(&bypos, mtmp->mux, mtmp->muy, mtmp->data))
                 break;
             if ((pm = mkclass(let, 0)) != 0
-                && (mtmp2 = makemon(pm, bypos.x, bypos.y, MM_ANGRY)) != 0) {
+                && (mtmp2 = makemon(pm, bypos.x, bypos.y, MM_ANGRY|MM_NOMSG)) != 0) {
                 success = TRUE;
                 mtmp2->msleeping = mtmp2->mpeaceful = mtmp2->mtame = 0;
                 set_malign(mtmp2);
@@ -753,6 +757,8 @@ cast_cleric_spell(struct monst *mtmp, int dmg, int spellnum)
         mdamageu(mtmp, dmg);
 }
 
+RESTORE_WARNING_FORMAT_NONLITERAL
+
 static boolean
 is_undirected_spell(unsigned int adtyp, int spellnum)
 {
@@ -848,34 +854,29 @@ spell_would_be_useless(struct monst *mtmp, unsigned int adtyp, int spellnum)
     return FALSE;
 }
 
-/* convert 1..10 to 0..9; add 10 for second group (spell casting) */
-#define ad_to_typ(k) (10 + (int) k - 1)
-
 /* monster uses spell (ranged) */
 int
 buzzmu(register struct monst *mtmp, register struct attack *mattk)
 {
     /* don't print constant stream of curse messages for 'normal'
        spellcasting monsters at range */
-    if (mattk->adtyp > AD_SPC2)
-        return 0;
+    if (!BZ_VALID_ADTYP(mattk->adtyp))
+        return MM_MISS;
 
-    if (mtmp->mcan) {
+    if (mtmp->mcan || m_seenres(mtmp, cvt_adtyp_to_mseenres(mattk->adtyp))) {
         cursetxt(mtmp, FALSE);
-        return 0;
+        return MM_MISS;
     }
     if (lined_up(mtmp) && rn2(3)) {
         nomul(0);
-        if (mattk->adtyp && (mattk->adtyp < 11)) { /* no cf unsigned >0 */
-            if (canseemon(mtmp))
-                pline("%s zaps you with a %s!", Monnam(mtmp),
-                      flash_types[ad_to_typ(mattk->adtyp)]);
-            buzz(-ad_to_typ(mattk->adtyp), (int) mattk->damn, mtmp->mx,
-                 mtmp->my, sgn(g.tbx), sgn(g.tby));
-        } else
-            impossible("Monster spell %d cast", mattk->adtyp - 1);
+        if (canseemon(mtmp))
+            pline("%s zaps you with a %s!", Monnam(mtmp),
+                  flash_str(BZ_OFS_AD(mattk->adtyp), FALSE));
+        buzz(BZ_M_SPELL(BZ_OFS_AD(mattk->adtyp)), (int) mattk->damn, mtmp->mx,
+             mtmp->my, sgn(g.tbx), sgn(g.tby));
+        return MM_HIT;
     }
-    return 1;
+    return MM_MISS;
 }
 
 /*mcastu.c*/

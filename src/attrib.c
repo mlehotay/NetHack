@@ -1,4 +1,4 @@
-/* NetHack 3.7	attrib.c	$NHDT-Date: 1596498149 2020/08/03 23:42:29 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.75 $ */
+/* NetHack 3.7	attrib.c	$NHDT-Date: 1651908297 2022/05/07 07:24:57 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.86 $ */
 /*      Copyright 1988, 1989, 1990, 1992, M. Stephenson           */
 /* NetHack may be freely redistributed.  See license for details. */
 
@@ -111,8 +111,11 @@ static int innately(long *);
 
 /* adjust an attribute; return TRUE if change is made, FALSE otherwise */
 boolean
-adjattrib(int ndx, int incr, int msgflg) /* positive => no message, zero => message, and */
-{           /* negative => conditional (msg if change made) */
+adjattrib(
+    int ndx,    /* which characteristic */
+    int incr,   /* amount of change */
+    int msgflg) /* positive => no message, zero => message, and */
+{               /* negative => conditional (msg if change made) */
     int old_acurr, old_abase, old_amax, decr;
     boolean abonflg;
     const char *attrstr;
@@ -167,7 +170,7 @@ adjattrib(int ndx, int incr, int msgflg) /* positive => no message, zero => mess
         abonflg = (ABON(ndx) > 0);
     }
     if (ACURR(ndx) == old_acurr) {
-        if (msgflg == 0 && flags.verbose) {
+        if (msgflg == 0 && Verbose(0, adjattrib)) {
             if (ABASE(ndx) == old_abase && AMAX(ndx) == old_amax) {
                 pline("You're %s as %s as you can get.",
                       abonflg ? "currently" : "already", attrstr);
@@ -181,9 +184,9 @@ adjattrib(int ndx, int incr, int msgflg) /* positive => no message, zero => mess
         return FALSE;
     }
 
+    g.context.botl = TRUE;
     if (msgflg <= 0)
         You_feel("%s%s!", (incr > 1 || incr < -1) ? "very " : "", attrstr);
-    g.context.botl = TRUE;
     if (g.program_state.in_moveloop && (ndx == A_STR || ndx == A_CON))
         (void) encumber_msg();
     return TRUE;
@@ -210,6 +213,7 @@ gainstr(struct obj *otmp, int incr, boolean givemsg)
 void
 losestr(int num)
 {
+    int uhpmin = minuhpmax(1), olduhpmax = u.uhpmax;
     int ustr = ABASE(A_STR) - num;
 
     while (ustr < 3) {
@@ -220,8 +224,14 @@ losestr(int num)
             u.mhmax -= 6;
         } else {
             u.uhp -= 6;
-            u.uhpmax -= 6;
+            setuhpmax(u.uhpmax - 6);
         }
+        g.context.botl = TRUE;
+    }
+    if (u.uhpmax < uhpmin) {
+        setuhpmax(min(olduhpmax, uhpmin));
+        if (!Drain_resistance)
+            losexp(NULL); /* won't be fatal when no 'drainer' is supplied */
     }
     (void) adjattrib(A_STR, -num, 1);
 }
@@ -304,10 +314,21 @@ poisoned(const char *reason,    /* controls what messages we display */
 
     i = !fatal ? 1 : rn2(fatal + (thrown_weapon ? 20 : 0));
     if (i == 0 && typ != A_CHA) {
-        /* instant kill */
-        u.uhp = -1;
-        g.context.botl = TRUE;
-        pline_The("poison was deadly...");
+        /* sometimes survivable instant kill */
+        loss = 6 + d(4, 6);
+        if (u.uhp <= loss) {
+            u.uhp = -1;
+            g.context.botl = TRUE;
+            pline_The("poison was deadly...");
+        } else {
+            /* survived, but with severe reaction */
+            u.uhpmax = max(3, u.uhpmax - (loss / 2));
+            losehp(loss, pkiller, kprefix); /* poison damage */
+            if (adjattrib(A_CON, (typ != A_CON) ? -1 : -3, TRUE))
+                poisontell(A_CON, TRUE);
+            if (typ != A_CON && adjattrib(typ, -3, 1))
+                poisontell(typ, TRUE);
+        }
     } else if (i > 5) {
         boolean cloud = !strcmp(reason, "gas cloud");
 
@@ -377,19 +398,26 @@ set_moreluck(void)
         u.moreluck = -LUCKADD;
 }
 
+/* (not used) */
 void
 restore_attrib(void)
 {
     int i, equilibrium;;
 
     /*
-     * Note:  this gets called on every turn but ATIME() is never set
-     * to non-zero anywhere, and ATEMP() is only used for strength loss
-     * from hunger, so it doesn't actually do anything.
+     * Note:  this used to get called by moveloop() on every turn but
+     * ATIME() is never set to non-zero anywhere so didn't do anything.
+     * Presumably it once supported something like potion of heroism
+     * which conferred temporary characteristics boost(s).
+     *
+     * ATEMP() is used for strength loss from hunger, which doesn't
+     * time out, and for dexterity loss from wounded legs, which has
+     * its own timeout routine.
      */
 
     for (i = 0; i < A_MAX; i++) { /* all temporary losses/gains */
-        equilibrium = (i == A_STR && u.uhs >= WEAK) ? -1 : 0;
+        equilibrium = ((i == A_STR && u.uhs >= WEAK)
+                       || (i == A_DEX && Wounded_legs)) ? -1 : 0;
         if (ATEMP(i) != equilibrium && ATIME(i) != 0) {
             if (!(--(ATIME(i)))) { /* countdown for change */
                 ATEMP(i) += (ATEMP(i) > 0) ? -1 : 1;
@@ -442,14 +470,11 @@ exerper(void)
 {
     if (!(g.moves % 10)) {
         /* Hunger Checks */
-
-        int hs = (u.uhunger > 1000) ? SATIATED : (u.uhunger > 150)
-                                                     ? NOT_HUNGRY
-                                                     : (u.uhunger > 50)
-                                                           ? HUNGRY
-                                                           : (u.uhunger > 0)
-                                                                 ? WEAK
-                                                                 : FAINTING;
+        int hs = (u.uhunger > 1000) ? SATIATED
+                 : (u.uhunger > 150) ? NOT_HUNGRY
+                   : (u.uhunger > 50) ? HUNGRY
+                     : (u.uhunger > 0) ? WEAK
+                       : FAINTING;
 
         debugpline0("exerper: Hunger checks");
         switch (hs) {
@@ -526,7 +551,7 @@ exerchk(void)
     exerper();
 
     if (g.moves >= g.context.next_attrib_check) {
-        debugpline1("exerchk: ready to test. multi = %d.", g.multi);
+        debugpline1("exerchk: ready to test. multi = %ld.", g.multi);
     }
     /*  Are we ready for a test? */
     if (g.moves >= g.context.next_attrib_check && !g.multi) {
@@ -561,19 +586,13 @@ exerchk(void)
                 goto nextattrib;
 
             debugpline2("exerchk: testing %s (%d).",
-                        (i == A_STR)
-                            ? "Str"
-                            : (i == A_INT)
-                                  ? "Int?"
-                                  : (i == A_WIS)
-                                        ? "Wis"
-                                        : (i == A_DEX)
-                                              ? "Dex"
-                                              : (i == A_CON)
-                                                    ? "Con"
-                                                    : (i == A_CHA)
-                                                          ? "Cha?"
-                                                          : "???",
+                        (i == A_STR) ? "Str"
+                        : (i == A_INT) ? "Int?"
+                          : (i == A_WIS) ? "Wis"
+                            : (i == A_DEX) ? "Dex"
+                              : (i == A_CON) ? "Con"
+                                : (i == A_CHA) ? "Cha?"
+                                  : "???",
                         ax);
             /*
              *  Law of diminishing returns (Part III):
@@ -600,10 +619,12 @@ exerchk(void)
             AEXE(i) = (abs(ax) / 2) * mod_val;
         }
         g.context.next_attrib_check += rn1(200, 800);
-        debugpline1("exerchk: next check at %ld.", g.context.next_attrib_check);
+        debugpline1("exerchk: next check at %ld.",
+                    g.context.next_attrib_check);
     }
 }
 
+/* allocate hero's initial characteristics */
 void
 init_attr(int np)
 {
@@ -615,15 +636,15 @@ init_attr(int np)
         np -= g.urole.attrbase[i];
     }
 
+    /* 3.7: the x -= ... calculation used to have an off by 1 error that
+       resulted in the values being biased toward Str and away from Cha */
     tryct = 0;
     while (np > 0 && tryct < 100) {
         x = rn2(100);
-        for (i = 0; (i < A_MAX) && ((x -= g.urole.attrdist[i]) > 0); i++)
-            ;
-        if (i >= A_MAX)
-            continue; /* impossible */
-
-        if (ABASE(i) >= ATTRMAX(i)) {
+        for (i = 0; i < A_MAX; ++i)
+            if ((x -= g.urole.attrdist[i]) < 0)
+                break;
+        if (i >= A_MAX || ABASE(i) >= ATTRMAX(i)) {
             tryct++;
             continue;
         }
@@ -635,14 +656,11 @@ init_attr(int np)
 
     tryct = 0;
     while (np < 0 && tryct < 100) { /* for redistribution */
-
         x = rn2(100);
-        for (i = 0; (i < A_MAX) && ((x -= g.urole.attrdist[i]) > 0); i++)
-            ;
-        if (i >= A_MAX)
-            continue; /* impossible */
-
-        if (ABASE(i) <= ATTRMIN(i)) {
+        for (i = 0; i < A_MAX; ++i)
+            if ((x -= g.urole.attrdist[i]) < 0)
+                break;
+        if (i >= A_MAX || ABASE(i) <= ATTRMIN(i)) {
             tryct++;
             continue;
         }
@@ -673,7 +691,7 @@ redist_attr(void)
         if (ABASE(i) < ATTRMIN(i))
             ABASE(i) = ATTRMIN(i);
     }
-    (void) encumber_msg();
+    /* (void) encumber_msg(); -- caller needs to do this */
 }
 
 static
@@ -872,8 +890,7 @@ from_what(int propidx) /* special cases can have negative values */
                replace this with what_blocks() comparable to what_gives() */
             switch (-propidx) {
             case BLINDED:
-                if (ublindf
-                    && ublindf->oartifact == ART_EYES_OF_THE_OVERWORLD)
+                if (is_art(ublindf, ART_EYES_OF_THE_OVERWORLD))
                     Sprintf(buf, because_of, bare_artifactname(ublindf));
                 break;
             case INVIS:
@@ -1016,9 +1033,43 @@ newhp(void)
     }
     if (hp <= 0)
         hp = 1;
-    if (u.ulevel < MAXULEV)
-        u.uhpinc[u.ulevel] = (xchar) hp;
+    if (u.ulevel < MAXULEV) {
+        /* remember increment; future level drain could take it away again */
+        u.uhpinc[u.ulevel] = (xint16) hp;
+    } else {
+        /* after level 30, throttle hit point gains from extra experience;
+           once max reaches 1200, further increments will be just 1 more */
+        char lim = 5 - u.uhpmax / 300;
+
+        lim = max(lim, 1);
+        if (hp > lim)
+            hp = lim;
+    }
     return hp;
+}
+
+/* minimum value for uhpmax is ulevel but for life-saving it is always at
+   least 10 if ulevel is less than that */
+int
+minuhpmax(int altmin)
+{
+    if (altmin < 1)
+        altmin = 1;
+    return max(u.ulevel, altmin);
+}
+
+/* update u.uhpmax and values of other things that depend upon it */
+void
+setuhpmax(int newmax)
+{
+    if (newmax != u.uhpmax) {
+        u.uhpmax = newmax;
+        if (u.uhpmax > u.uhppeak)
+            u.uhppeak = u.uhpmax;
+        g.context.botl = TRUE;
+    }
+    if (u.uhp > u.uhpmax)
+        u.uhp = u.uhpmax, g.context.botl = TRUE;
 }
 
 schar
@@ -1041,7 +1092,7 @@ acurr(int x)
                 || u.umonnum == PM_AMOROUS_DEMON))
             return (schar) 18;
     } else if (x == A_CON) {
-        if (uwep && uwep->oartifact == ART_OGRESMASHER)
+        if (u_wield_art(ART_OGRESMASHER))
             return (schar) 25;
     } else if (x == A_INT || x == A_WIS) {
         /* yes, this may raise int/wis if player is sufficiently
@@ -1088,7 +1139,7 @@ extremeattr(int attrindx) /* does attrindx's value match its max or min? */
         if (uarmg && uarmg->otyp == GAUNTLETS_OF_POWER)
             lolimit = hilimit;
     } else if (attrindx == A_CON) {
-        if (uwep && uwep->oartifact == ART_OGRESMASHER)
+        if (u_wield_art(ART_OGRESMASHER))
             lolimit = hilimit;
     }
     /* this exception is hypothetical; the only other worn item affecting
@@ -1115,7 +1166,7 @@ adjalign(int n)
     } else if (newalign > u.ualign.record) {
         u.ualign.record = newalign;
         if (u.ualign.record > ALIGNLIM)
-            u.ualign.record = ALIGNLIM;
+            u.ualign.record = (int)ALIGNLIM;
     }
 }
 
@@ -1132,6 +1183,8 @@ uchangealign(int newalign,
     g.context.botl = TRUE; /* status line needs updating */
     if (reason == 0) {
         /* conversion via altar */
+        livelog_printf(LL_ALIGNMENT, "permanently converted to %s",
+                       aligns[1 - newalign].adj);
         u.ualignbase[A_CURRENT] = (aligntyp) newalign;
         /* worn helm of opposite alignment might block change */
         if (!uarmh || uarmh->otyp != HELM_OF_OPPOSITE_ALIGNMENT)
@@ -1140,6 +1193,11 @@ uchangealign(int newalign,
             (u.ualign.type != oldalign) ? "sudden " : "");
     } else {
         /* putting on or taking off a helm of opposite alignment */
+        if (reason == 1) {
+            /* don't livelog taking it back off */
+            livelog_printf(LL_ALIGNMENT, "used a helm to turn %s",
+                           aligns[1 - newalign].adj);
+        }
         u.ualign.type = (aligntyp) newalign;
         if (reason == 1)
             Your("mind oscillates %s.", Hallucination ? "wildly" : "briefly");

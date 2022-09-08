@@ -1,4 +1,4 @@
-/* NetHack 3.7	o_init.c	$NHDT-Date: 1614812489 2021/03/03 23:01:29 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.50 $ */
+/* NetHack 3.7	o_init.c	$NHDT-Date: 1646950588 2022/03/10 22:16:28 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.56 $ */
 /* Copyright (c) Stichting Mathematisch Centrum, Amsterdam, 1985. */
 /*-Copyright (c) Robert Patrick Rankin, 2011. */
 /* NetHack may be freely redistributed.  See license for details. */
@@ -13,8 +13,8 @@ static int QSORTCALLBACK discovered_cmp(const genericptr, const genericptr);
 static char *oclass_to_name(char, char *);
 
 #ifdef USE_TILES
+extern glyph_map glyphmap[MAX_GLYPH];
 static void shuffle_tiles(void);
-extern short glyph2tile[]; /* from tile.c */
 
 /* Shuffle tile assignments to match descriptions, so a red potion isn't
  * displayed with a blue tile and so on.
@@ -29,20 +29,23 @@ static void
 shuffle_tiles(void)
 {
     int i;
-    short tmp_tilemap[NUM_OBJECTS];
+    short tmp_tilemap[2][NUM_OBJECTS];
 
-    for (i = 0; i < NUM_OBJECTS; i++)
-        tmp_tilemap[i] = glyph2tile[objects[i].oc_descr_idx + GLYPH_OBJ_OFF];
-
-    for (i = 0; i < NUM_OBJECTS; i++)
-        glyph2tile[i + GLYPH_OBJ_OFF] = tmp_tilemap[i];
+    for (i = 0; i < NUM_OBJECTS; i++) {
+        tmp_tilemap[0][i] = glyphmap[objects[i].oc_descr_idx + GLYPH_OBJ_OFF].tileidx;
+        tmp_tilemap[1][i] = glyphmap[objects[i].oc_descr_idx + GLYPH_OBJ_PILETOP_OFF].tileidx;
+    }
+    for (i = 0; i < NUM_OBJECTS; i++) {
+        glyphmap[i + GLYPH_OBJ_OFF].tileidx = tmp_tilemap[0][i];
+        glyphmap[i + GLYPH_OBJ_PILETOP_OFF].tileidx = tmp_tilemap[1][i];
+    }
 }
 #endif /* USE_TILES */
 
 static void
 setgemprobs(d_level* dlev)
 {
-    int j, first, lev;
+    int j, first, lev, sum = 0;
 
     if (dlev)
         lev = (ledger_no(dlev) > maxledgerno()) ? maxledgerno()
@@ -62,6 +65,11 @@ setgemprobs(d_level* dlev)
     }
     for (j = first; j <= LAST_GEM; j++)
         objects[j].oc_prob = (171 + j - first) / (LAST_GEM + 1 - first);
+
+    /* recompute GEM_CLASS total oc_prob - including rocks/stones */
+    for (j = g.bases[GEM_CLASS]; j < g.bases[GEM_CLASS + 1]; j++)
+        sum += objects[j].oc_prob;
+    g.oclass_prob_totals[GEM_CLASS] = sum;
 }
 
 /* shuffle descriptions on objects o_low to o_high */
@@ -106,7 +114,7 @@ shuffle(int o_low, int o_high, boolean domaterial)
 void
 init_objects(void)
 {
-    int i, first, last, sum, prevoclass;
+    int i, first, last, prevoclass;
     char oclass;
 #ifdef TEXTCOLOR
 #define COPY_OBJ_DESCR(o_dst, o_src) \
@@ -167,17 +175,6 @@ init_objects(void)
                 break;
             }
         }
- checkprob:
-        sum = 0;
-        for (i = first; i < last; i++)
-            sum += objects[i].oc_prob;
-        if (sum == 0) {
-            for (i = first; i < last; i++)
-                objects[i].oc_prob = (1000 + i - first) / (last - first);
-            goto checkprob;
-        }
-        if (sum != 1000)
-            error("init-prob error for class %d (%d%%)", oclass, sum);
         first = last;
         prevoclass = (int) oclass;
     }
@@ -207,6 +204,8 @@ init_objects(void)
             objects[i].oc_name_known = nmkn ? 0 : 1;
         }
     }
+    /* compute oclass_prob_totals */
+    init_oclass_probs();
 
     /* shuffle descriptions */
     shuffle_all();
@@ -214,6 +213,33 @@ init_objects(void)
     shuffle_tiles();
 #endif
     objects[WAN_NOTHING].oc_dir = rn2(2) ? NODIR : IMMEDIATE;
+}
+
+/* Compute the total probability of each object class.
+ * Assumes g.bases[] has already been set. */
+void
+init_oclass_probs(void)
+{
+    int i;
+    short sum;
+    int oclass;
+    for (oclass = 0; oclass < MAXOCLASSES; ++oclass) {
+        sum = 0;
+        for (i = g.bases[oclass]; i < g.bases[oclass + 1]; ++i) {
+            sum += objects[i].oc_prob;
+        }
+        if (sum <= 0 && oclass != ILLOBJ_CLASS
+            && g.bases[oclass] != g.bases[oclass + 1]) {
+            impossible("zero or negative probability total for oclass %d",
+                       oclass);
+            /* gracefully fail by setting all members of this class to 1 */
+            for (i = g.bases[oclass]; i < g.bases[oclass + 1]; ++i) {
+                objects[i].oc_prob = 1;
+                sum++;
+            }
+        }
+        g.oclass_prob_totals[oclass] = sum;
+    }
 }
 
 /* retrieve the range of objects that otyp shares descriptions with */
@@ -315,21 +341,6 @@ objdescr_is(struct obj* obj, const char * descr)
     return !strcmp(objdescr, descr);
 }
 
-/* find the object index for snow boots; used [once] by slippery ice code */
-int
-find_skates(void)
-{
-    register int i;
-    register const char *s;
-
-    for (i = SPEED_BOOTS; i <= LEVITATION_BOOTS; i++)
-        if ((s = OBJ_DESCR(objects[i])) != 0 && !strcmp(s, "snow boots"))
-            return i;
-
-    impossible("snow boots not found?");
-    return -1; /* not 0, or caller would try again each move */
-}
-
 /* level dependent initialization */
 void
 oinit(void)
@@ -357,7 +368,7 @@ savenames(NHFILE* nhfp)
     for (i = 0; i < NUM_OBJECTS; i++)
         if (objects[i].oc_uname) {
             if (perform_bwrite(nhfp)) {
-                len = strlen(objects[i].oc_uname) + 1;
+                len = Strlen(objects[i].oc_uname) + 1;
                 if (nhfp->structlevel) {
                     bwrite(nhfp->fd, (genericptr_t)&len, sizeof len);
                     bwrite(nhfp->fd, (genericptr_t)objects[i].oc_uname, len);
@@ -391,7 +402,7 @@ restnames(NHFILE* nhfp)
             if (nhfp->structlevel) {
                 mread(nhfp->fd, (genericptr_t)objects[i].oc_uname, len);
             }
-	}
+        }
     }
 #ifdef USE_TILES
     shuffle_tiles();
@@ -418,8 +429,8 @@ discover_object(int oindx, boolean mark_as_known, boolean credit_hero)
             if (credit_hero)
                 exercise(A_WIS, TRUE);
         }
-        /* moves==1L => initial inventory, gameover => final disclosure */
-        if (g.moves > 1L && !g.program_state.gameover) {
+        /* !in_moveloop => initial inventory, gameover => final disclosure */
+        if (g.program_state.in_moveloop && !g.program_state.gameover) {
             if (objects[oindx].oc_class == GEM_CLASS)
                 gem_learned(oindx); /* could affect price of unpaid gems */
             update_inventory();
@@ -535,6 +546,7 @@ choose_disco_sort(
     menu_item *selected;
     anything any;
     int i, n, choice;
+    int clr = 0;
 
     tmpwin = create_nhwindow(NHW_MENU);
     start_menu(tmpwin, MENU_BEHAVE_STANDARD);
@@ -542,7 +554,7 @@ choose_disco_sort(
     for (i = 0; disco_orders_descr[i]; ++i) {
         any.a_int = disco_order_let[i];
         add_menu(tmpwin, &nul_glyphinfo, &any, (char) any.a_int,
-                 0, ATR_NONE,
+                 0, ATR_NONE, clr,
                  disco_orders_descr[i],
                  (disco_order_let[i] == flags.discosort)
                     ? MENU_ITEMFLAGS_SELECTED
@@ -553,15 +565,15 @@ choose_disco_sort(
            (only showing one class so can't span all classes) but the
            chosen sort will stick and also apply to '\' usage */
         any = cg.zeroany;
-        add_menu(tmpwin, &nul_glyphinfo, &any, 0, 0, ATR_NONE,
+        add_menu(tmpwin, &nul_glyphinfo, &any, 0, 0, ATR_NONE, clr,
                  "", MENU_ITEMFLAGS_NONE);
-        add_menu(tmpwin, &nul_glyphinfo, &any, 0, 0, ATR_NONE,
+        add_menu(tmpwin, &nul_glyphinfo, &any, 0, 0, ATR_NONE, clr,
                  "Note: full alphabetical and alphabetical within class",
                  MENU_ITEMFLAGS_NONE);
-        add_menu(tmpwin, &nul_glyphinfo, &any, 0, 0, ATR_NONE,
+        add_menu(tmpwin, &nul_glyphinfo, &any, 0, 0, ATR_NONE, clr,
                  "      are equivalent for single class discovery, but",
                  MENU_ITEMFLAGS_NONE);
-        add_menu(tmpwin, &nul_glyphinfo, &any, 0, 0, ATR_NONE,
+        add_menu(tmpwin, &nul_glyphinfo, &any, 0, 0, ATR_NONE, clr,
                  "      will matter for future use of total discoveries.",
                  MENU_ITEMFLAGS_NONE);
     }
@@ -580,7 +592,7 @@ choose_disco_sort(
     return n;
 }
 
-/* the '\' command - show discovered object types */
+/* the #known command - show discovered object types */
 int
 dodiscovered(void) /* free after Robert Viduya */
 {
@@ -588,7 +600,8 @@ dodiscovered(void) /* free after Robert Viduya */
     char *s, *p, oclass, prev_class,
          classes[MAXOCLASSES], buf[BUFSZ],
          *sorted_lines[NUM_OBJECTS]; /* overkill */
-    int i, j, sortindx, dis, ct, uniq_ct, arti_ct, sorted_ct;
+    int i, j, dis, ct, uniq_ct, arti_ct, sorted_ct;
+    long sortindx;  // should be ptrdiff_t, but we don't require that exists
     boolean alphabetized, alphabyclass, lootsort;
 
     if (!flags.discosort || !(p = index(disco_order_let, flags.discosort)))
@@ -596,7 +609,7 @@ dodiscovered(void) /* free after Robert Viduya */
 
     if (iflags.menu_requested) {
         if (choose_disco_sort(1) < 0)
-            return 0;
+            return ECMD_OK;
     }
     alphabyclass = (flags.discosort == 'c');
     alphabetized = (flags.discosort == 'a' || alphabyclass);
@@ -696,7 +709,7 @@ dodiscovered(void) /* free after Robert Viduya */
     }
     destroy_nhwindow(tmpwin);
 
-    return 0;
+    return ECMD_OK;
 }
 
 /* lower case let_to_name() output, which differs from def_oc_syms[].name */
@@ -711,7 +724,7 @@ oclass_to_name(char oclass, char *buf)
     return buf;
 }
 
-/* the '`' command - show discovered object types for one class */
+/* the #knownclass command - show discovered object types for one class */
 int
 doclassdisco(void)
 {
@@ -728,13 +741,14 @@ doclassdisco(void)
          *sorted_lines[NUM_OBJECTS]; /* overkill */
     int i, ct, dis, xtras, sorted_ct;
     boolean traditional, alphabetized, lootsort;
+    int clr = 0;
 
     if (!flags.discosort || !(p = index(disco_order_let, flags.discosort)))
         flags.discosort = 'o';
 
     if (iflags.menu_requested) {
         if (choose_disco_sort(2) < 0)
-            return 0;
+            return ECMD_OK;
     }
     alphabetized = (flags.discosort == 'a' || flags.discosort == 'c');
     lootsort = (flags.discosort == 's');
@@ -756,7 +770,7 @@ doclassdisco(void)
             if (!traditional) {
                 any.a_int = 'u';
                 add_menu(tmpwin, &nul_glyphinfo, &any, menulet++,
-                         0, ATR_NONE, unique_items, MENU_ITEMFLAGS_NONE);
+                         0, ATR_NONE, clr, unique_items, MENU_ITEMFLAGS_NONE);
             }
             break;
         }
@@ -767,7 +781,7 @@ doclassdisco(void)
         if (!traditional) {
             any.a_int = 'a';
             add_menu(tmpwin, &nul_glyphinfo, &any, menulet++,
-                     0, ATR_NONE, artifact_items, MENU_ITEMFLAGS_NONE);
+                     0, ATR_NONE, clr, artifact_items, MENU_ITEMFLAGS_NONE);
         }
     }
 
@@ -788,7 +802,7 @@ doclassdisco(void)
                     if (!traditional) {
                         any.a_int = c;
                         add_menu(tmpwin, &nul_glyphinfo, &any,
-                                 menulet++, c, ATR_NONE,
+                                 menulet++, c, ATR_NONE, clr,
                                  oclass_to_name(oclass, buf),
                                  MENU_ITEMFLAGS_NONE);
                     }
@@ -801,17 +815,20 @@ doclassdisco(void)
         You(havent_discovered_any, "items");
         if (tmpwin != WIN_ERR)
             destroy_nhwindow(tmpwin);
-        return 0;
+        return ECMD_OK;
     }
 
     /* have player choose a class */
     c = '\0'; /* class not chosen yet */
     if (traditional) {
+        char allclasses_plustwo[sizeof allclasses + 2];
+
         /* we'll prompt even if there's only one viable class; we add all
            nonviable classes as unseen acceptable choices so player can ask
            for discoveries of any class whether it has discoveries or not */
-        for (s = allclasses, xtras = 0; *s; ++s) {
-            c = def_oc_syms[(int) *s].sym;
+        Sprintf(allclasses_plustwo, "%s%c%c", allclasses, 'u', 'a');
+        for (s = allclasses_plustwo, xtras = 0; *s; ++s) {
+            c = (*s == 'u' || *s == 'a') ? *s : def_oc_syms[(int) *s].sym;
             if (!index(discosyms, c)) {
                 if (!xtras++)
                     (void) strkitten(discosyms, '\033');
@@ -819,8 +836,7 @@ doclassdisco(void)
             }
         }
         /* get the class (via its symbol character) */
-        c = yn_function(prompt, discosyms, '\0');
-        savech(c);
+        c = yn_function(prompt, discosyms, '\0', TRUE);
         if (!c)
             clear_nhwindow(WIN_MESSAGE);
     } else {
@@ -842,7 +858,7 @@ doclassdisco(void)
         destroy_nhwindow(tmpwin);
     }
     if (!c)
-        return 0; /* player declined to make a selection */
+        return ECMD_OK; /* player declined to make a selection */
 
     /*
      * show discoveries for object class c
@@ -863,6 +879,15 @@ doclassdisco(void)
             You(havent_discovered_any, unique_items);
         break;
     case 'a':
+        /* note: this will work all the time for menustyle traditional
+           but requires at least one artifact discovery for other styles
+           [could fix that by forcing the 'a' choice into the pick-class
+           menu when running in wizard mode] */
+        if (wizard && yn("Dump information about all artifacts?") == 'y') {
+            dump_artifact_info(tmpwin);
+            ct = NROFARTIFACTS; /* non-zero vs zero is what matters below */
+            break;
+        }
         /* disp_artifact_discoveries() includes a header */
         ct = disp_artifact_discoveries(tmpwin);
         if (!ct)
@@ -909,7 +934,7 @@ doclassdisco(void)
     if (ct)
         display_nhwindow(tmpwin, TRUE);
     destroy_nhwindow(tmpwin);
-    return 0;
+    return ECMD_OK;
 }
 
 /* put up nameable subset of discoveries list as a menu */
@@ -922,6 +947,7 @@ rename_disco(void)
     winid tmpwin;
     anything any;
     menu_item *selected = 0;
+    int clr = 0;
 
     any = cg.zeroany;
     tmpwin = create_nhwindow(NHW_MENU);
@@ -951,14 +977,14 @@ rename_disco(void)
             if (oclass != prev_class) {
                 any.a_int = 0;
                 add_menu(tmpwin, &nul_glyphinfo, &any, 0, 0,
-                         iflags.menu_headings,
+                         iflags.menu_headings, clr,
                          let_to_name(oclass, FALSE, FALSE),
                          MENU_ITEMFLAGS_NONE);
                 prev_class = oclass;
             }
             any.a_int = dis;
             add_menu(tmpwin, &nul_glyphinfo, &any, 0, 0,
-                     ATR_NONE,
+                     ATR_NONE, clr,
                      obj_typename(dis), MENU_ITEMFLAGS_NONE);
         }
     }

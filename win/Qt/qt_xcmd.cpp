@@ -119,7 +119,7 @@ interesting_command(unsigned indx, int cmds)
     if (!strcmp("?", extcmdlist[indx].ef_txt))
         return true;
     // some commands might have been compiled-out; don't show them
-    if ((extcmdlist[indx].flags & CMD_NOT_AVAILABLE) != 0)
+    if ((extcmdlist[indx].flags & (CMD_NOT_AVAILABLE|INTERNALCMD)) != 0)
         return false;
     // if picking from normal mode-only don't show wizard mode commands
     // or if picking from wizard mode-only don't show normal commands
@@ -244,7 +244,7 @@ NetHackQtExtCmdRequestor::NetHackQtExtCmdRequestor(QWidget *parent) :
     for (i = 0; extcmdlist[i].ef_txt; ++i) {
         if (interesting_command(i, set)) {
             ++ncmds;
-            butw = std::max(butw, 30 + fm.width(extcmdlist[i].ef_txt));
+            butw = std::max(butw, 30 + fm.QFM_WIDTH(extcmdlist[i].ef_txt));
         }
     }
     // if any of the choice buttons were bigger than the control buttons,
@@ -273,8 +273,8 @@ NetHackQtExtCmdRequestor::NetHackQtExtCmdRequestor(QWidget *parent) :
        as an extended command, that resulted in so many rows that some of
        the grid was chopped off at the bottom of the screen and the buttons
        in that portion were out of reach */
-    unsigned ncols = (set == all_cmds) ? 8
-                     : (set == normal_cmds) ? 7
+    unsigned ncols = (set == all_cmds) ? 9
+                     : (set == normal_cmds) ? 8
                        : (set == autocomplete_cmds) ? (WizardMode ? 6 : 5)
                          : (set == wizard_cmds) ? (byRow ? 6 : 5)
                            : 1; // can't happen
@@ -294,6 +294,7 @@ NetHackQtExtCmdRequestor::NetHackQtExtCmdRequestor(QWidget *parent) :
             QString btn_lbl = extcmdlist[i].ef_txt;
             if (btn_lbl == "wait")
                 btn_lbl += " (rest)";
+            QString btn_tip = QString::asprintf(" %s ", extcmdlist[i].ef_desc);
             QPushButton *pb = new QPushButton(btn_lbl, grid);
             pb->setMinimumSize(butw, pb->sizeHint().height());
             // force the button to have fixed width or it can move around a
@@ -302,6 +303,15 @@ NetHackQtExtCmdRequestor::NetHackQtExtCmdRequestor(QWidget *parent) :
             pb->setMaximumSize(pb->minimumSize());
             // i+butoffset is value that will be passed to the click handler
             group->addButton(pb, i + butoffset);
+            // gray out "repeat" because picking it would just repeat the "#"
+            // that caused us to be called rather than whatever came before;
+            // it can still be chosen by typing "rep" but appears grayed out
+            // while in the process so having it not behave usefully shouldn't
+            // come as much of a surprise
+            if (btn_lbl == "repeat")
+                pb->setEnabled(false);
+            // show command description if mouse hovers over this button
+            pb->setToolTip(btn_tip); // extcmdlist[i].ef_desc
             /*
              * by column: xcmd_by_row==false, the default
              *  0..R-1 down first column, R..2*R-1 down second column, ...
@@ -544,7 +554,7 @@ void NetHackQtExtCmdRequestor::keyPressEvent(QKeyEvent *event)
             // <return> or <space> without a pending exact match; cancel
             reject();
         } else if (matches >= 2
-                   || promptstr.midRef(1, len) == rest.leftRef(len)) {
+                   || promptstr.mid(1, len) == rest.left(len)) {
             // update the text-so-far
             prompt->setText(promptstr);
         } else if (saveexactmatchindx != xcmdNoMatch) {
@@ -571,7 +581,9 @@ int NetHackQtExtCmdRequestor::get()
     }
     if (result() == xcmdNone)
 	exec();
-    return result() - 1;
+
+    int ret = result() - 1;
+    return ret;
 }
 
 // Enable only buttons that match the current prompt string

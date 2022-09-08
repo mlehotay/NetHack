@@ -1,4 +1,4 @@
-/* NetHack 3.7	music.c	$NHDT-Date: 1596498191 2020/08/03 23:43:11 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.69 $ */
+/* NetHack 3.7	music.c	$NHDT-Date: 1646688067 2022/03/07 21:21:07 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.77 $ */
 /*      Copyright (c) 1989 by Jean-Christophe Collet */
 /* NetHack may be freely redistributed.  See license for details. */
 
@@ -181,33 +181,35 @@ awaken_soldiers(struct monst* bugler  /* monster that played instrument */)
                 && (mtmp->mstrategy & STRAT_WAITMASK) != 0)
                 mtmp->mstrategy &= ~STRAT_WAITMASK;
             else if (distm < distance / 3
-                     && !resist(mtmp, TOOL_CLASS, 0, NOTELL))
+                     && !resist(mtmp, TOOL_CLASS, 0, NOTELL)
+                     /* some monsters are immune */
+                     && onscary(0, 0, mtmp))
                 monflee(mtmp, 0, FALSE, TRUE);
         }
     }
 }
 
-/* Charm monsters in range.  Note that they may resist the spell.
- * If swallowed, range is reduced to 0.
- */
+/* Charm monsters in range.  Note that they may resist the spell. */
 static void
 charm_monsters(int distance)
 {
     struct monst *mtmp, *mtmp2;
 
-    if (u.uswallow) {
-        if (!resist(u.ustuck, TOOL_CLASS, 0, NOTELL))
-            (void) tamedog(u.ustuck, (struct obj *) 0);
-    } else {
-        for (mtmp = fmon; mtmp; mtmp = mtmp2) {
-            mtmp2 = mtmp->nmon;
-            if (DEADMONSTER(mtmp))
-                continue;
+    if (u.uswallow)
+        distance = 0; /* only u.ustuck will be affected (u.usteed is Null
+                       * since hero gets forcibly dismounted when engulfed) */
 
-            if (distu(mtmp->mx, mtmp->my) <= distance) {
-                if (!resist(mtmp, TOOL_CLASS, 0, NOTELL))
-                    (void) tamedog(mtmp, (struct obj *) 0);
-            }
+    for (mtmp = fmon; mtmp; mtmp = mtmp2) {
+        mtmp2 = mtmp->nmon;
+        if (DEADMONSTER(mtmp))
+            continue;
+
+        if (distu(mtmp->mx, mtmp->my) <= distance) {
+            /* a shopkeeper can't be tamed but tamedog() pacifies an angry
+               one; do that even if mtmp resists in order to behave the same
+               as a non-cursed scroll of taming or spell of charm monster */
+            if (!resist(mtmp, TOOL_CLASS, 0, NOTELL) || mtmp->isshk)
+                (void) tamedog(mtmp, (struct obj *) 0);
         }
     }
 }
@@ -219,7 +221,7 @@ static void
 do_earthquake(int force)
 {
     static const char into_a_chasm[] = " into a chasm";
-    register int x, y;
+    register coordxy x, y;
     struct monst *mtmp;
     struct obj *otmp;
     struct trap *chasm, *trap_at_u = t_at(u.ux, u.uy);
@@ -290,12 +292,10 @@ do_earthquake(int force)
                     pline_The("kitchen sink falls%s.", into_a_chasm);
                 goto do_pit;
             case ALTAR:
-                /* always preserve the high altars */
-                if (Is_astralevel(&u.uz) || Is_sanctum(&u.uz))
-                    break;
-                /* no need to check for high altar here; we've just
-                   excluded those */
                 amsk = altarmask_at(x, y);
+                /* always preserve the high altars */
+                if ((amsk & AM_SANCTUM) != 0)
+                    break;
                 algn = Amask2align(amsk & AM_MASK);
                 if (cansee(x, y))
                     pline_The("%s altar falls%s.",
@@ -347,7 +347,7 @@ do_earthquake(int force)
                 if ((otmp = sobj_at(BOULDER, x, y)) != 0) {
                     if (cansee(x, y))
                         pline("KADOOM!  The boulder falls into a chasm%s!",
-                              (x == u.ux && y == u.uy) ? " below you" : "");
+                              u_at(x, y) ? " below you" : "");
                     if (mtmp)
                         mtmp->mtrapped = 0;
                     obj_extract_self(otmp);
@@ -389,7 +389,7 @@ do_earthquake(int force)
                             }
                         }
                     }
-                } else if (x == u.ux && y == u.uy) {
+                } else if (u_at(x, y)) {
                     if (u.utrap && u.utraptype == TT_BURIEDBALL) {
                         /* Note:  the chain should break if a pit gets
                            created at the buried ball's location, which
@@ -599,8 +599,11 @@ do_improvisation(struct obj* instr)
                 losehp(damage, buf, KILLED_BY); /* fire or frost damage */
             }
         } else {
-            buzz((instr->otyp == FROST_HORN) ? AD_COLD - 1 : AD_FIRE - 1,
-                 rn1(6, 6), u.ux, u.uy, u.dx, u.dy);
+            int type = BZ_OFS_AD((instr->otyp == FROST_HORN) ? AD_COLD : AD_FIRE);
+
+            if (!Blind)
+                pline("A %s blasts out of the horn!", flash_str(type, FALSE));
+            ubuzz(BZ_U_WAND(type), rn1(6, 6));
         }
         makeknown(instr->otyp);
         break;
@@ -686,18 +689,18 @@ do_play_instrument(struct obj* instr)
 {
     char buf[BUFSZ] = DUMMY, c = 'y';
     char *s;
-    int x, y;
+    coordxy x, y;
     boolean ok;
 
     if (Underwater) {
         You_cant("play music underwater!");
-        return 0;
+        return ECMD_OK;
     } else if ((instr->otyp == WOODEN_FLUTE || instr->otyp == MAGIC_FLUTE
                 || instr->otyp == TOOLED_HORN || instr->otyp == FROST_HORN
                 || instr->otyp == FIRE_HORN || instr->otyp == BUGLE)
                && !can_blow(&g.youmonst)) {
-        You("are incapable of playing %s.", the(distant_name(instr, xname)));
-        return 0;
+        You("are incapable of playing %s.", thesimpleoname(instr));
+        return ECMD_OK;
     }
     if (instr->otyp != LEATHER_DRUM && instr->otyp != DRUM_OF_EARTHQUAKE
         && !(Stunned || Confusion || Hallucination)) {
@@ -739,17 +742,20 @@ do_play_instrument(struct obj* instr)
             if (!strcmp(buf, g.tune)) {
                 /* Search for the drawbridge */
                 for (y = u.uy - 1; y <= u.uy + 1; y++)
-                    for (x = u.ux - 1; x <= u.ux + 1; x++)
-                        if (isok(x, y))
-                            if (find_drawbridge(&x, &y)) {
-                                /* tune now fully known */
-                                u.uevent.uheard_tune = 2;
-                                if (levl[x][y].typ == DRAWBRIDGE_DOWN)
-                                    close_drawbridge(x, y);
-                                else
-                                    open_drawbridge(x, y);
-                                return 1;
-                            }
+                    for (x = u.ux - 1; x <= u.ux + 1; x++) {
+                        if (!isok(x, y))
+                            continue;
+                        if (find_drawbridge(&x, &y)) {
+                            /* tune now fully known */
+                            u.uevent.uheard_tune = 2;
+                            record_achievement(ACH_TUNE);
+                            if (levl[x][y].typ == DRAWBRIDGE_DOWN)
+                                close_drawbridge(x, y);
+                            else
+                                open_drawbridge(x, y);
+                            return ECMD_TIME;
+                        }
+                    }
             } else if (!Deaf) {
                 if (u.uevent.uheard_tune < 1)
                     u.uevent.uheard_tune = 1;
@@ -799,19 +805,21 @@ do_play_instrument(struct obj* instr)
                         /* could only get `gears == 5' by playing five
                            correct notes followed by excess; otherwise,
                            tune would have matched above */
-                        if (gears == 5)
+                        if (gears == 5) {
                             u.uevent.uheard_tune = 2;
+                            record_achievement(ACH_TUNE);
+                        }
                     }
                 }
             }
         }
-        return 1;
+        return ECMD_TIME;
     } else
-        return do_improvisation(instr);
+        return do_improvisation(instr) ? ECMD_TIME : ECMD_OK;
 
  nevermind:
     pline1(Never_mind);
-    return 0;
+    return ECMD_OK;
 }
 
 /*music.c*/

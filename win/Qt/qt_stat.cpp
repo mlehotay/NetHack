@@ -155,6 +155,9 @@ NetHackQtStatusWindow::NetHackQtStatusWindow() :
         int w = NetHackQtBind::mainWidget()->width();
         setMaximumWidth(w / 2);
     }
+    // for tool tips; they mostly work without this but sometimes changes
+    // to hunger or encumbrance seemed to cause tip display to stop
+    setMouseTracking(true);
 
     p_str = QPixmap(str_xpm);
     p_str = QPixmap(str_xpm);
@@ -192,42 +195,58 @@ NetHackQtStatusWindow::NetHackQtStatusWindow() :
     p_fly = QPixmap(fly_xpm);
     p_ride = QPixmap(ride_xpm);
 
-    str.setIcon(p_str);
-    dex.setIcon(p_dex);
-    con.setIcon(p_con);
-    intel.setIcon(p_int);
-    wis.setIcon(p_wis);
-    cha.setIcon(p_cha);
+    str.setIcon(p_str, "strength");
+    dex.setIcon(p_dex, "dexterity");
+    con.setIcon(p_con, "constitution");
+    intel.setIcon(p_int, "intelligence");
+    wis.setIcon(p_wis, "wisdom");
+    cha.setIcon(p_cha, "charisma");
 
     align.setIcon(p_neutral);
     blank2.setIcon(p_blank2); // used for spacing when Conditions row is empty
     hunger.setIcon(p_hungry);
     encumber.setIcon(p_encumber[0]);
 
-    stoned.setIcon(p_stoned);
-    slimed.setIcon(p_slimed);
-    strngld.setIcon(p_strngld);
-    sick_fp.setIcon(p_sick_fp);
-    sick_il.setIcon(p_sick_il);
-    stunned.setIcon(p_stunned);
-    confused.setIcon(p_confused);
-    hallu.setIcon(p_hallu);
-    blind.setIcon(p_blind);
-    deaf.setIcon(p_deaf);
-    lev.setIcon(p_lev);
-    fly.setIcon(p_fly);
-    ride.setIcon(p_ride);
+    stoned.setIcon(p_stoned, "turning to stone");
+    slimed.setIcon(p_slimed, "turning into slime");
+    strngld.setIcon(p_strngld, "being strangled");
+    sick_fp.setIcon(p_sick_fp, "severe food poisoning");
+    sick_il.setIcon(p_sick_il, "terminal illness");
+    stunned.setIcon(p_stunned, "stunned");
+    confused.setIcon(p_confused, "confused");
+    hallu.setIcon(p_hallu, "hallucinating");
+    blind.setIcon(p_blind, "cannot see");
+    deaf.setIcon(p_deaf, "cannot hear");
+    lev.setIcon(p_lev, "levitating");
+    fly.setIcon(p_fly, "flying");
+    ride.setIcon(p_ride, "riding");
 
     // separator lines
+#if __cplusplus >= 202002L
+    hline1.setFrameStyle(static_cast<int>(QFrame::HLine)
+                             | static_cast<int>(QFrame::Sunken));
+    hline2.setFrameStyle(static_cast<int>(QFrame::HLine)
+                             | static_cast<int>(QFrame::Sunken));
+    hline3.setFrameStyle(static_cast<int>(QFrame::HLine)
+                             | static_cast<int>(QFrame::Sunken));
+#else
     hline1.setFrameStyle(QFrame::HLine | QFrame::Sunken);
     hline2.setFrameStyle(QFrame::HLine | QFrame::Sunken);
     hline3.setFrameStyle(QFrame::HLine | QFrame::Sunken);
+#endif
     hline1.setLineWidth(1);
     hline2.setLineWidth(1);
     hline3.setLineWidth(1);
     // vertical separators for condensed layout (statuslines:2)
+#if __cplusplus >= 202002L
+    vline1.setFrameStyle(static_cast<int>(QFrame::VLine)
+                             | static_cast<int>(QFrame::Sunken));
+    vline2.setFrameStyle(static_cast<int>(QFrame::VLine)
+                             | static_cast<int>(QFrame::Sunken));
+#else
     vline1.setFrameStyle(QFrame::VLine | QFrame::Sunken);
     vline2.setFrameStyle(QFrame::VLine | QFrame::Sunken);
+#endif
     vline1.setLineWidth(1); // separates Alignment from Charisma
     vline2.setLineWidth(1);
     vline2.hide(); // padding to keep row 2 aligned with row 1, never shown
@@ -557,7 +576,9 @@ QHBoxLayout *NetHackQtStatusWindow::InitHitpointBar()
 
     QHBoxLayout *hpbar = new QHBoxLayout;
     hpbar->setSpacing(0);
+#if QT_VERSION < 0x060000
     hpbar->setMargin(0);
+#endif
     hpbar->addWidget(&hpbar_health);
     hpbar->setAlignment(&hpbar_health, Qt::AlignLeft);
     hpbar->addWidget(&hpbar_injury);
@@ -622,7 +643,8 @@ void NetHackQtStatusWindow::HitpointBar()
             geoH.setRight(std::min(lox + pxl_health - 1, hix));
             hpbar_health.setGeometry(geoH);
             w = geoH.right() - geoH.left() + 1; // might yield 0 (ie, if dead)
-            styleH.sprintf(styleformat, barcolors[colorindx][0], w, w);
+            styleH = QString::asprintf(styleformat, barcolors[colorindx][0],
+                                       w, w);
             hpbar_health.setStyleSheet(styleH);
             // when healing, having the old injury-side shown while the new
             // health-side expands pushes the injury farther right and it's
@@ -635,7 +657,8 @@ void NetHackQtStatusWindow::HitpointBar()
             geoI.setRight(hix);
             hpbar_injury.setGeometry(geoI);
             w = geoI.right() - geoI.left() + 1;
-            styleI.sprintf(styleformat, barcolors[colorindx][1], w, w);
+            styleI = QString::asprintf(styleformat, barcolors[colorindx][1],
+                                       w, w);
             hpbar_injury.setStyleSheet(styleI);
             if (geoI.left() != oldleft)
                 hpbar_injury.move(geoI.left(), geoI.top());
@@ -653,7 +676,8 @@ void NetHackQtStatusWindow::HitpointBar()
             geoH.setRight(hix);
             hpbar_health.setGeometry(geoH);
             w = geoH.right() - geoH.left() + 1;
-            styleH.sprintf(styleformat, barcolors[colorindx][0], w, w);
+            styleH = QString::asprintf(styleformat, barcolors[colorindx][0],
+                                       w, w);
             hpbar_health.setStyleSheet(styleH);
             hpbar_health.show();
 
@@ -704,13 +728,13 @@ void NetHackQtStatusWindow::updateStats()
 
     int st = ACURR(A_STR);
     if (st > STR18(100)) {
-        buf.sprintf("Str:%d", st - 100);        // 19..25
+        buf = QString::asprintf("Str:%d", st - 100);        // 19..25
     } else if (st == STR18(100)) {
-        buf.sprintf("Str:18/**");               // 18/100
+        buf = QString::asprintf("Str:18/**");               // 18/100
     } else if (st > 18) {
-        buf.sprintf("Str:18/%02d", st - 18);    // 18/01..18/99
+        buf = QString::asprintf("Str:18/%02d", st - 18);    // 18/01..18/99
     } else {
-        buf.sprintf("Str:%d", st);              //  3..18
+        buf = QString::asprintf("Str:%d", st);              //  3..18
     }
     str.setLabel(buf, NetHackQtLabelledIcon::NoNum, (long) st);
     dex.setLabel("Dex:", (long) ACURR(A_DEX));
@@ -724,6 +748,7 @@ void NetHackQtStatusWindow::updateStats()
 
     long qt_uhs = 0L;
     const char *hung = hu_stat[u.uhs];
+    QString qhung = QString(hung).trimmed();
     if (hung[0]==' ') {
         if (!hunger.isHidden()) {
             hunger.setLabel("", NetHackQtLabelledIcon::NoNum, qt_uhs);
@@ -742,8 +767,8 @@ void NetHackQtStatusWindow::updateStats()
         case FAINTING:   qt_uhs = 4L; break;
         default:         qt_uhs = 5L; break; // fainted, starved
         }
-	hunger.setIcon(u.uhs ? p_hungry : p_satiated);
-        hunger.setLabel(hung, NetHackQtLabelledIcon::NoNum, qt_uhs);
+        hunger.setIcon(u.uhs ? p_hungry : p_satiated, qhung.toLower());
+        hunger.setLabel(qhung, NetHackQtLabelledIcon::NoNum, qt_uhs);
         hunger.ForceResize();
 	++k, hunger.show();
     }
@@ -755,7 +780,7 @@ void NetHackQtStatusWindow::updateStats()
             encumber.hide();
         }
     } else {
-        encumber.setIcon(p_encumber[encindx - 1]);
+        encumber.setIcon(p_encumber[encindx - 1], QString(enc).toLower());
         encumber.setLabel(enc, NetHackQtLabelledIcon::NoNum, encindx);
         encumber.ForceResize();
 	++k, encumber.show();
@@ -799,11 +824,11 @@ void NetHackQtStatusWindow::updateStats()
     }
     QString buf2;
     char buf3[BUFSZ];
-    buf2.sprintf("%s the %s", upstart(strcpy(buf3, g.plname)),
+    buf2 = QString::asprintf("%s the %s", upstart(strcpy(buf3, g.plname)),
                  buf.toLatin1().constData());
     name.setLabel(buf2, NetHackQtLabelledIcon::NoNum, u.ulevel);
 
-    if (!describe_level(buf3)) {
+    if (!describe_level(buf3, 0)) {
 	Sprintf(buf3, "%s, level %d",
                 g.dungeons[u.uz.dnum].dname, ::depth(&u.uz));
     }
@@ -818,13 +843,13 @@ void NetHackQtStatusWindow::updateStats()
         level.setCompareMode(NeitherIsBetter);
     if (Upolyd) {
         // You're a monster!
-        buf.sprintf("/%d", u.mhmax);
+        buf = QString::asprintf("/%d", u.mhmax);
         hp.setLabel("HP:", std::max((long) u.mh, 0L), buf);
         level.setLabel("HD:", (long) mons[u.umonnum].mlevel); // hit dice
         // Exp points are not shown when HD is displayed instead of Xp level
     } else {
         // You're normal.
-        buf.sprintf("/%d", u.uhpmax);
+        buf = QString::asprintf("/%d", u.uhpmax);
         hp.setLabel("HP:", std::max((long) u.uhp, 0L), buf);
         // if Exp points are to be displayed, append them to Xp level;
         // up/down highlighting becomes tricky--don't try very hard;
@@ -835,9 +860,11 @@ void NetHackQtStatusWindow::updateStats()
         for (int i = ::flags.showexp ? 0 : 3; i < 4; ++i) {
             // passes 0,1,2 are with Exp, 3 is without Exp and always fits
             if (i < 3) {
-                buf.sprintf("%s%ld/%ld", lvllbl[i], (long) u.ulevel, u.uexp);
+                buf = QString::asprintf("%s%ld/%ld", lvllbl[i],
+                                        (long) u.ulevel, u.uexp);
             } else {
-                buf.sprintf("%s%ld", lvllbl[i - 3], (long) u.ulevel);
+                buf = QString::asprintf("%s%ld", lvllbl[i - 3],
+                                        (long) u.ulevel);
             }
             // +2: allow a couple of pixels at either end to be clipped off
             if (fm.size(0, buf).width() <= (2 + level.label->width() + 2))
@@ -857,7 +884,7 @@ void NetHackQtStatusWindow::updateStats()
     was_polyd = Upolyd ? true : false;
     had_exp = (::flags.showexp && !was_polyd) ? true : false;
 
-    buf.sprintf("/%d", u.uenmax);
+    buf = QString::asprintf("/%d", u.uenmax);
     power.setLabel("Pow:", (long) u.uen, buf);
     ac.setLabel("AC:", (long) u.uac);
     // gold prefix used to be "Au:", tty uses "$:"; never too wide to fit;
@@ -867,20 +894,24 @@ void NetHackQtStatusWindow::updateStats()
     goldamt = std::min(goldamt, 99999999L); // ditto
     gold.setLabel("Gold:", goldamt);
 
-    const char *text = NULL;
+    const char *text;
+    QString qtext;
+    QPixmap *pxmp;
     if (u.ualign.type == A_LAWFUL) {
-        align.setIcon(p_lawful);
+        pxmp = &p_lawful;
         text = "Lawful";
     } else if (u.ualign.type == A_NEUTRAL) {
-        align.setIcon(p_neutral);
+        pxmp = &p_neutral;
         text = "Neutral";
     } else {
-        // Unaligned should never happen but handle it sanely if it does
-        align.setIcon(p_chaotic);
+        pxmp = &p_chaotic;
+        // Unaligned should never happen
         text = (u.ualign.type == A_CHAOTIC) ? "Chaotic"
                : (u.ualign.type == A_NONE) ? "unaligned"
                  : "other?";
     }
+    qtext = QString::asprintf("%sly aligned", text);
+    align.setIcon(*pxmp, qtext.toLower());
     align.setLabel(QString(text));
     // without this, the ankh pixmap shifts from centered to left
     // justified relative to the label text for some unknown reason...
@@ -917,7 +948,7 @@ void NetHackQtStatusWindow::updateStats()
             static const char *const scrlbl[3] = { "Score:", "Scr:", "S:" };
             QFontMetrics fm(score.label->font());
             for (int i = 0; i < 3; ++i) {
-                buf.sprintf("%s%ld", scrlbl[i], pts);
+                buf = QString::asprintf("%s%ld", scrlbl[i], pts);
                 // +2: allow couple of pixels at either end to be clipped off
                 if (fm.size(0, buf).width() <= (2 + score.width() + 2))
                     break;

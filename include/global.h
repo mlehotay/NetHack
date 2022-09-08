@@ -1,4 +1,4 @@
-/* NetHack 3.7	global.h	$NHDT-Date: 1612127119 2021/01/31 21:05:19 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.120 $ */
+/* NetHack 3.7	global.h	$NHDT-Date: 1657918090 2022/07/15 20:48:10 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.144 $ */
 /* Copyright (c) Stichting Mathematisch Centrum, Amsterdam, 1985. */
 /*-Copyright (c) Michael Allison, 2006. */
 /* NetHack may be freely redistributed.  See license for details. */
@@ -9,7 +9,8 @@
 #include <stdio.h>
 
 /*
- * Files expected to exist in the playground directory.
+ * Files expected to exist in the playground directory (possibly inside
+ * a dlb container file).
  */
 
 #define RECORD "record"         /* file containing list of topscorers */
@@ -24,6 +25,7 @@
 #define HISTORY "history"       /* file giving nethack's history */
 #define LICENSE "license"       /* file with license information */
 #define OPTIONFILE "opthelp"    /* file explaining runtime options */
+#define OPTMENUHELP "optmenu"   /* file explaining #options command */
 #define OPTIONS_USED "options"  /* compile-time options, for #version */
 #define SYMBOLS "symbols"       /* replacement symbol sets */
 #define EPITAPHFILE "epitaph"   /* random epitaphs on graves */
@@ -31,6 +33,14 @@
 #define BOGUSMONFILE "bogusmon" /* hallucinatory monsters */
 #define TRIBUTEFILE "tribute"   /* 3.6 tribute to Terry Pratchett */
 #define LEV_EXT ".lua"          /* extension for special level files */
+
+/* padding amounts for files that have lines chosen by fseek to random spot,
+   advancing to the next line, and using that line; makedefs forces shorter
+   lines to be padded to these lengths; value of 0 will inhibit any padding,
+   avoiding an increase in files' sizes, but resulting in biased selection;
+   used by makedefs while building and by core's callers of get_rnd_text() */
+#define MD_PAD_RUMORS 60u /* for RUMORFILE, EPITAPHFILE, and ENGRAVEFILE */
+#define MD_PAD_BOGONS 20u /* for BOGUSMONFILE */
 
 /* Assorted definitions that may depend on selections in config.h. */
 
@@ -49,24 +59,49 @@
 #endif /* DUMB */
 
 /*
- * type xchar: small integers (typedef'd as signed char,
- * so in the range -127 - 127), usually coordinates.
+ * type xint8: small integers (typedef'd as signed,
+ * in the range -127 - 127).
  */
-typedef schar xchar;
+typedef int8_t xint8;
+/*
+ * type coordxy: integers (typedef'd as signed,
+ * in the range -32768 to 32767), mostly coordinates.
+ * Note that in 2022, screen coordinates easily
+ * surpass an upper limit of 127.
+ */
+typedef int16_t coordxy;
+/*
+ * type xint16: integers (typedef'd as signed,
+ * in the range -32768 to 32767), non-coordinates.
+ */
+typedef int16_t xint16;
 
 #ifdef __MINGW32__
 /* Resolve conflict with Qt 5 and MinGW-w32 */
 typedef unsigned char boolean; /* 0 or 1 */
 #else
 #ifndef SKIP_BOOLEAN
-typedef xchar boolean; /* 0 or 1 */
+typedef schar boolean; /* 0 or 1 */
 #endif
+#endif
+
+/* vision seen vectors: viz_array[][] and levl[][].seenv, which use different
+   values from each other but are close enough in size to share a type;
+   viz_array contains 8-bit bitmasks, lev->seenv is a 5-bit bitfield */
+typedef unsigned char seenV; /* no need for uint8_t */
+
+/* Type for third parameter of read(2) */
+#if defined(BSD) || defined(ULTRIX)
+typedef int readLenType;
+#else /* e.g. SYSV, __TURBOC__ */
+typedef unsigned readLenType;
 #endif
 
 #ifndef TRUE /* defined in some systems' native include files */
 #define TRUE ((boolean) 1)
 #define FALSE ((boolean) 0)
 #endif
+#define BOOL_RANDOM (-1)
 
 enum optchoice { opt_in, opt_out};
 
@@ -110,40 +145,6 @@ typedef uchar nhsym;
 
 #include "coord.h"
 
-#if defined(CROSSCOMPILE)
-struct cross_target_s {
-    const char *build_date;
-    const char *copyright_banner_c;
-    const char *git_sha;
-    const char *git_branch;
-    const char *version_string;
-    const char *version_id;
-    unsigned long version_number;
-    unsigned long version_features;
-    unsigned long ignored_features;
-    unsigned long version_sanity1;
-    unsigned long version_sanity2;
-    unsigned long version_sanity3;
-    unsigned long build_time;
-};
-extern struct cross_target_s cross_target;
-#if defined(CROSSCOMPILE_TARGET) && !defined(MAKEDEFS_C)
-#define BUILD_DATE cross_target.build_date        /* "Wed Apr 1 00:00:01 2020" */
-#define COPYRIGHT_BANNER_C cross_target.copyright_banner_c
-#define NETHACK_GIT_SHA cross_target.git_sha
-#define NETHACK_GIT_BRANCH cross_target.git_branch
-#define VERSION_ID cross_target.version_id
-#define IGNORED_FEATURES cross_target.ignored_features
-#define VERSION_FEATURES cross_target.version_features
-#define VERSION_NUMBER cross_target.version_number
-#define VERSION_SANITY1 cross_target.version_sanity1
-#define VERSION_SANITY2 cross_target.version_sanity2
-#define VERSION_SANITY3 cross_target.version_sanity3
-#define VERSION_STRING cross_target.version_string
-#define BUILD_TIME cross_target.build_time        /* (1574157640UL) */
-#endif /* CROSSCOMPILE_TARGET && !MAKEDEFS_C */
-#endif /* CROSSCOMPILE */
-
 /*
  * Automatic inclusions for the subsidiary files.
  * Please don't change the order.  It does matter.
@@ -162,7 +163,7 @@ extern struct cross_target_s cross_target;
 #endif
 
 #ifdef WIN32
-#include "ntconf.h"
+#include "windconf.h"
 #endif
 
 #include "warnings.h"
@@ -170,7 +171,7 @@ extern struct cross_target_s cross_target;
 /* amiconf.h needs to be the last nested #include of config.h because
    'make depend' will turn it into a comment, hiding anything after it */
 #ifdef AMIGA
-/*#include "amiconf.h"*/
+#include "amiconf.h"
 #endif
 
 /* Displayable name of this port; don't redefine if defined in *conf.h */
@@ -182,7 +183,7 @@ extern struct cross_target_s cross_target;
 #define PORT_ID "Mac"
 #endif
 #ifdef __APPLE__
-#define PORT_ID "MacOSX"
+#define PORT_ID "MacOS"
 #endif
 #ifdef MSDOS
 #ifdef PC9800
@@ -253,13 +254,17 @@ extern struct cross_target_s cross_target;
 
 #if defined(X11_GRAPHICS) || defined(QT_GRAPHICS) || defined(GNOME_GRAPHICS) \
     || defined(WIN32)
+#ifndef NO_TILE_C
 #ifndef USE_TILES
-#define USE_TILES /* glyph2tile[] will be available */
+#define USE_TILES /* glyphmap[] with prefilled tile mappings will be available */
+#endif
 #endif
 #endif
 #if defined(AMII_GRAPHICS) || defined(GEM_GRAPHICS)
+#ifndef NO_TILE_C
 #ifndef USE_TILES
 #define USE_TILES
+#endif
 #endif
 #endif
 
@@ -274,6 +279,7 @@ extern struct cross_target_s cross_target;
 #define Sprintf (void) sprintf
 #define Strcat (void) strcat
 #define Strcpy (void) strcpy
+#define Strlen(s) Strlen_(s,__func__,__LINE__)
 #ifdef NEED_VARARGS
 #define Vprintf (void) vprintf
 #define Vfprintf (void) vfprintf
@@ -298,6 +304,8 @@ extern struct cross_target_s cross_target;
    declaration has been moved out of the '#else' below to avoid getting
    a complaint from -Wmissing-prototypes when building with MONITOR_HEAP */
 extern char *dupstr(const char *);
+/* same, but return strlen(string) */
+extern char *dupstr_n(const char *string, unsigned int *lenout);
 
 /*
  * MONITOR_HEAP is conditionally used for primitive memory leak debugging.
@@ -310,6 +318,7 @@ extern char *dupstr(const char *);
 #ifdef MONITOR_HEAP
 /* plain alloc() is not declared except in alloc.c */
 extern long *nhalloc(unsigned int, const char *, int);
+extern long *nhrealloc(long *, unsigned int, const char *, int);
 extern void nhfree(genericptr_t, const char *, int);
 extern char *nhdupstr(const char *, const char *, int);
 /* this predates C99's __func__; that is trickier to use conditionally
@@ -323,11 +332,13 @@ extern char *nhdupstr(const char *, const char *, int);
 #define __LINE__ 0
 #endif
 #define alloc(a) nhalloc(a, __FILE__, (int) __LINE__)
+#define re_alloc(a,n) nhrealloc(a, n, __FILE__, (int) __LINE__)
 #define free(a) nhfree(a, __FILE__, (int) __LINE__)
 #define dupstr(s) nhdupstr(s, __FILE__, (int) __LINE__)
 #else /* !MONITOR_HEAP */
 /* declare alloc.c's alloc(); allocations made with it use ordinary free() */
 extern long *alloc(unsigned int);  /* alloc.c */
+extern long *re_alloc(long *, unsigned int);
 #endif /* ?MONITOR_HEAP */
 
 /* Used for consistency checks of various data files; declare it here so
@@ -354,6 +365,26 @@ struct savefile_info {
 #define SFI1_RLECOMP (1L << 1)
 #define SFI1_ZEROCOMP (1L << 2)
 #endif
+
+/* This is used to store some build-info data that used
+   to be present in makedefs-generated header file date.h */
+
+struct nomakedefs_s {
+    const char *build_date;
+    const char *copyright_banner_c;
+    const char *git_sha;
+    const char *git_branch;
+    const char *version_string;
+    const char *version_id;
+    unsigned long version_number;
+    unsigned long version_features;
+    unsigned long ignored_features;
+    unsigned long version_sanity1;
+    unsigned long version_sanity2;
+    unsigned long version_sanity3;
+    unsigned long build_time;
+};
+extern struct nomakedefs_s nomakedefs;
 
 /*
  * Configurable internal parameters.
@@ -423,7 +454,7 @@ struct savefile_info {
 #if defined(__linux__) && defined(__GLIBC__) && (__GLIBC__ >= 2)
 #define PANICTRACE_LIBC
 #endif
-#if defined(MACOSX)
+#if defined(MACOS)
 #define PANICTRACE_LIBC
 #endif
 #ifdef UNIX
@@ -461,5 +492,87 @@ struct savefile_info {
 
 #define unctrl(c) ((c) <= C('z') ? (0x60 | (c)) : (c))
 #define unmeta(c) (0x7f & (c))
+
+/* Game log message type flags */
+#define LL_NONE       0x0000L /* No message is livelogged */
+#define LL_WISH       0x0001L /* Report stuff people type at the wish prompt */
+#define LL_ACHIEVE    0x0002L /* Achievements bitfield + invocation, planes */
+#define LL_UMONST     0x0004L /* defeated unique monster */
+#define LL_DIVINEGIFT 0x0008L /* Sacrifice gifts, crowning */
+#define LL_LIFESAVE   0x0010L /* Use up amulet of lifesaving */
+#define LL_CONDUCT    0x0020L /* Break conduct - not reported early-game */
+#define LL_ARTIFACT   0x0040L /* bestowed, found, or manifactured */
+#define LL_GENOCIDE   0x0080L /* Logging of genocides */
+#define LL_KILLEDPET  0x0100L /* Killed a tame monster */
+#define LL_ALIGNMENT  0x0200L /* changed alignment, temporary or permanent */
+#define LL_DUMP_ASC   0x0400L /* Log URL for dumplog if ascended */
+#define LL_DUMP_ALL   0x0800L /* Log dumplog url for all games */
+#define LL_MINORAC    0x1000L /* Log 'minor' achievements - can be spammy */
+#define LL_SPOILER    0x2000L /* reveals information so don't show in-game
+                               * via #chronicle unless in wizard mode */
+#define LL_DUMP       0x4000L /* none of the above but should be in dumplog */
+#define LL_DEBUG      0x8000L /* For debugging messages and other spam */
+
+/*
+ * Lua sandbox
+ */
+/* Control block for setting up a Lua state with nhl_init(). */
+typedef struct nhl_sandbox_info {
+    uint32_t  flags;       /* see below */
+    uint32_t  memlimit;    /* approximate memory limit */
+    uint32_t  steps;       /* instruction limit for state OR ... */
+    uint32_t  perpcall;    /* ... instruction limit per nhl_pcall */
+} nhl_sandbox_info;
+
+/* For efficiency, we only check every NHL_SB_STEPSIZE instructions. */
+#ifndef NHL_SB_STEPSIZE
+#define NHL_SB_STEPSIZE 1000
+#endif
+
+/* High level groups.  Use these flags. */
+    /* Safe functions. */
+#define NHL_SB_SAFE        0x80000000
+    /* Access to Lua version information. */
+#define NHL_SB_VERSION     0x40000000
+    /* Debugging library - mostly unsafe. */
+#define NHL_SB_DEBUGGING   0x08000000
+    /* Use with memlimit/steps/perpcall to get usage. */
+#define NHL_SB_REPORT      0x04000000
+    /* As above, but do full gc on each nhl_pcall. */
+#define NHL_SB_REPORT2     0x02000000
+
+/* Low level groups.  If you need these, you probably need to define
+ * a new high level group instead. */
+#define NHL_SB_STRING      0x00000001
+#define NHL_SB_TABLE       0x00000002
+#define NHL_SB_COROUTINE   0x00000004
+#define NHL_SB_MATH        0x00000008
+#define NHL_SB_UTF8        0x00000010
+#ifdef notyet
+#define NHL_SB_IO          0x00000020
+#endif
+#define NHL_SB_OS          0x00000040
+
+#define NHL_SB_BASEMASK    0x00000f80
+#define NHL_SB_BASE_BASE   0x00000080
+#define NHL_SB_BASE_ERROR  0x00000100
+#define NHL_SB_BASE_META   0x00000200
+#define NHL_SB_BASE_GC     0x00000400
+#define NHL_SB_BASE_UNSAFE 0x00000800
+
+#define NHL_SB_DBMASK      0x00003000
+#define NHL_SB_DB_DB       0x00001000
+#define NHL_SB_DB_SAFE     0x00002000
+
+#define NHL_SB_OSMASK      0x0000c000
+#define NHL_SB_OS_TIME     0x00004000
+#define NHL_SB_OS_FILES    0x00008000
+
+#define NHL_SB_ALL         0x0000ffff
+
+/* return codes */
+#define NHL_SBRV_DENY 1
+#define NHL_SBRV_ACCEPT 2
+#define NHL_SBRV_FAIL 3
 
 #endif /* GLOBAL_H */

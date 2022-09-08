@@ -41,7 +41,6 @@ const struct Role roles[NUM_ROLES+1] = {
       "the Tomb of the Toltec Kings",
       PM_ARCHEOLOGIST,
       NON_PM,
-      NON_PM,
       PM_LORD_CARNARVON,
       PM_STUDENT,
       PM_MINION_OF_HUHETOTL,
@@ -83,7 +82,6 @@ const struct Role roles[NUM_ROLES+1] = {
       "the Duali Oasis",
       PM_BARBARIAN,
       NON_PM,
-      NON_PM,
       PM_PELIAS,
       PM_CHIEFTAIN,
       PM_THOTH_AMON,
@@ -124,7 +122,6 @@ const struct Role roles[NUM_ROLES+1] = {
       "the Caves of the Ancestors",
       "the Dragon's Lair",
       PM_CAVE_DWELLER,
-      NON_PM,
       PM_LITTLE_DOG,
       PM_SHAMAN_KARNOV,
       PM_NEANDERTHAL,
@@ -167,7 +164,6 @@ const struct Role roles[NUM_ROLES+1] = {
       "the Temple of Coeus",
       PM_HEALER,
       NON_PM,
-      NON_PM,
       PM_HIPPOCRATES,
       PM_ATTENDANT,
       PM_CYCLOPS,
@@ -207,7 +203,6 @@ const struct Role roles[NUM_ROLES+1] = {
       "Camelot Castle",
       "the Isle of Glass",
       PM_KNIGHT,
-      NON_PM,
       PM_PONY,
       PM_KING_ARTHUR,
       PM_PAGE,
@@ -249,7 +244,6 @@ const struct Role roles[NUM_ROLES+1] = {
       "the Monastery of the Earth-Lord",
       PM_MONK,
       NON_PM,
-      NON_PM,
       PM_GRAND_MASTER,
       PM_ABBOT,
       PM_MASTER_KAEN,
@@ -290,7 +284,6 @@ const struct Role roles[NUM_ROLES+1] = {
       "the Great Temple",
       "the Temple of Nalzok",
       PM_CLERIC,
-      NON_PM,
       NON_PM,
       PM_ARCH_PRIEST,
       PM_ACOLYTE,
@@ -334,7 +327,6 @@ const struct Role roles[NUM_ROLES+1] = {
       "the Thieves' Guild Hall",
       "the Assassins' Guild Hall",
       PM_ROGUE,
-      NON_PM,
       NON_PM,
       PM_MASTER_OF_THIEVES,
       PM_THUG,
@@ -389,7 +381,6 @@ const struct Role roles[NUM_ROLES+1] = {
       "Orion's camp",
       "the cave of the wumpus",
       PM_RANGER,
-      NON_PM,
       PM_LITTLE_DOG /* Orion & canis major */,
       PM_ORION,
       PM_HUNTER,
@@ -431,7 +422,6 @@ const struct Role roles[NUM_ROLES+1] = {
       "the Castle of the Taro Clan",
       "the Shogun's Castle",
       PM_SAMURAI,
-      NON_PM,
       PM_LITTLE_DOG,
       PM_LORD_SATO,
       PM_ROSHI,
@@ -473,7 +463,6 @@ const struct Role roles[NUM_ROLES+1] = {
       "the Thieves' Guild Hall",
       PM_TOURIST,
       NON_PM,
-      NON_PM,
       PM_TWOFLOWER,
       PM_GUIDE,
       PM_MASTER_OF_THIEVES,
@@ -513,7 +502,6 @@ const struct Role roles[NUM_ROLES+1] = {
       "the Shrine of Destiny",
       "the cave of Surtur",
       PM_VALKYRIE,
-      NON_PM,
       NON_PM /*PM_WINTER_WOLF_CUB*/,
       PM_NORN,
       PM_WARRIOR,
@@ -554,7 +542,6 @@ const struct Role roles[NUM_ROLES+1] = {
       "the Lonely Tower",
       "the Tower of Darkness",
       PM_WIZARD,
-      NON_PM,
       PM_KITTEN,
       PM_NEFERET_THE_GREEN,
       PM_APPRENTICE,
@@ -594,7 +581,6 @@ const struct Race races[] = {
         "Hum",
         { "man", "woman" },
         PM_HUMAN,
-        NON_PM,
         PM_HUMAN_MUMMY,
         PM_HUMAN_ZOMBIE,
         MH_HUMAN | ROLE_MALE | ROLE_FEMALE | ROLE_LAWFUL | ROLE_NEUTRAL
@@ -616,7 +602,6 @@ const struct Race races[] = {
         "Elf",
         { 0, 0 },
         PM_ELF,
-        NON_PM,
         PM_ELF_MUMMY,
         PM_ELF_ZOMBIE,
         MH_ELF | ROLE_MALE | ROLE_FEMALE | ROLE_CHAOTIC,
@@ -637,7 +622,6 @@ const struct Race races[] = {
         "Dwa",
         { 0, 0 },
         PM_DWARF,
-        NON_PM,
         PM_DWARF_MUMMY,
         PM_DWARF_ZOMBIE,
         MH_DWARF | ROLE_MALE | ROLE_FEMALE | ROLE_LAWFUL,
@@ -658,7 +642,6 @@ const struct Race races[] = {
         "Gno",
         { 0, 0 },
         PM_GNOME,
-        NON_PM,
         PM_GNOME_MUMMY,
         PM_GNOME_ZOMBIE,
         MH_GNOME | ROLE_MALE | ROLE_FEMALE | ROLE_NEUTRAL,
@@ -679,7 +662,6 @@ const struct Race races[] = {
         "Orc",
         { 0, 0 },
         PM_ORC,
-        NON_PM,
         PM_ORC_MUMMY,
         PM_ORC_ZOMBIE,
         MH_ORC | ROLE_MALE | ROLE_FEMALE | ROLE_CHAOTIC,
@@ -774,7 +756,7 @@ str2role(const char *str)
         return ROLE_NONE;
 
     /* Match as much of str as is provided */
-    len = strlen(str);
+    len = Strlen(str);
     for (i = 0; roles[i].name.m; i++) {
         /* Does it match the male name? */
         if (!strncmpi(str, roles[i].name.m, len))
@@ -840,7 +822,7 @@ str2race(const char *str)
         return ROLE_NONE;
 
     /* Match as much of str as is provided */
-    len = strlen(str);
+    len = Strlen(str);
     for (i = 0; races[i].noun; i++) {
         /* Does it match the noun? */
         if (!strncmpi(str, races[i].noun, len))
@@ -904,7 +886,7 @@ str2gend(const char *str)
         return ROLE_NONE;
 
     /* Match as much of str as is provided */
-    len = strlen(str);
+    len = Strlen(str);
     for (i = 0; i < ROLE_GENDERS; i++) {
         /* Does it match the adjective? */
         if (!strncmpi(str, genders[i].adj, len))
@@ -967,7 +949,7 @@ str2align(const char *str)
         return ROLE_NONE;
 
     /* Match as much of str as is provided */
-    len = strlen(str);
+    len = Strlen(str);
     for (i = 0; i < ROLE_ALIGNS; i++) {
         /* Does it match the adjective? */
         if (!strncmpi(str, aligns[i].adj, len))
@@ -1539,7 +1521,7 @@ root_plselection_prompt(
 
 char *
 build_plselection_prompt(
-    char *buf, int buflen, 
+    char *buf, int buflen,
     int rolenum, int racenum, int gendnum, int alignnum)
 {
     const char *defprompt = "Shall I pick a character for you? [ynaq] ";
@@ -1556,7 +1538,7 @@ build_plselection_prompt(
         Strcat(tmpbuf, "a ");
     /* <your> */
 
-    (void) root_plselection_prompt(eos(tmpbuf), buflen - strlen(tmpbuf),
+    (void) root_plselection_prompt(eos(tmpbuf), buflen - Strlen(tmpbuf),
                                    rolenum, racenum, gendnum, alignnum);
     /* "Shall I pick a character's role, race, gender, and alignment for you?"
        plus " [ynaq] (y)" is a little too long for a conventional 80 columns;
@@ -1775,6 +1757,7 @@ role_menu_extra(int which, winid where, boolean preselect)
     char buf[BUFSZ];
     const char *what = 0, *constrainer = 0, *forcedvalue = 0;
     int f = 0, r, c, gend, a, i, allowmask;
+    int clr = 0;
 
     r = flags.initrole;
     c = flags.initrace;
@@ -1878,13 +1861,13 @@ role_menu_extra(int which, winid where, boolean preselect)
         any.a_int = 0;
         /* use four spaces of padding to fake a grayed out menu choice */
         Sprintf(buf, "%4s%s forces %s", "", constrainer, forcedvalue);
-        add_menu(where, &nul_glyphinfo, &any, 0, 0, ATR_NONE, buf,
+        add_menu(where, &nul_glyphinfo, &any, 0, 0, ATR_NONE, clr, buf,
                  MENU_ITEMFLAGS_NONE);
     } else if (what) {
         any.a_int = RS_menu_arg(which);
         Sprintf(buf, "Pick%s %s first", (f >= 0) ? " another" : "", what);
         add_menu(where, &nul_glyphinfo, &any, RS_menu_let[which], 0,
-                 ATR_NONE, buf, MENU_ITEMFLAGS_NONE);
+                 ATR_NONE, clr, buf, MENU_ITEMFLAGS_NONE);
     } else if (which == RS_filter) {
         char setfiltering[40];
 
@@ -1892,16 +1875,16 @@ role_menu_extra(int which, winid where, boolean preselect)
         Sprintf(setfiltering, "%s role/race/&c filtering",
                 gotrolefilter() ? "Reset" : "Set");
         add_menu(where, &nul_glyphinfo, &any, '~', 0, ATR_NONE,
-                 setfiltering, MENU_ITEMFLAGS_NONE);
+                 clr, setfiltering, MENU_ITEMFLAGS_NONE);
     } else if (which == ROLE_RANDOM) {
         any.a_int = ROLE_RANDOM;
         add_menu(where, &nul_glyphinfo, &any, '*', 0,
-                 ATR_NONE, "Random",
+                 ATR_NONE, clr, "Random",
                  preselect ? MENU_ITEMFLAGS_SELECTED : MENU_ITEMFLAGS_NONE);
     } else if (which == ROLE_NONE) {
         any.a_int = ROLE_NONE;
         add_menu(where, &nul_glyphinfo, &any, 'q', 0,
-                 ATR_NONE, "Quit",
+                 ATR_NONE, clr, "Quit",
                  preselect ? MENU_ITEMFLAGS_SELECTED : MENU_ITEMFLAGS_NONE);
     } else {
         impossible("role_menu_extra: bad arg (%d)", which);
@@ -2042,7 +2025,7 @@ role_init(void)
  * needed--via instrinsic 'Infravision' which set_uasmon() manages.
  */
     /* Fix up infravision */
-    if (mons[g.urace.malenum].mflags3 & M3_INFRAVISION) {
+    if (mons[g.urace.mnum].mflags3 & M3_INFRAVISION) {
         /* although an infravision intrinsic is possible, infravision
          * is purely a property of the physical race.  This means that we
          * must put the infravision flag in the player's current race
@@ -2052,9 +2035,7 @@ role_init(void)
          * but since infravision has no effect for NPCs anyway we can
          * ignore this.
          */
-        mons[g.urole.malenum].mflags3 |= M3_INFRAVISION;
-        if (g.urole.femalenum != NON_PM)
-            mons[g.urole.femalenum].mflags3 |= M3_INFRAVISION;
+        mons[g.urole.mnum].mflags3 |= M3_INFRAVISION;
     }
 #endif /*0*/
 

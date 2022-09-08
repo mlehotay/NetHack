@@ -65,8 +65,18 @@ newpw(void)
     }
     if (en <= 0)
         en = 1;
-    if (u.ulevel < MAXULEV)
-        u.ueninc[u.ulevel] = (xchar) en;
+    if (u.ulevel < MAXULEV) {
+        /* remember increment; future level drain could take it away again */
+        u.ueninc[u.ulevel] = (xint16) en;
+    } else {
+        /* after level 30, throttle energy gains from extra experience;
+           once max reaches 600, further increments will be just 1 more */
+        char lim = 4 - u.uenmax / 200;
+
+        lim = max(lim, 1);
+        if (en > lim)
+            en = lim;
+    }
     return en;
 }
 
@@ -194,9 +204,10 @@ more_experienced(register int exper, register int rexp)
 
 /* e.g., hit by drain life attack */
 void
-losexp(const char *drainer) /* cause of death, if drain should be fatal */
+losexp(
+    const char *drainer) /* cause of death, if drain should be fatal */
 {
-    register int num;
+    int num, uhpmin, olduhpmax;
 
     /* override life-drain resistance when handling an explicit
        wizard mode request to reduce level; never fatal though */
@@ -215,6 +226,7 @@ losexp(const char *drainer) /* cause of death, if drain should be fatal */
         u.ulevel -= 1;
         /* remove intrinsic abilities */
         adjabil(u.ulevel + 1, u.ulevel);
+        livelog_printf(LL_MINORAC, "lost experience level %d", u.ulevel + 1);
     } else {
         if (drainer) {
             g.killer.format = KILLED_BY;
@@ -224,11 +236,23 @@ losexp(const char *drainer) /* cause of death, if drain should be fatal */
         }
         /* no drainer or lifesaved */
         u.uexp = 0;
+        livelog_printf(LL_MINORAC, "lost all experience");
     }
+
+    olduhpmax = u.uhpmax;
+    uhpmin = minuhpmax(10); /* same minimum as is used by life-saving */
     num = (int) u.uhpinc[u.ulevel];
     u.uhpmax -= num;
-    if (u.uhpmax < 1)
-        u.uhpmax = 1;
+    if (u.uhpmax < uhpmin)
+        setuhpmax(uhpmin);
+    /* uhpmax might try to go up if it has previously been reduced by
+       strength loss or by a fire trap or by an attack by Death which
+       all use a different minimum than life-saving or experience loss;
+       we don't allow it to go up because that contradicts assumptions
+       elsewhere (such as healing wielder who drains with Strombringer) */
+    if (u.uhpmax > olduhpmax)
+        setuhpmax(olduhpmax);
+
     u.uhp -= num;
     if (u.uhp < 1)
         u.uhp = 1;
@@ -273,8 +297,10 @@ newexplevel(void)
 }
 
 void
-pluslvl(boolean incr) /* true iff via incremental experience growth */
-{                     /*        (false for potion of gain level)    */
+pluslvl(
+    boolean incr) /* True: incremental experience growth;
+                   * False: potion of gain level or wraith corpse */
+{
     int hpinc, eninc;
 
     if (!incr)
@@ -288,17 +314,19 @@ pluslvl(boolean incr) /* true iff via incremental experience growth */
         u.mh += hpinc;
     }
     hpinc = newhp();
-    u.uhpmax += hpinc;
+    setuhpmax(u.uhpmax + hpinc);
     u.uhp += hpinc;
 
     /* increase spell power/energy points */
     eninc = newpw();
     u.uenmax += eninc;
+    if (u.uenmax > u.uenpeak)
+        u.uenpeak = u.uenmax;
     u.uen += eninc;
 
     /* increase level (unless already maxxed) */
     if (u.ulevel < MAXULEV) {
-        int newrank, oldrank = xlev_to_rank(u.ulevel);
+        int old_ach_cnt, newrank, oldrank = xlev_to_rank(u.ulevel);
 
         /* increase experience points to reflect new level */
         if (incr) {
@@ -316,9 +344,20 @@ pluslvl(boolean incr) /* true iff via incremental experience growth */
         if (u.ulevelmax < u.ulevel)
             u.ulevelmax = u.ulevel;
         adjabil(u.ulevel - 1, u.ulevel); /* give new intrinsics */
+
+        old_ach_cnt = count_achievements();
         newrank = xlev_to_rank(u.ulevel);
         if (newrank > oldrank)
             record_achievement(achieve_rank(newrank));
+        /* a new rank achievement will log its own message; log a simpler
+           message here if we didn't just get an achievement (so when rank
+           hasn't changed or hero just regained a lost level and the rank
+           achievement doesn't get repeated) */
+        if (count_achievements() == old_ach_cnt)
+            livelog_printf(LL_MINORAC, "%sgained experience level %d",
+                           (u.ulevel <= u.ulevelpeak) ? "re" : "", u.ulevel);
+        if (u.ulevel > u.ulevelpeak)
+            u.ulevelpeak = u.ulevel;
     }
     g.context.botl = TRUE;
 }

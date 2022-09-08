@@ -124,13 +124,15 @@ redotoplin(const char *str)
     int otoplin = ttyDisplay->toplin;
 
     home();
-    if (*str & 0x80) {
-        /* kludge for the / command, the only time we ever want a */
-        /* graphics character on the top line */
-        g_putch((int) *str++);
-        ttyDisplay->curx++;
+    if (!ttyDisplay->topl_utf8) {
+        if (*str & 0x80) {
+            /* kludge for the / command, the only time we ever want a */
+            /* graphics character on the top line */
+            g_putch((int) *str++);
+            ttyDisplay->curx++;
+        }
+        end_glyphout(); /* in case message printed during graphics output */
     }
-    end_glyphout(); /* in case message printed during graphics output */
     putsyms(str);
     cl_end();
     ttyDisplay->toplin = TOPLINE_NEED_MORE;
@@ -144,7 +146,12 @@ show_topl(const char *str)
 {
     struct WinDesc *cw = wins[WIN_MESSAGE];
 
-    if (!(cw->flags & WIN_STOP)) {
+    /* show if either STOP isn't set or current message specifies NOSTOP */
+    if ((cw->flags & (WIN_STOP | WIN_NOSTOP)) != WIN_STOP) {
+        /* NOSTOP cancels persistent STOP and is a one-shot operation;
+           force both to be cleared (no-op for either bit that isn't set) */
+        cw->flags &= ~(WIN_STOP | WIN_NOSTOP);
+
         if (ttyDisplay->cury && ttyDisplay->toplin == TOPLINE_NON_EMPTY)
             tty_clear_nhwindow(WIN_MESSAGE);
 
@@ -177,14 +184,16 @@ remember_topl(void)
         cw->datlen[idx] = (short) len;
     }
     Strcpy(cw->data[idx], g.toplines);
-    *g.toplines = '\0';
-    cw->maxcol = cw->maxrow = (idx + 1) % cw->rows;
+    if (!g.program_state.in_checkpoint) {
+        *g.toplines = '\0';
+        cw->maxcol = cw->maxrow = (idx + 1) % cw->rows;
+    }
 }
 
 void
 addtopl(const char *s)
 {
-    register struct WinDesc *cw = wins[WIN_MESSAGE];
+    struct WinDesc *cw = wins[WIN_MESSAGE];
 
     tty_curs(BASE_WINDOW, cw->curx + 1, cw->cury);
     putsyms(s);
@@ -220,11 +229,13 @@ more(void)
 
     xwaitforspace("\033 ");
 
-    if (morc == '\033')
-        cw->flags |= WIN_STOP;
+    if (morc == '\033') {
+        if (!(cw->flags & WIN_NOSTOP))
+            cw->flags |= WIN_STOP;
+    }
 
     if (ttyDisplay->toplin && cw->cury) {
-        docorner(1, cw->cury + 1);
+        docorner(1, cw->cury + 1, 0);
         cw->curx = cw->cury = 0;
         home();
     } else if (morc == '\033') {
@@ -243,26 +254,27 @@ update_topl(register const char *bp)
     register int n0;
     int notdied = 1;
     struct WinDesc *cw = wins[WIN_MESSAGE];
+    boolean skip = (cw->flags & (WIN_STOP | WIN_NOSTOP)) == WIN_STOP;
 
     /* If there is room on the line, print message on same line */
     /* But messages like "You die..." deserve their own line */
     n0 = strlen(bp);
-    if ((ttyDisplay->toplin == TOPLINE_NEED_MORE || (cw->flags & WIN_STOP))
+    if ((ttyDisplay->toplin == TOPLINE_NEED_MORE || skip)
         && cw->cury == 0
         && n0 + (int) strlen(g.toplines) + 3 < CO - 8 /* room for --More-- */
         && (notdied = strncmp(bp, "You die", 7)) != 0) {
         Strcat(g.toplines, "  ");
         Strcat(g.toplines, bp);
         cw->curx += 2;
-        if (!(cw->flags & WIN_STOP))
+        if (!skip)
             addtopl(bp);
         return;
-    } else if (!(cw->flags & WIN_STOP)) {
+    } else if (!skip) {
         if (ttyDisplay->toplin == TOPLINE_NEED_MORE) {
             more();
-        } else if (cw->cury) { /* for toplin == TOPLINE_NON_EMPTY && cury > 1 */
-            docorner(1, cw->cury + 1); /* reset cury = 0 if redraw screen */
-            cw->curx = cw->cury = 0;   /* from home--cls() & docorner(1,n) */
+        } else if (cw->cury) { /* for toplin==TOPLINE_NON_EMPTY && cury > 1 */
+            docorner(1, cw->cury + 1, 0); /* reset cury = 0 if redraw screen */
+            cw->curx = cw->cury = 0;   /* from home--cls() & docorner(1,n,0) */
         }
     }
     remember_topl();
@@ -283,9 +295,9 @@ update_topl(register const char *bp)
         *tl++ = '\n';
         n0 = strlen(tl);
     }
-    if (!notdied)
-        cw->flags &= ~WIN_STOP;
-    if (!(cw->flags & WIN_STOP))
+    if (!notdied) /* double negative => "You die"; avoid suppressing mesg */
+        cw->flags &= ~WIN_STOP, skip = FALSE;
+    if (!skip)
         redotoplin(g.toplines);
 }
 
@@ -350,19 +362,23 @@ extern char erase_char; /* from xxxtty.c; don't need kill_char */
 
 /* returns a single keystroke; also sets 'yn_number' */
 char
-tty_yn_function(const char *query, const char *resp, char def)
-/*
- *   Generic yes/no function. 'def' is the default (returned by space or
- *   return; 'esc' returns 'q', or 'n', or the default, depending on
- *   what's in the string. The 'query' string is printed before the user
- *   is asked about the string.
- *   If resp is NULL, any single character is accepted and returned.
- *   If not-NULL, only characters in it are allowed (exceptions:  the
- *   quitchars are always allowed, and if it contains '#' then digits
- *   are allowed); if it includes an <esc>, anything beyond that won't
- *   be shown in the prompt to the user but will be acceptable as input.
- */
+tty_yn_function(
+    const char *query,
+    const char *resp,
+    char def)
 {
+    /*
+     * Generic yes/no function.  'def' is the default (returned by space
+     * or return; 'esc' returns 'q', or 'n', or the default, depending on
+     * what's in the expected-response string.  The 'query' string is
+     * printed before the user is asked about the string.
+     *
+     * If resp is NULL, any single character is accepted and returned.
+     * If not-NULL, only characters in it are allowed (exceptions:  the
+     * quitchars are always allowed, and if it contains '#' then digits
+     * are allowed).  If it includes an <esc>, anything beyond that won't
+     * be shown in the prompt to the user but will be acceptable as input.
+     */
     register char q;
     char rtmp[40];
     boolean digit_ok, allow_num, preserve_case = FALSE;
@@ -371,9 +387,10 @@ tty_yn_function(const char *query, const char *resp, char def)
     char prompt[BUFSZ];
 
     yn_number = 0L;
-    if (ttyDisplay->toplin == TOPLINE_NEED_MORE && !(cw->flags & WIN_STOP))
+    if (ttyDisplay->toplin == TOPLINE_NEED_MORE
+        && (cw->flags & (WIN_STOP | WIN_NOSTOP)) != WIN_STOP)
         more();
-    cw->flags &= ~WIN_STOP;
+    cw->flags &= ~(WIN_STOP | WIN_NOSTOP);
     ttyDisplay->toplin = TOPLINE_SPECIAL_PROMPT;
     ttyDisplay->inread++;
     if (resp) {
@@ -536,8 +553,8 @@ static char **snapshot_mesgs = 0;
 /* collect currently available message history data into a sequential array;
    optionally, purge that data from the active circular buffer set as we go */
 static void
-msghistory_snapshot(boolean purge) /* clear message history buffer
-                                      as we copy it */
+msghistory_snapshot(
+    boolean purge) /* clear message history buffer as we copy it */
 {
     char *mesg;
     int i, inidx, outidx;
@@ -582,8 +599,9 @@ msghistory_snapshot(boolean purge) /* clear message history buffer
 
 /* release memory allocated to message history snapshot */
 static void
-free_msghistory_snapshot(boolean purged) /* True: took history's pointers,
-                                            False: just cloned them */
+free_msghistory_snapshot(
+    boolean purged) /* True: took history's pointers,
+                     * False: just cloned them */
 {
     if (snapshot_mesgs) {
         /* snapshot pointers are no longer in use */

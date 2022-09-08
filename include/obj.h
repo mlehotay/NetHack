@@ -1,4 +1,4 @@
-/* NetHack 3.7	obj.h	$NHDT-Date: 1611097668 2021/01/19 23:07:48 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.85 $ */
+/* NetHack 3.7	obj.h	$NHDT-Date: 1633802062 2021/10/09 17:54:22 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.94 $ */
 /* Copyright (c) Stichting Mathematisch Centrum, Amsterdam, 1985. */
 /*-Copyright (c) Michael Allison, 2006. */
 /* NetHack may be freely redistributed.  See license for details. */
@@ -23,7 +23,8 @@ struct oextra {
     char *oname;          /* ptr to name of object */
     struct monst *omonst; /* ptr to attached monst struct */
     char *omailcmd;       /* response_cmd for mail delivery */
-    unsigned omid;        /* for corpse; m_id of corpse's ghost */
+    unsigned omid;        /* for corpse: m_id of corpse's ghost; overloaded
+                           * for glob: owt at time added to shop's bill */
 };
 
 struct obj {
@@ -35,7 +36,7 @@ struct obj {
 
     struct obj *cobj; /* contents list for containers */
     unsigned o_id;
-    xchar ox, oy;
+    coordxy ox, oy;
     short otyp; /* object class number */
     unsigned owt;
     long quan; /* number of items */
@@ -53,17 +54,19 @@ struct obj {
                 * Schroedinger's Box (1) or royal coffers for a court (2);
                 * named fruit index;
                 * candy bar wrapper index;
+                * scroll of scare monster (when uncursed: never picked up==0,
+                *   has been picked up==1, turns to dust if picked up again;
+                *   when blessed|cursed: flag not checked, set, or cleared);
                 * scroll of mail (normal==0, bones or wishing==1, written==2);
                 * splash of venom (normal==0, wishing==1);
-                * historic flag and gender for statues */
-#define STATUE_HISTORIC 0x01
-#define STATUE_MALE 0x02
-#define STATUE_FEMALE 0x04
+                * gender for corpses, statues, and figurines (0..3,
+                *   CORPSTAT_GENDER),
+                * historic flag for statues (4, CORPSTAT_HISTORIC) */
     char oclass;    /* object class */
     char invlet;    /* designation in inventory */
     char oartifact; /* artifact array index */
 
-    xchar where;        /* where the object thinks it is */
+    xint8 where;        /* where the object thinks it is */
 #define OBJ_FREE 0      /* object not attached to anything */
 #define OBJ_FLOOR 1     /* object on floor */
 #define OBJ_CONTAINED 2 /* object in a container */
@@ -74,7 +77,7 @@ struct obj {
 #define OBJ_ONBILL 7    /* object on shk bill */
 #define OBJ_LUAFREE 8   /* object has been dealloc'd, but is ref'd by lua */
 #define NOBJ_STATES 9
-    xchar timed; /* # of fuses (timers) attached to this obj */
+    xint16 timed; /* # of fuses (timers) attached to this obj */
 
     Bitfield(cursed, 1);
     Bitfield(blessed, 1);
@@ -115,25 +118,34 @@ struct obj {
     Bitfield(cknown, 1); /* for containers (including statues): the contents
                           * are known; also applicable to tins */
     Bitfield(lknown, 1); /* locked/unlocked status is known */
-    /* 4 free bits */
+    Bitfield(pickup_prev, 1); /* was picked up previously */
+    /* 3 free bits */
 
     int corpsenm;         /* type of corpse is mons[corpsenm] */
 #define leashmon corpsenm /* gets m_id of attached pet */
 #define fromsink corpsenm /* a potion from a sink */
 #define novelidx corpsenm /* 3.6 tribute - the index of the novel title */
 #define migr_species corpsenm /* species to endow for MIGR_TO_SPECIES */
+#define next_boulder corpsenm /* flag for xname() when pushing a pile of
+                               * boulders, 0 for first (top of pile),
+                               * 1 for others (format as "next boulder") */
     int usecount;           /* overloaded for various things that tally */
 #define spestudied usecount /* # of times a spellbook has been studied */
     unsigned oeaten;        /* nutrition left in food, if partly eaten */
     long age;               /* creation date */
-    long owornmask;
+    long owornmask;        /* bit mask indicating which equipment slot(s) an
+                            * item is worn in [by hero or by monster; could
+                            * indicate more than one bit: attached iron ball
+                            * that's also wielded];
+                            * overloaded for the destination of migrating
+                            * objects (which can't be worn at same time) */
     unsigned lua_ref_cnt;  /* # of lua script references for this object */
-    xchar omigr_from_dnum; /* where obj is migrating from */
-    xchar omigr_from_dlevel; /* where obj is migrating from */
+    xint16 omigr_from_dnum; /* where obj is migrating from */
+    xint16 omigr_from_dlevel; /* where obj is migrating from */
     struct oextra *oextra; /* pointer to oextra struct */
 };
 
-#define newobj() (struct obj *) alloc(sizeof(struct obj))
+#define newobj() (struct obj *) alloc(sizeof (struct obj))
 
 /***
  **     oextra referencing and testing macros
@@ -214,6 +226,12 @@ struct obj {
 #define uslinging() (uwep && objects[uwep->otyp].oc_skill == P_SLING)
 /* 'is_quest_artifact()' only applies to the current role's artifact */
 #define any_quest_artifact(o) ((o)->oartifact >= ART_ORB_OF_DETECTION)
+/* 'missile' aspect is up to the caller and does not imply is_missile();
+   rings might be launched as missiles when being scattered by an explosion */
+#define stone_missile(o) \
+    ((o) && (objects[(o)->otyp].oc_material == GEMSTONE             \
+             || (objects[(o)->otyp].oc_material == MINERAL))        \
+         && (o)->oclass != RING_CLASS)
 
 /* Armor */
 #define is_shield(otmp)          \
@@ -253,7 +271,7 @@ struct obj {
 /* Eggs and other food */
 #define MAX_EGG_HATCH_TIME 200 /* longest an egg can remain unhatched */
 #define stale_egg(egg) \
-    ((g.monstermoves - (egg)->age) > (2 * MAX_EGG_HATCH_TIME))
+    ((g.moves - (egg)->age) > (2 * MAX_EGG_HATCH_TIME))
 #define ofood(o) ((o)->otyp == CORPSE || (o)->otyp == EGG || (o)->otyp == TIN)
     /* note: sometimes eggs and tins have special corpsenm values that
        shouldn't be used as an index into mons[]                       */
@@ -346,7 +364,7 @@ struct obj {
      || (otmp)->otyp == ALCHEMY_SMOCK || (otmp)->otyp == CREDIT_CARD         \
      || (otmp)->otyp == CAN_OF_GREASE || (otmp)->otyp == MAGIC_MARKER        \
      || (otmp)->oclass == COIN_CLASS || (otmp)->oartifact == ART_ORB_OF_FATE \
-     || (otmp)->otyp == CANDY_BAR)
+     || (otmp)->otyp == CANDY_BAR || (otmp)->otyp == HAWAIIAN_SHIRT)
 
 /* special stones */
 #define is_graystone(obj)                                 \
@@ -372,6 +390,9 @@ struct obj {
 /* achievement tracking; 3.6.x did this differently */
 #define is_mines_prize(o) ((o)->o_id == g.context.achieveo.mines_prize_oid)
 #define is_soko_prize(o) ((o)->o_id == g.context.achieveo.soko_prize_oid)
+
+#define is_art(o,art) ((o) && (o)->oartifact == (art))
+#define u_wield_art(art) is_art(uwep, art)
 
 /* Flags for get_obj_location(). */
 #define CONTAINED_TOO 0x1

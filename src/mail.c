@@ -45,7 +45,7 @@ static boolean md_stop(coord *, coord *);
 static boolean md_rush(struct monst *, int, int);
 static void newmail(struct mail_info *);
 #if defined(SIMPLE_MAIL) || defined(SERVER_ADMIN_MSG)
-static void read_simplemail(char *mbox, boolean adminmsg);
+static void read_simplemail(const char *mbox, boolean adminmsg);
 #endif
 
 #if !defined(UNIX) && !defined(VMS)
@@ -200,7 +200,7 @@ md_start(coord *startp)
                     startp->y = row;
                     startp->x = g.viz_rmin[row];
 
-                } else if (enexto(&testcc, (xchar) g.viz_rmin[row], row,
+                } else if (enexto(&testcc, (coordxy) g.viz_rmin[row], row,
                                   (struct permonst *) 0)
                            && !cansee(testcc.x, testcc.y)
                            && couldsee(testcc.x, testcc.y)) {
@@ -215,7 +215,7 @@ md_start(coord *startp)
                     startp->y = row;
                     startp->x = g.viz_rmax[row];
 
-                } else if (enexto(&testcc, (xchar) g.viz_rmax[row], row,
+                } else if (enexto(&testcc, (coordxy) g.viz_rmax[row], row,
                                   (struct permonst *) 0)
                            && !cansee(testcc.x, testcc.y)
                            && couldsee(testcc.x, testcc.y)) {
@@ -247,11 +247,11 @@ static boolean
 md_stop(coord *stopp,  /* stopping position (we fill it in) */
         coord *startp) /* starting position (read only) */
 {
-    int x, y, distance, min_distance = -1;
+    coordxy x, y, distance, min_distance = -1;
 
     for (x = u.ux - 1; x <= u.ux + 1; x++)
         for (y = u.uy - 1; y <= u.uy + 1; y++) {
-            if (!isok(x, y) || (x == u.ux && y == u.uy))
+            if (!isok(x, y) || u_at(x, y))
                 continue;
 
             if (accessible(x, y) && !MON_AT(x, y)) {
@@ -334,7 +334,7 @@ md_rush(struct monst *md,
 
         if ((mon = m_at(fx, fy)) != 0) /* save monster at this position */
             verbalize1(md_exclamations());
-        else if (fx == u.ux && fy == u.uy)
+        else if (u_at(fx, fy))
             verbalize("Excuse me.");
 
         if (mon)
@@ -409,11 +409,11 @@ newmail(struct mail_info *info)
         struct obj *obj = mksobj(SCR_MAIL, FALSE, FALSE);
 
         if (info->object_nam)
-            obj = oname(obj, info->object_nam);
+            obj = oname(obj, info->object_nam, ONAME_NO_FLAGS);
         if (info->response_cmd)
             new_omailcmd(obj, info->response_cmd);
 
-        if (distu(md->mx, md->my) > 2)
+        if (!next2u(md->mx, md->my))
             verbalize("Catch!");
         display_nhwindow(WIN_MESSAGE, FALSE);
         obj = hold_another_object(obj, "Oops!", (const char *) 0,
@@ -457,12 +457,17 @@ ckmailstatus(void)
 
 DISABLE_WARNING_FORMAT_NONLITERAL
 
+enum delivery_types { faulty_delivery, normal_delivery, subst_delivery };
+
 /*ARGSUSED*/
 void
 readmail(struct obj *otmp UNUSED)
 {
-    static const char *junk[] = {
-        "Report bugs to <%s>.", /*** must be first entry ***/
+    int i;
+    enum delivery_types delivery = normal_delivery;
+    const char *recipient = 0;
+    static const char *const junk_templates[] = {
+        "%sReport bugs to <%s>.%s", /*** must be first entry ***/
         "Please disregard previous letter.",
         "Welcome to NetHack.",
 #ifdef AMIGA
@@ -479,52 +484,35 @@ readmail(struct obj *otmp UNUSED)
            dollar sign and fractional zorkmids are inappropriate within
            nethack but are suitable for typical dysfunctional spam mail */
      "Buy a potion of gain level for only $19.99!  Guaranteed to be blessed!",
-        /* DEVTEAM_URL will be substituted for "%s"; terminating punctuation
+        /* DEVTEAM_URL will be substituted for 2nd "%s"; terminating punctuation
            (formerly "!") has deliberately been omitted so that it can't be
            mistaken for part of the URL (unfortunately that is still followed
            by a closing quote--in the pline below, not the data here) */
-        "Invitation: Visit the NetHack web site at %s"
+        "%sInvitation: Visit the NetHack web site at %s%s"
     };
+    const char *const it_reads = "It reads:  \"";
 
-    /* XXX replace with more general substitution code and add local
-     * contact message.
-     *
-     * FIXME:  this allocated memory is never freed.  However, if the
-     * game is restarted, the junk[] update will be a no-op for second
-     * and subsequent runs and this updated text will still be appropriate.
-     */
-    if (index(junk[0], '%')) {
-        char *tmp;
-        int i;
-
-        for (i = 0; i < SIZE(junk); ++i) {
-            if (index(junk[i], '%')) {
-                if (i == 0) {
-                    /* +2 from '%s' in junk[0] suffices as substitute
-                       for usual +1 for terminator */
-                    tmp = (char *) alloc(strlen(junk[0])
-                                         + strlen(DEVTEAM_EMAIL));
-                    Sprintf(tmp, junk[0], DEVTEAM_EMAIL);
-                    junk[0] = tmp;
-                } else if (strstri(junk[i], "web site")) {
-                    /* as with junk[0], room for terminator is present */
-                    tmp = (char *) alloc(strlen(junk[i])
-                                         + strlen(DEVTEAM_URL));
-                    Sprintf(tmp, junk[i], DEVTEAM_URL);
-                    junk[i] = tmp;
-                } else {
-                    /* could check for "%%" but unless that becomes needed,
-                       handling it is more complicated than necessary */
-                    impossible("fake mail #%d has undefined substitution", i);
-                    junk[i] = "Bad fake mail...";
-                }
-            }
+    i = rn2(SIZE(junk_templates));
+    if (index(junk_templates[i], '%')) {
+        if (i == 0) {
+            recipient = DEVTEAM_EMAIL;
+            delivery = subst_delivery;
+        } else if (strstri(junk_templates[i], "web site")) {
+            recipient = DEVTEAM_URL;
+            delivery = subst_delivery;
+        } else {
+            impossible("fake mail #%d has undefined substitution", i);
+            delivery = faulty_delivery;
         }
     }
     if (Blind) {
         pline("Unfortunately you cannot see what it says.");
-    } else
-        pline("It reads:  \"%s\"", junk[rn2(SIZE(junk))]);
+    } else {
+        if (delivery == subst_delivery)
+            pline(junk_templates[i], it_reads, recipient, "\"");
+        else if (delivery == normal_delivery)
+            pline("%s%s\"", it_reads, junk_templates[i]);
+    }
 }
 
 RESTORE_WARNING_FORMAT_NONLITERAL
@@ -571,8 +559,9 @@ ckmailstatus(void)
 }
 
 #if defined(SIMPLE_MAIL) || defined(SERVER_ADMIN_MSG)
+
 void
-read_simplemail(char *mbox, boolean adminmsg)
+read_simplemail(const char *mbox, boolean adminmsg)
 {
     FILE* mb = fopen(mbox, "r");
     char curline[128], *msg;
@@ -580,9 +569,6 @@ read_simplemail(char *mbox, boolean adminmsg)
 #ifdef SIMPLE_MAIL
     struct flock fl = { 0 };
 #endif
-    const char *msgfrom = adminmsg
-        ? "The voice of %s booms through the caverns:"
-        : "This message is from '%s'.";
 
     if (!mb)
         goto bail;
@@ -598,34 +584,47 @@ read_simplemail(char *mbox, boolean adminmsg)
     /* Allow this call to block. */
     if (!adminmsg
 #ifdef SIMPLE_MAIL
-        && fcntl (fileno (mb), F_SETLKW, &fl) == -1
+        && fcntl(fileno(mb), F_SETLKW, &fl) == -1
 #endif
         )
         goto bail;
 
     while (fgets(curline, 128, mb) != NULL) {
+        const char *endpunct;
+        int msglen;
+
         if (!adminmsg) {
 #ifdef SIMPLE_MAIL
             fl.l_type = F_UNLCK;
-            fcntl (fileno(mb), F_UNLCK, &fl);
+            fcntl(fileno(mb), F_UNLCK, &fl);
 #endif
             pline("There is a%s message on this scroll.",
                   seen_one_already ? "nother" : "");
         }
         msg = strchr(curline, ':');
 
-        if (!msg)
+        /* if incorrectly formatted, or message is empty (':' and '\n' take
+           up 2 chars, so must have at least 3 to be nonempty), give up */
+        if (!msg || (msglen = (int) strlen(msg)) < 3)
             goto bail;
 
         *msg = '\0';
-        msg++;
-        msg[strlen(msg) - 1] = '\0'; /* kill newline */
+        msg++, msglen--;
+        msg[msglen - 1] = '\0'; /* kill newline */
 
-        pline(msgfrom, curline);
-        if (adminmsg)
-            verbalize("%s", msg);
-        else
-            pline("It reads: \"%s\".", msg);
+        /* supply ending punctuation only if the message doesn't have any */
+        endpunct = "";
+        if (!index(".!?", msg[msglen - 2]))
+            endpunct = ".";
+
+        if (adminmsg) {
+            urgent_pline("The voice of %s booms through the caverns:",
+                         curline);
+        } else {
+            pline("This message is from '%s'.", curline);
+            pline("It reads:");
+        }
+        pline("\"%s\"%s", msg, endpunct);
 
         seen_one_already = TRUE;
 #ifdef SIMPLE_MAIL
@@ -654,6 +653,7 @@ read_simplemail(char *mbox, boolean adminmsg)
     if (!adminmsg)
         pline("It appears to be all gibberish.");
 }
+
 #endif /* SIMPLE_MAIL */
 
 void
@@ -662,15 +662,13 @@ ck_server_admin_msg(void)
 #ifdef SERVER_ADMIN_MSG
     static struct stat ost,nst;
     static long lastchk = 0;
-    char adminbuf[BUFSZ];
 
     if (g.moves < lastchk + SERVER_ADMIN_MSG_CKFREQ) return;
     lastchk = g.moves;
 
     if (!stat(SERVER_ADMIN_MSG, &nst)) {
         if (nst.st_mtime > ost.st_mtime)
-            read_simplemail(nonconst(SERVER_ADMIN_MSG, adminbuf,
-				     sizeof adminbuf), TRUE);
+            read_simplemail(SERVER_ADMIN_MSG, TRUE);
         ost.st_mtime = nst.st_mtime;
     }
 #endif /* SERVER_ADMIN_MSG */

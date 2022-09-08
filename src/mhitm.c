@@ -1,4 +1,4 @@
-/* NetHack 3.7	mhitm.c	$NHDT-Date: 1614910020 2021/03/05 02:07:00 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.192 $ */
+/* NetHack 3.7	mhitm.c	$NHDT-Date: 1627412283 2021/07/27 18:58:03 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.199 $ */
 /* Copyright (c) Stichting Mathematisch Centrum, Amsterdam, 1985. */
 /*-Copyright (c) Robert Patrick Rankin, 2011. */
 /* NetHack may be freely redistributed.  See license for details. */
@@ -124,7 +124,7 @@ fightm(register struct monst *mtmp)
         if (itsstuck(mtmp))
             return 0;
     }
-    has_u_swallowed = (u.uswallow && (mtmp == u.ustuck));
+    has_u_swallowed = engulfing_u(mtmp);
 
     for (mon = fmon; mon; mon = nmon) {
         nmon = mon->nmon;
@@ -226,13 +226,18 @@ mdisplacem(register struct monst *magr, register struct monst *mdef,
     g.vis = (canspotmon(magr) && canspotmon(mdef));
 
     if (touch_petrifies(pd) && !resists_ston(magr)) {
-        if (which_armor(magr, W_ARMG) != 0) {
+        if (!which_armor(magr, W_ARMG)) {
             if (poly_when_stoned(pa)) {
                 mon_to_stone(magr);
                 return MM_HIT; /* no damage during the polymorph */
             }
-            if (!quietly && canspotmon(magr))
+            if (!quietly && canspotmon(magr)) {
+                if (g.vis) {
+                    pline("%s tries to move %s out of %s way.", Monnam(magr),
+                          mon_nam(mdef), is_rider(pa) ? "the" : mhis(magr));
+                }
                 pline("%s turns to stone!", Monnam(magr));
+            }
             monstone(magr);
             if (!DEADMONSTER(magr))
                 return MM_HIT; /* lifesaved */
@@ -243,13 +248,22 @@ mdisplacem(register struct monst *magr, register struct monst *mdef,
     }
 
     remove_monster(fx, fy); /* pick up from orig position */
-    remove_monster(tx, ty);
+    if (mdef->wormno)
+        remove_worm(mdef);
+    else
+        remove_monster(tx, ty);
     place_monster(magr, tx, ty); /* put down at target spot */
     place_monster(mdef, fx, fy);
+    if (mdef->wormno) /* now put down tail */
+        place_worm_tail_randomly(mdef, fx, fy);
+    /* either creature might move into or out of a poison gas cloud */
+    update_monster_region(magr);
+    update_monster_region(mdef);
+
     if (g.vis && !quietly)
         pline("%s moves %s out of %s way!", Monnam(magr), mon_nam(mdef),
               is_rider(pa) ? "the" : mhis(magr));
-    newsym(fx, fy);  /* see it */
+    newsym(fx, fy);  /* see it       */
     newsym(tx, ty);  /*   all happen */
     flush_screen(0); /* make sure it shows up */
 
@@ -292,7 +306,7 @@ mattackm(register struct monst *magr, register struct monst *mdef)
 
     if (!magr || !mdef)
         return MM_MISS; /* mike@genat */
-    if (!magr->mcanmove || magr->msleeping)
+    if (helpless(magr))
         return MM_MISS;
     pa = magr->data;
     pd = mdef->data;
@@ -304,7 +318,7 @@ mattackm(register struct monst *magr, register struct monst *mdef)
 
     /* Calculate the armour class differential. */
     tmp = find_mac(mdef) + magr->m_lev;
-    if (mdef->mconf || !mdef->mcanmove || mdef->msleeping) {
+    if (mdef->mconf || helpless(mdef)) {
         tmp += 4;
         mdef->msleeping = 0;
     }
@@ -341,7 +355,7 @@ mattackm(register struct monst *magr, register struct monst *mdef)
      * some cases, in which case this still counts as its move for the round
      * and it shouldn't move again.
      */
-    magr->mlstmv = g.monstermoves;
+    magr->mlstmv = g.moves;
 
     /* controls whether a mind flayer uses all of its tentacle-for-DRIN
        attacks; when fighting a headless monster, stop after the first
@@ -429,7 +443,7 @@ mattackm(register struct monst *magr, register struct monst *mdef)
                             pline("%s divides as %s hits it!", buf,
                                   mon_nam(magr));
                         }
-                        mintrap(mclone);
+                        (void) mintrap(mclone, NO_TRAP_FLAGS);
                     }
                 }
             } else
@@ -477,7 +491,7 @@ mattackm(register struct monst *magr, register struct monst *mdef)
             if (distmin(magr->mx, magr->my, mdef->mx, mdef->my) > 1)
                 continue;
             /* Engulfing attacks are directed at the hero if possible. -dlc */
-            if (u.uswallow && magr == u.ustuck)
+            if (engulfing_u(magr))
                 strike = 0;
             else if ((strike = (tmp > rnd(20 + i))) != 0)
                 res[i] = gulpmm(magr, mdef, mattk);
@@ -531,7 +545,7 @@ mattackm(register struct monst *magr, register struct monst *mdef)
         if (res[i] & MM_AGR_DIED)
             return res[i];
         /* return if aggressor can no longer attack */
-        if (!magr->mcanmove || magr->msleeping)
+        if (helpless(magr))
             return res[i];
         if (res[i] & MM_HIT)
             struck = 1; /* at least one hit */
@@ -636,9 +650,13 @@ gazemm(struct monst *magr, struct monst *mdef, struct attack *mattk)
                       && mattk->adtyp == AD_BLND),
             altmesg = (archon && !magr->mcansee);
 
+    /* bring target out of hiding even if hero doesn't see it happen (this
+       is already done in pre_mm_attack() and shouldn't be needed here) */
+    if (mdef->data->mlet == S_MIMIC && M_AP_TYPE(mdef) != M_AP_NOTHING)
+        seemimic(mdef);
+    mdef->mundetected = 0;
+
     if (g.vis) {
-        if (mdef->data->mlet == S_MIMIC && M_AP_TYPE(mdef) != M_AP_NOTHING)
-            seemimic(mdef);
         Sprintf(buf, "%s gazes %s",
                 altmesg ? Adjmonnam(magr, "blinded") : Monnam(magr),
                 altmesg ? "toward" : "at");
@@ -701,7 +719,12 @@ engulf_target(struct monst *magr, struct monst *mdef)
     int dx, dy;
 
     /* can't swallow something that's too big */
-    if (mdef->data->msize >= MZ_HUGE)
+    if (mdef->data->msize >= MZ_HUGE
+        || (magr->data->msize < mdef->data->msize && !is_whirly(magr->data)))
+        return FALSE;
+
+    /* can't (move to) swallow if trapped. TODO: could do some? */
+    if (mdef->mtrapped || magr->mtrapped)
         return FALSE;
 
     /* (hypothetical) engulfers who can pass through walls aren't
@@ -726,10 +749,12 @@ engulf_target(struct monst *magr, struct monst *mdef)
 
 /* Returns the same values as mattackm(). */
 static int
-gulpmm(register struct monst *magr, register struct monst *mdef,
-       register struct attack *mattk)
+gulpmm(
+    struct monst *magr,
+    struct monst *mdef,
+    struct attack *mattk)
 {
-    xchar ax, ay, dx, dy;
+    coordxy ax, ay, dx, dy;
     int status;
     char buf[BUFSZ];
     struct obj *obj;
@@ -741,14 +766,17 @@ gulpmm(register struct monst *magr, register struct monst *mdef,
         /* [this two-part formatting dates back to when only one x_monnam
            result could be included in an expression because the next one
            would overwrite first's result -- that's no longer the case] */
-        Sprintf(buf, "%s swallows", Monnam(magr));
+        Sprintf(buf, "%s %s", Monnam(magr),
+                digests(magr->data) ? "swallows" : "engulfs");
         pline("%s %s.", buf, mon_nam(mdef));
     }
-    for (obj = mdef->minvent; obj; obj = obj->nobj)
-        (void) snuff_lit(obj);
+    if (!flaming(magr->data)) {
+        for (obj = mdef->minvent; obj; obj = obj->nobj)
+            (void) snuff_lit(obj);
+    }
 
     if (is_vampshifter(mdef)
-        && newcham(mdef, &mons[mdef->cham], FALSE, FALSE)) {
+        && newcham(mdef, &mons[mdef->cham], NO_NC_FLAGS)) {
         if (g.vis) {
             /* 'it' -- previous form is no longer available and
                using that would be excessively verbose */
@@ -786,16 +814,35 @@ gulpmm(register struct monst *magr, register struct monst *mdef,
         ;                              /* both died -- do nothing  */
     } else if (status & MM_DEF_DIED) { /* defender died */
         /*
-         *  Note:  remove_monster() was called in relmon(), wiping out
-         *  magr from level.monsters[mdef->mx][mdef->my].  We need to
-         *  put it back and display it.  -kd
+         *  Note: mdamagem() -> monkilled() -> mondead() -> m_detach()
+         *  -> relmon() used to call remove_monster() for the dead
+         *  monster even when it wasn't the one on the map, so we
+         *  needed to put magr back after mdef was killed and removed
+         *  from their shared spot.  But now [3.7] relmon() calls
+         *  mon_leaving_level() and that checks whether the monster at
+         *  dying monster's coordinates is that dying monster and only
+         *  removes it when they match.  So magr is still at mdef's
+         *  former spot these days.
+         *
+         *  We still potentially do one fixup:  if the gulp targetted
+         *  an inhospitable location, magr will return to its previous
+         *  spot instead of staying.
          */
-        if (!goodpos(dx, dy, magr, MM_IGNOREWATER))
-            dx = ax, dy = ay;
-        place_monster(magr, dx, dy);
-        newsym(dx, dy);
+        if (!goodpos(dx, dy, magr, MM_IGNOREWATER)) {
+            if (m_at(dx, dy) == magr) {
+                remove_monster(dx, dy);
+                newsym(dx, dy);
+            }
+            dx = ax, dy = ay; /* magr's spot at start of the attack */
+        }
+        if (m_at(dx, dy) != magr) {
+            place_monster(magr, dx, dy);
+            newsym(dx, dy);
+        }
         /* aggressor moves to <dx,dy> and might encounter trouble there */
-        if (minliquid(magr) || (t_at(dx, dy) && mintrap(magr) == 2))
+        if (minliquid(magr)
+            || (t_at(dx, dy)
+                && mintrap(magr, NO_TRAP_FLAGS) == Trap_Killed_Mon))
             status |= MM_AGR_DIED;
     } else if (status & MM_AGR_DIED) { /* aggressor died */
         place_monster(mdef, dx, dy);
@@ -901,6 +948,13 @@ mdamagem(struct monst *magr, struct monst *mdef,
     }
 
     mhitm_adtyping(magr, mattk, mdef, &mhm);
+
+    if (mhitm_knockback(magr, mdef, mattk, &mhm.hitflags,
+                        (MON_WEP(magr) != 0))
+        && ((mhm.hitflags & MM_DEF_DIED) != 0
+            || (mdef->mstate & (MON_DETACH|MON_MIGRATING|MON_LIMBO)) != 0))
+        return mhm.hitflags;
+
     if (mhm.done)
         return mhm.hitflags;
 
@@ -933,9 +987,9 @@ mdamagem(struct monst *magr, struct monst *mdef,
             /* various checks similar to dog_eat and meatobj.
              * after monkilled() to provide better message ordering */
             if (mdef->cham >= LOW_PM) {
-                (void) newcham(magr, (struct permonst *) 0, FALSE, TRUE);
+                (void) newcham(magr, (struct permonst *) 0, NC_SHOW_MSG);
             } else if (pd == &mons[PM_GREEN_SLIME] && !slimeproof(pa)) {
-                (void) newcham(magr, &mons[PM_GREEN_SLIME], FALSE, TRUE);
+                (void) newcham(magr, &mons[PM_GREEN_SLIME], NC_SHOW_MSG);
             } else if (pd == &mons[PM_WRAITH]) {
                 (void) grow_up(magr, (struct monst *) 0);
                 /* don't grow up twice */
@@ -943,6 +997,7 @@ mdamagem(struct monst *magr, struct monst *mdef,
             } else if (pd == &mons[PM_NURSE]) {
                 magr->mhp = magr->mhpmax;
             }
+            mon_givit(magr, pd);
         }
         /* caveat: above digestion handling doesn't keep `pa' up to date */
 
@@ -965,7 +1020,7 @@ mon_poly(struct monst *magr, struct monst *mdef, int dmg)
             /* system shock might take place in polyself() */
             if (u.ulycn == NON_PM) {
                 You("are subjected to a freakish metamorphosis.");
-                polyself(0);
+                polyself(POLY_NOFLAGS);
             } else if (u.umonnum != u.ulycn) {
                 You_feel("an unnatural urge coming on.");
                 you_were();
@@ -1003,10 +1058,10 @@ mon_poly(struct monst *magr, struct monst *mdef, int dmg)
                 else
                     monkilled(mdef, "", AD_RBRE);
             }
-        } else if (newcham(mdef, (struct permonst *) 0, FALSE, FALSE)) {
+        } else if (newcham(mdef, (struct permonst *) 0, NO_NC_FLAGS)) {
             if (g.vis) { /* either seen or adjacent */
                 boolean was_seen = !!strcmpi("It", Before),
-                        verbosely = flags.verbose || !was_seen;
+                        verbosely = Verbose(1, monpoly1) || !was_seen;
 
                 if (canspotmon(mdef))
                     pline("%s%s%s turns into %s.", Before,
@@ -1023,10 +1078,10 @@ mon_poly(struct monst *magr, struct monst *mdef, int dmg)
                 if (magr == &g.youmonst)
                     tele();
                 else if (!tele_restrict(magr))
-                    (void) rloc(magr, TRUE);
+                    (void) rloc(magr, RLOC_MSG);
             }
         } else {
-            if (g.vis && flags.verbose)
+            if (g.vis && Verbose(1, monpoly2))
                 pline1(nothing_happens);
         }
     }
@@ -1049,7 +1104,7 @@ paralyze_monst(struct monst *mon, int amt)
 int
 sleep_monst(struct monst *mon, int amt, int how)
 {
-    if (resists_sleep(mon)
+    if (resists_sleep(mon) || defended(mon, AD_SLEE)
         || (how >= 0 && resist(mon, (char) how, 0, NOTELL))) {
         shieldeff(mon->mx, mon->my);
     } else if (mon->mcanmove) {
@@ -1070,7 +1125,7 @@ sleep_monst(struct monst *mon, int amt, int how)
 void
 slept_monst(struct monst *mon)
 {
-    if ((mon->msleeping || !mon->mcanmove) && mon == u.ustuck
+    if (helpless(mon) && mon == u.ustuck
         && !sticks(g.youmonst.data) && !u.uswallow) {
         pline("%s grip relaxes.", s_suffix(Monnam(mon)));
         unstuck(mon);
@@ -1101,11 +1156,16 @@ rustm(struct monst *mdef, struct obj *obj)
 }
 
 static void
-mswingsm(struct monst *magr, struct monst *mdef, struct obj *otemp)
+mswingsm(
+    struct monst *magr, /* attacker */
+    struct monst *mdef, /* defender */
+    struct obj *otemp)  /* attacker's weapon */
 {
-    if (flags.verbose && !Blind && mon_visible(magr)) {
-        pline("%s %s %s%s %s at %s.", Monnam(magr),
-              (objects[otemp->otyp].oc_dir & PIERCE) ? "thrusts" : "swings",
+    if (Verbose(1, mswingsm) && !Blind && mon_visible(magr)) {
+        boolean bash = (is_pole(otemp)
+                        && dist2(magr->mx, magr->my, mdef->mx, mdef->my) <= 2);
+
+        pline("%s %s %s%s %s at %s.", Monnam(magr), mswings_verb(otemp, bash),
               (otemp->quan > 1L) ? "one of " : "", mhis(magr), xname(otemp),
               mon_nam(mdef));
     }

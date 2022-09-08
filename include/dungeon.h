@@ -7,8 +7,8 @@
 #define DUNGEON_H
 
 typedef struct d_level { /* basic dungeon level element */
-    xchar dnum;          /* dungeon number */
-    xchar dlevel;        /* level number */
+    xint16 dnum;          /* dungeon number */
+    xint16 dlevel;        /* level number */
 } d_level;
 
 #if !defined(MAKEDEFS_C) && !defined(MDLIB_C)
@@ -32,10 +32,11 @@ typedef struct s_level { /* special dungeon level element */
 } s_level;
 
 typedef struct stairway { /* basic stairway identifier */
-    xchar sx, sy;         /* x / y location of the stair */
+    coordxy sx, sy;         /* x / y location of the stair */
     d_level tolev;        /* where does it go */
     boolean up;           /* up or down? */
     boolean isladder;     /* ladder or stairway? */
+    boolean u_traversed;  /* hero has traversed this stair */
     struct stairway *next;
 } stairway;
 
@@ -51,10 +52,10 @@ enum level_region_types {
 };
 
 typedef struct dest_area { /* non-stairway level change identifier */
-    xchar lx, ly;          /* "lower" left corner (near [0,0]) */
-    xchar hx, hy;          /* "upper" right corner (near [COLNO,ROWNO]) */
-    xchar nlx, nly;        /* outline of invalid area */
-    xchar nhx, nhy;        /* opposite corner of invalid area */
+    coordxy lx, ly;          /* "lower" left corner (near [0,0]) */
+    coordxy hx, hy;          /* "upper" right corner (near [COLNO,ROWNO]) */
+    coordxy nlx, nly;        /* outline of invalid area */
+    coordxy nhx, nhy;        /* opposite corner of invalid area */
 } dest_area;
 
 typedef struct dungeon {   /* basic dungeon identifier */
@@ -64,9 +65,9 @@ typedef struct dungeon {   /* basic dungeon identifier */
     char themerms[15];     /* lua file name containing themed rooms */
     char boneid;           /* character to id dungeon in bones files */
     d_flags flags;         /* dungeon flags */
-    xchar entry_lev;       /* entry level */
-    xchar num_dunlevs;     /* number of levels in this dungeon */
-    xchar dunlev_ureached; /* how deep you have been in this dungeon */
+    xint16 entry_lev;       /* entry level */
+    xint16 num_dunlevs;     /* number of levels in this dungeon */
+    xint16 dunlev_ureached; /* how deep you have been in this dungeon */
     int ledger_start,      /* the starting depth in "real" terms */
         depth_start;       /* the starting depth in "logical" terms */
 } dungeon;
@@ -158,7 +159,7 @@ typedef struct branch {
 #define MIGR_WITH_HERO 9    /* mon: followers; obj: trap door */
 #define MIGR_NOBREAK 1024   /* bitmask: don't break on delivery */
 #define MIGR_NOSCATTER 2048 /* don't scatter on delivery */
-#define MIGR_TO_SPECIES 4096 /* migrating to species as they are made */ 
+#define MIGR_TO_SPECIES 4096 /* migrating to species as they are made */
 #define MIGR_LEFTOVERS 8192  /* grab remaining MIGR_TO_SPECIES objects */
 /* level information (saved via ledger number) */
 

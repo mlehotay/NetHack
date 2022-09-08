@@ -1,4 +1,4 @@
-/* NetHack 3.7	light.c	$NHDT-Date: 1604442297 2020/11/03 22:24:57 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.46 $ */
+/* NetHack 3.7	light.c	$NHDT-Date: 1657918094 2022/07/15 20:48:14 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.57 $ */
 /* Copyright (c) Dean Luick, 1994                                       */
 /* NetHack may be freely redistributed.  See license for details.       */
 
@@ -41,27 +41,27 @@
 #define LSF_SHOW 0x1        /* display the light source */
 #define LSF_NEEDS_FIXUP 0x2 /* need oid fixup */
 
-static light_source *new_light_core(xchar, xchar, int, int, anything *);
+static light_source *new_light_core(coordxy, coordxy, int, int, anything *);
 static void discard_flashes(void);
 static void write_ls(NHFILE *, light_source *);
 static int maybe_write_ls(NHFILE *, int, boolean);
 
 /* imported from vision.c, for small circles */
-extern xchar circle_data[];
-extern xchar circle_start[];
+extern coordxy circle_data[];
+extern coordxy circle_start[];
 
 
 /* Create a new light source.  Caller (and extern.h) doesn't need to know
    anything about type 'light_source'. */
 void
-new_light_source(xchar x, xchar y, int range, int type, anything *id)
+new_light_source(coordxy x, coordxy y, int range, int type, anything *id)
 {
     (void) new_light_core(x, y, range, type, id);
 }
 
 /* Create a new light source and return it.  Only used within this file. */
 static light_source *
-new_light_core(xchar x, xchar y, int range, int type, anything *id)
+new_light_core(coordxy x, coordxy y, int range, int type, anything *id)
 {
     light_source *ls;
 
@@ -69,7 +69,7 @@ new_light_core(xchar x, xchar y, int range, int type, anything *id)
         /* camera flash uses radius 0 and passes Null object */
         || (range == 0 && (type != LS_OBJECT || id->a_obj != 0))) {
         impossible("new_light_source:  illegal range %d", range);
-	return (light_source *) 0;
+        return (light_source *) 0;
     }
 
     ls = (light_source *) alloc(sizeof *ls);
@@ -134,13 +134,14 @@ del_light_source(int type, anything *id)
 
 /* Mark locations that are temporarily lit via mobile light sources. */
 void
-do_light_sources(xchar **cs_rows)
+do_light_sources(seenV **cs_rows)
 {
-    int x, y, min_x, max_x, max_y, offset;
-    xchar *limits;
+    coordxy x, y, min_x, max_x, max_y;
+    int offset;
+    coordxy *limits;
     short at_hero_range = 0;
     light_source *ls;
-    xchar *row;
+    seenV *row;
 
     for (ls = g.light_base; ls; ls = ls->next) {
         ls->flags &= ~LSF_SHOW;
@@ -162,7 +163,7 @@ do_light_sources(xchar **cs_rows)
 
         /* minor optimization: don't bother with duplicate light sources
            at hero */
-        if (ls->x == u.ux && ls->y == u.uy) {
+        if (u_at(ls->x, ls->y)) {
             if (at_hero_range >= ls->range)
                 ls->flags &= ~LSF_SHOW;
             else
@@ -190,7 +191,7 @@ do_light_sources(xchar **cs_rows)
                 if ((max_x = (ls->x + offset)) >= COLNO)
                     max_x = COLNO - 1;
 
-                if (ls->x == u.ux && ls->y == u.uy) {
+                if (u_at(ls->x, ls->y)) {
                     /*
                      * If the light source is located at the hero, then
                      * we can use the COULD_SEE bits already calculated
@@ -221,7 +222,7 @@ do_light_sources(xchar **cs_rows)
    remember terrain, objects, and monsters being revealed;
    if 'obj' is Null, <x,y> is being hit by a camera's light flash */
 void
-show_transient_light(struct obj *obj, int x, int y)
+show_transient_light(struct obj *obj, coordxy x, coordxy y)
 {
     light_source *ls = 0;
     anything cameraflash;
@@ -382,7 +383,7 @@ save_light_sources(NHFILE *nhfp, int range)
             panic("counted %d light sources, wrote %d! [range=%d]", count,
                   actual, range);
     }
-    
+
      if (release_data(nhfp)) {
         for (prev = &g.light_base; (curr = *prev) != 0; ) {
             if (!curr->id.a_monst) {
@@ -621,7 +622,7 @@ any_light_source(void)
  * only for burning light sources.
  */
 void
-snuff_light_source(int x, int y)
+snuff_light_source(coordxy x, coordxy y)
 {
     light_source *ls;
     struct obj *obj;
@@ -775,6 +776,8 @@ candle_light_range(struct obj *obj)
 int
 arti_light_radius(struct obj *obj)
 {
+    int res;
+
     /*
      * Used by begin_burn() when setting up a new light source
      * (obj->lamplit will already be set by this point) and
@@ -789,26 +792,41 @@ arti_light_radius(struct obj *obj)
     /* cursed radius of 1 is not noticeable for an item that's
        carried by the hero but is if it's carried by a monster
        or left lit on the floor (not applicable for Sunsword) */
-    return (obj->blessed ? 3 : !obj->cursed ? 2 : 1);
+    res = (obj->blessed ? 3 : !obj->cursed ? 2 : 1);
+
+    /* if poly'd into gold dragon with embedded scales, make the scales
+       have minimum radiance (hero as light source will use light radius
+       based on monster form); otherwise, worn gold DSM gives off more
+       light than other light sources */
+    if (obj == uskin)
+        res = 1;
+    else if (obj->otyp == GOLD_DRAGON_SCALE_MAIL) /* DSM but not scales */
+        ++res;
+
+    return res;
 }
 
-/* adverb describing lit artifact's light; depends on curse/bless state */
+/* adverb describing lit artifact's light; radius varies depending upon
+   curse/bless state; also used for gold dragon scales/scale mail */
 const char *
 arti_light_description(struct obj *obj)
 {
     switch (arti_light_radius(obj)) {
+    case 4:
+        return "radiantly"; /* blessed gold dragon scale mail */
     case 3:
-        return "brilliantly"; /* blessed */
+        return "brilliantly"; /* blessed artifact, uncursed gold DSM */
     case 2:
-        return "brightly"; /* uncursed */
+        return "brightly"; /* uncursed artifact, cursed gold DSM */
     case 1:
-        return "dimly"; /* cursed */
+        return "dimly"; /* cursed artifact, embedded scales */
     default:
         break;
     }
     return "strangely";
 }
 
+/* the #lightsources command */
 int
 wiz_light_sources(void)
 {
@@ -818,7 +836,7 @@ wiz_light_sources(void)
 
     win = create_nhwindow(NHW_MENU); /* corner text window */
     if (win == WIN_ERR)
-        return 0;
+        return ECMD_OK;
 
     Sprintf(buf, "Mobile light sources: hero @ (%2d,%2d)", u.ux, u.uy);
     putstr(win, 0, buf);
@@ -849,7 +867,7 @@ wiz_light_sources(void)
     display_nhwindow(win, FALSE);
     destroy_nhwindow(win);
 
-    return 0;
+    return ECMD_OK;
 }
 
 /*light.c*/

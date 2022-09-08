@@ -91,13 +91,13 @@ E int srandom(unsigned int);
 #endif
 #endif
 #else
-#if defined(MACOSX)
+#if defined(MACOS)
 E long lrand48(void);
 E void srand48(long);
 #else
 extern long lrand48(void);
 extern void srand48(long);
-#endif /* MACOSX */
+#endif /* MACOS */
 #endif /* BSD || ULTRIX || RANDOM */
 
 #if !defined(BSD) || defined(ultrix)
@@ -534,22 +534,13 @@ E genericptr_t realloc(genericptr_t, size_t);
 
 /* time functions */
 
-#ifndef LATTICE
-#if !(defined(ULTRIX_PROTO) && defined(__GNUC__))
+#ifdef NEED_TIME_DECL
+E time_t time(time_t *);
+#endif
+#ifdef NEED_LOCALTIME_DECL
 E struct tm *localtime(const time_t *);
 #endif
-#endif
-
-#if defined(ULTRIX) || (defined(BSD) && defined(POSIX_TYPES))          \
-    || defined(SYSV) || defined(MICRO) || defined(VMS) || defined(MAC) \
-    || (defined(HPUX) && defined(_POSIX_SOURCE))
-E time_t time(time_t *);
-#else
-E long time(time_t *);
-#endif /* ULTRIX */
-
-#ifdef VMS
-/* used in makedefs.c, but missing from gcc-vms's <time.h> */
+#ifdef NEED_CTIME_DECL
 E char *ctime(const time_t *);
 #endif
 
@@ -561,7 +552,7 @@ E int abs(int);
 #ifdef atoi
 #undef atoi
 #endif
-E int atoi, (const char *);
+E int atoi(const char *);
 #endif
 
 #undef E

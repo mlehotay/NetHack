@@ -1,4 +1,6 @@
-
+-- NetHack themerms.lua	$NHDT-Date: 1652196294 2022/05/10 15:24:54 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.16 $
+--	Copyright (c) 2020 by Pasi Kallinen
+-- NetHack may be freely redistributed.  See license for details.
 -- themerooms is an array of tables and/or functions.
 -- the tables define "frequency", "contents", "mindiff" and "maxdiff".
 -- frequency is optional; if omitted, 1 is assumed.
@@ -73,7 +75,15 @@ themerooms = {
    function()
       des.room({ type = "themed", filled = 1,
                  contents = function()
-                    des.terrain(selection.floodfill(1,1), "I");
+                    local ice = selection.floodfill(1,1);
+                    des.terrain(ice, "I");
+                    if (percent(25)) then
+                       local mintime = 1000 - (nh.level_difficulty() * 100);
+                       local ice_melter = function(x,y)
+                          nh.start_timer_at(x,y, "melt-ice", mintime + nh.rn2(1000));
+                       end;
+                       ice:iterate(ice_melter);
+                    end
                  end
       });
    end,
@@ -218,6 +228,36 @@ themerooms = {
                     des.altar({ align = align[1] });
                     des.altar({ align = align[2] });
                     des.altar({ align = align[3] });
+                 end
+      });
+   end,
+
+   -- Ghost of an Adventurer
+   function()
+      des.room({ type = "themed", lit = 0,
+                 contents = function(rm)
+                    local px = nh.rn2(rm.width);
+                    local py = nh.rn2(rm.height);
+                    des.monster({ id = "ghost", asleep = true, waiting = true, coord = {px,py} });
+                    if percent(65) then
+                       des.object({ id = "dagger", coord = {px,py}, buc = "not-blessed" });
+                    end
+                    if percent(55) then
+                       des.object({ class = ")", coord = {px,py}, buc = "not-blessed" });
+                    end
+                    if percent(45) then
+                       des.object({ id = "bow", coord = {px,py}, buc = "not-blessed" });
+                       des.object({ id = "arrow", coord = {px,py}, buc = "not-blessed" });
+                    end
+                    if percent(65) then
+                       des.object({ class = "[", coord = {px,py}, buc = "not-blessed" });
+                    end
+                    if percent(20) then
+                       des.object({ class = "=", coord = {px,py}, buc = "not-blessed" });
+                    end
+                    if percent(20) then
+                       des.object({ class = "?", coord = {px,py}, buc = "not-blessed" });
+                    end
                  end
       });
    end,

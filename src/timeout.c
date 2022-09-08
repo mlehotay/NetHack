@@ -1,4 +1,4 @@
-/* NetHack 3.7	timeout.c	$NHDT-Date: 1606243387 2020/11/24 18:43:07 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.122 $ */
+/* NetHack 3.7	timeout.c	$NHDT-Date: 1658390077 2022/07/21 07:54:37 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.142 $ */
 /* Copyright (c) Stichting Mathematisch Centrum, Amsterdam, 1985. */
 /*-Copyright (c) Robert Patrick Rankin, 2018. */
 /* NetHack may be freely redistributed.  See license for details. */
@@ -11,6 +11,7 @@ static void choke_dialogue(void);
 static void levitation_dialogue(void);
 static void slime_dialogue(void);
 static void slimed_to_death(struct kinfo *);
+static void sickness_dialogue(void);
 static void phaze_dialogue(void);
 static void done_timeout(int, int);
 static void slip_or_trip(void);
@@ -46,6 +47,9 @@ const struct propname {
     { DETECT_MONSTERS, "monster detection" },
     { SEE_INVIS, "see invisible" },
     { INVIS, "invisible" },
+    /* temporary acid resistance and stone resistance can come from eating */
+    { ACID_RES, "acid resistance" },
+    { STONE_RES, "stoning resistance" },
     /* timed displacement is possible via eating a displacer beast corpse */
     { DISPLACED, "displaced" },
     /* timed pass-walls is a potential prayer result if surrounded by stone
@@ -54,7 +58,8 @@ const struct propname {
     /*
      * Properties beyond here don't have timed values during normal play,
      * so there's not much point in trying to order them sensibly.
-     * They're either on or off based on equipment, role, actions, &c.
+     * They're either on or off based on equipment, role, actions, &c,
+     * but in wizard mode #wizintrinsic can give then as timed effects.
      */
     { FIRE_RES, "fire resistance" },
     { COLD_RES, "cold resistance" },
@@ -62,8 +67,6 @@ const struct propname {
     { DISINT_RES, "disintegration resistance" },
     { SHOCK_RES, "shock resistance" },
     { POISON_RES, "poison resistance" },
-    { ACID_RES, "acid resistance" },
-    { STONE_RES, "stoning resistance" },
     { DRAIN_RES, "drain resistance" },
     { SICK_RES, "sickness resistance" },
     { ANTIMAGIC, "magic resistance" },
@@ -114,7 +117,7 @@ static NEARDATA const char *const stoned_texts[] = {
 static void
 stoned_dialogue(void)
 {
-    register long i = (Stoned & TIMEOUT);
+    long i = (Stoned & TIMEOUT);
 
     if (i > 0L && i <= SIZE(stoned_texts)) {
         char buf[BUFSZ];
@@ -122,7 +125,7 @@ stoned_dialogue(void)
         Strcpy(buf, stoned_texts[SIZE(stoned_texts) - i]);
         if (nolimbs(g.youmonst.data) && strstri(buf, "limbs"))
             (void) strsubst(buf, "limbs", "extremities");
-        pline1(buf);
+        urgent_pline("%s", buf);
     }
     switch ((int) i) {
     case 5: /* slowing down */
@@ -241,6 +244,8 @@ vomiting_dialogue(void)
     exercise(A_CON, FALSE);
 }
 
+DISABLE_WARNING_FORMAT_NONLITERAL   /* RESTORE is after slime_dialogue */
+
 static NEARDATA const char *const choke_texts[] = {
     "You find it hard to breathe.",
     "You're gasping for air.",
@@ -260,21 +265,53 @@ static NEARDATA const char *const choke_texts2[] = {
 static void
 choke_dialogue(void)
 {
-    register long i = (Strangled & TIMEOUT);
+    long i = (Strangled & TIMEOUT);
 
     if (i > 0 && i <= SIZE(choke_texts)) {
-        if (Breathless || !rn2(50))
-            pline(choke_texts2[SIZE(choke_texts2) - i], body_part(NECK));
-        else {
+        if (Breathless || !rn2(50)) {
+            urgent_pline(choke_texts2[SIZE(choke_texts2) - i],
+                         body_part(NECK));
+        } else {
             const char *str = choke_texts[SIZE(choke_texts) - i];
 
             if (index(str, '%'))
-                pline(str, hcolor(NH_BLUE));
+                urgent_pline(str, hcolor(NH_BLUE));
             else
-                pline1(str);
+                urgent_pline("%s", str);
         }
     }
     exercise(A_STR, FALSE);
+}
+
+static NEARDATA const char *const sickness_texts[] = {
+    "Your illness feels worse.",
+    "Your illness is severe.",
+    "You are at Death's door.",
+};
+
+static void
+sickness_dialogue(void)
+{
+    long j = (Sick & TIMEOUT), i = j / 2L;
+
+    if (i > 0L && i <= SIZE(sickness_texts) && (j % 2) != 0) {
+        char buf[BUFSZ], pronounbuf[40];
+
+        Strcpy(buf, sickness_texts[SIZE(sickness_texts) - i]);
+        /* change the message slightly for food poisoning */
+        if ((u.usick_type & SICK_NONVOMITABLE) == 0)
+            (void) strsubst(buf, "illness", "sickness");
+        if (Hallucination && strstri(buf, "Death's door")) {
+            /* youmonst: for Hallucination, mhe()'s mon argument isn't used */
+            Strcpy(pronounbuf, mhe(&g.youmonst));
+            Sprintf(eos(buf), "  %s %s inviting you in.",
+                    /* upstart() modifies its argument but vtense() doesn't
+                       care whether or not that has already happened */
+                    upstart(pronounbuf), vtense(pronounbuf, "are"));
+        }
+        urgent_pline("%s", buf);
+    }
+    exercise(A_CON, FALSE);
 }
 
 static NEARDATA const char *const levi_texts[] = {
@@ -302,8 +339,8 @@ levitation_dialogue(void)
             boolean danger = (is_pool_or_lava(u.ux, u.uy)
                               && !Is_waterlevel(&u.uz));
 
-            pline(s, danger ? "over" : "in",
-                  danger ? surface(u.ux, u.uy) : "air");
+            urgent_pline(s, danger ? "over" : "in",
+                         danger ? surface(u.ux, u.uy) : "air");
         } else
             pline1(s);
     }
@@ -343,12 +380,14 @@ slime_dialogue(void)
         if (index(buf, '%')) {
             if (i == 4L) {  /* "you are turning green" */
                 if (!Blind) /* [what if you're already green?] */
-                    pline(buf, hcolor(NH_GREEN));
-            } else
-                pline(buf,
-                      an(Hallucination ? rndmonnam(NULL) : "green slime"));
-        } else
-            pline1(buf);
+                    urgent_pline(buf, hcolor(NH_GREEN));
+            } else {
+                urgent_pline(buf, an(Hallucination ? rndmonnam(NULL)
+                                                   : "green slime"));
+            }
+        } else {
+            urgent_pline("%s", buf);
+        }
     }
 
     switch (i) {
@@ -371,6 +410,8 @@ slime_dialogue(void)
     }
     exercise(A_DEX, FALSE);
 }
+
+RESTORE_WARNING_FORMAT_NONLITERAL
 
 void
 burn_away_slime(void)
@@ -434,10 +475,10 @@ slimed_to_death(struct kinfo* kptr)
         Strcpy(slimebuf, "green slime has been genocided...");
         if (iflags.last_msg == PLNMSG_OK_DONT_DIE)
             /* follows "OK, so you don't die." and arg is second sentence */
-            pline("Yes, you do.  %s", upstart(slimebuf));
+            urgent_pline("Yes, you do.  %s", upstart(slimebuf));
         else
             /* follows "The medallion crumbles to dust." */
-            pline("Unfortunately, %s", slimebuf);
+            urgent_pline("Unfortunately, %s", slimebuf);
         /* die again; no possibility of amulet this time */
         done(GENOCIDED); /* [should it be done_timeout(GENOCIDED, SLIMED)?] */
         /* could be life-saved again (only in explore or wizard mode)
@@ -527,6 +568,8 @@ nh_timeout(void)
         vomiting_dialogue();
     if (Strangled)
         choke_dialogue();
+    if (Sick)
+        sickness_dialogue();
     if (HLevitation & TIMEOUT)
         levitation_dialogue();
     if (HPasses_walls & TIMEOUT)
@@ -583,8 +626,8 @@ nh_timeout(void)
                 make_vomiting(0L, TRUE);
                 break;
             case SICK:
-                /* You might be able to bounce back from food poisoning, but not
-                 * other forms of illness. */
+                /* hero might be able to bounce back from food poisoning,
+                   but not other forms of illness */
                 if ((u.usick_type & SICK_NONVOMITABLE) == 0
                     && rn2(100) < ACURR(A_CON)) {
                     You("have recovered from your illness.");
@@ -593,7 +636,7 @@ nh_timeout(void)
                     adjattrib(A_CON, -1, 1);
                     break;
                 }
-                You("die from your illness.");
+                urgent_pline("You die from your illness.");
                 if (kptr && kptr->name[0]) {
                     g.killer.format = kptr->format;
                     Strcpy(g.killer.name, kptr->name);
@@ -682,12 +725,14 @@ nh_timeout(void)
                 }
                 break;
             case LEVITATION:
-                /* timed Flying is via #wizintrinsic only; still, we want to
-                   avoid float_down() reporting "you have stopped levitating
-                   and are now flying" if both are timing out together;
-                   relies on knowing that Lev timeout is handled before Fly */
+                /* timed Levitation is ordinary, timed Flying is via
+                   #wizintrinsic only; still, we want to avoid float_down()
+                   reporting "you have stopped levitating and are now flying"
+                   when both are timing out together; if that is about to
+                   happen, end Flying early to skip feedback about it;
+                   assumes Levitation is handled before Flying */
                 if ((HFlying & TIMEOUT) == 1L)
-                    --HFlying; /* bypass pending 'case FLYING' */
+                    set_itimeout(&HFlying, 0L); /* bypass 'case FLYING' */
                 (void) float_down(I_SPECIAL | TIMEOUT, 0L);
                 break;
             case FLYING:
@@ -696,6 +741,20 @@ nh_timeout(void)
                     g.context.botl = 1;
                     You("land.");
                     spoteffects(TRUE);
+                }
+                break;
+            case ACID_RES:
+                if (!Acid_resistance && !Unaware)
+                    You("no longer feel safe from acid.");
+                break;
+            case STONE_RES:
+                if (!Stone_resistance) {
+                    if (!Unaware)
+                        You("no longer feel secure from petrification.");
+                    /* no-op if not wielding a cockatrice corpse;
+                       uswapwep case is always a no-op (see Gloves_off()) */
+                    wielding_corpse(uwep, (struct obj *) 0, FALSE);
+                    wielding_corpse(uswapwep, (struct obj *) 0, FALSE);
                 }
                 break;
             case DISPLACED:
@@ -790,7 +849,7 @@ fall_asleep(int how_long, boolean wakeup_msg)
         g.afternmv = Hear_again; /* this won't give any messages */
     }
     /* early wakeup from combat won't be possible until next monster turn */
-    u.usleep = g.monstermoves;
+    u.usleep = g.moves;
     g.nomovemsg = wakeup_msg ? "You wake up." : You_can_move_again;
 }
 
@@ -840,7 +899,7 @@ hatch_egg(anything *arg, long timeout)
     struct obj *egg;
     struct monst *mon, *mon2;
     coord cc;
-    xchar x, y;
+    coordxy x, y;
     boolean yours, silent, knows_egg = FALSE;
     boolean cansee_hatchspot = FALSE;
     int i, mnum, hatchcount = 0;
@@ -854,7 +913,7 @@ hatch_egg(anything *arg, long timeout)
     mnum = big_to_little(egg->corpsenm);
     /* The identity of one's father is learned, not innate */
     yours = (egg->spe || (!flags.female && carried(egg) && !rn2(2)));
-    silent = (timeout != g.monstermoves); /* hatched while away */
+    silent = (timeout != g.moves); /* hatched while away */
 
     /* only can hatch when in INVENT, FLOOR, MINVENT */
     if (get_obj_location(egg, &x, &y, 0)) {
@@ -864,7 +923,8 @@ hatch_egg(anything *arg, long timeout)
             && !(g.mvitals[mnum].mvflags & (G_GENOD | G_EXTINCT))) {
             for (i = hatchcount; i > 0; i--) {
                 if (!enexto(&cc, x, y, &mons[mnum])
-                    || !(mon = makemon(&mons[mnum], cc.x, cc.y, NO_MINVENT)))
+                    || !(mon = makemon(&mons[mnum], cc.x, cc.y,
+                                       NO_MINVENT|MM_NOMSG)))
                     break;
                 /* tame if your own egg hatches while you're on the
                    same dungeon level, or any dragon egg which hatches
@@ -1011,7 +1071,7 @@ learn_egg_type(int mnum)
 
 /* Attach a fig_transform timeout to the given figurine. */
 void
-attach_fig_transform_timeout(struct obj* figurine)
+attach_fig_transform_timeout(struct obj *figurine)
 {
     int i;
 
@@ -1118,9 +1178,9 @@ slip_or_trip(void)
     }
 }
 
-/* Print a lamp flicker message with tailer. */
+/* Print a lamp flicker message with tailer.  Only called if seen. */
 static void
-see_lamp_flicker(struct obj* obj, const char* tailer)
+see_lamp_flicker(struct obj *obj, const char *tailer)
 {
     switch (obj->where) {
     case OBJ_INVENT:
@@ -1133,9 +1193,9 @@ see_lamp_flicker(struct obj* obj, const char* tailer)
     }
 }
 
-/* Print a dimming message for brass lanterns. */
+/* Print a dimming message for brass lanterns.  Only called if seen. */
 static void
-lantern_message(struct obj* obj)
+lantern_message(struct obj *obj)
 {
     /* from adventure */
     switch (obj->where) {
@@ -1158,19 +1218,19 @@ lantern_message(struct obj* obj)
  * See begin_burn() for meanings of obj->age and obj->spe.
  */
 void
-burn_object(anything* arg, long timeout)
+burn_object(anything *arg, long timeout)
 {
     struct obj *obj = arg->a_obj;
-    boolean canseeit, many, menorah, need_newsym, need_invupdate;
-    xchar x, y;
+    boolean canseeit, many, menorah, need_newsym, need_invupdate, bytouch;
+    coordxy x, y;
     char whose[BUFSZ];
 
     menorah = obj->otyp == CANDELABRUM_OF_INVOCATION;
     many = menorah ? obj->spe > 1 : obj->quan > 1L;
 
     /* timeout while away */
-    if (timeout != g.monstermoves) {
-        long how_long = g.monstermoves - timeout;
+    if (timeout != g.moves) {
+        long how_long = g.moves - timeout;
 
         if (how_long >= obj->age) {
             obj->age = 0;
@@ -1180,12 +1240,18 @@ burn_object(anything* arg, long timeout)
                 obj->spe = 0; /* no more candles */
                 obj->owt = weight(obj);
             } else if (Is_candle(obj) || obj->otyp == POT_OIL) {
+                struct monst *mtmp = NULL;
+
+                if (obj->where == OBJ_FLOOR)
+                    mtmp = m_at(obj->ox, obj->oy);
                 /* get rid of candles and burning oil potions;
                    we know this object isn't carried by hero,
                    nor is it migrating */
                 obj_extract_self(obj);
                 obfree(obj, (struct obj *) 0);
                 obj = (struct obj *) 0;
+                if (mtmp)
+                    maybe_unhide_at(mtmp->mx, mtmp->my);
             }
 
         } else {
@@ -1203,6 +1269,11 @@ burn_object(anything* arg, long timeout)
     } else {
         canseeit = FALSE;
     }
+    /* when carrying the light source, you can feel the heat from lit lamp
+       or candle so you'll be notified when it burns out even if blind at
+       the time; brass lantern doesn't radiate sufficient heat for that
+       (however, inventory formatting drops "(lit)" so player can tell) */
+    bytouch = (obj->where == OBJ_INVENT && obj->otyp != BRASS_LANTERN);
     need_newsym = need_invupdate = FALSE;
 
     /* obj->age is the age remaining at this point.  */
@@ -1254,9 +1325,9 @@ burn_object(anything* arg, long timeout)
 
         case 25:
             if (canseeit) {
-                if (obj->otyp == BRASS_LANTERN)
+                if (obj->otyp == BRASS_LANTERN) {
                     lantern_message(obj);
-                else {
+                } else {
                     switch (obj->where) {
                     case OBJ_INVENT:
                     case OBJ_MINVENT:
@@ -1272,7 +1343,7 @@ burn_object(anything* arg, long timeout)
 
         case 0:
             /* even if blind you'll know if holding it */
-            if (canseeit || obj->where == OBJ_INVENT) {
+            if (canseeit || bytouch) {
                 switch (obj->where) {
                 case OBJ_INVENT:
                     need_invupdate = TRUE;
@@ -1350,7 +1421,7 @@ burn_object(anything* arg, long timeout)
 
         case 0:
             /* we know even if blind and in our inventory */
-            if (canseeit || obj->where == OBJ_INVENT) {
+            if (canseeit || bytouch) {
                 if (menorah) {
                     switch (obj->where) {
                     case OBJ_INVENT:
@@ -1396,17 +1467,23 @@ burn_object(anything* arg, long timeout)
             end_burn(obj, FALSE);
 
             if (menorah) {
-                obj->spe = 0;
+                obj->spe = 0; /* no candles */
                 obj->owt = weight(obj);
+                if (carried(obj))
+                    need_invupdate = TRUE;
             } else {
                 if (carried(obj)) {
                     useupall(obj);
                 } else {
+                    boolean onfloor = (obj->where == OBJ_FLOOR);
+
                     /* clear migrating obj's destination code
                        so obfree won't think this item is worn */
                     if (obj->where == OBJ_MIGRATING)
                         obj->owornmask = 0L;
                     obj_extract_self(obj);
+                    if (onfloor)
+                        maybe_unhide_at(x, y);
                     obfree(obj, (struct obj *) 0);
                 }
                 obj = (struct obj *) 0;
@@ -1466,7 +1543,7 @@ burn_object(anything* arg, long timeout)
  * This is a "silent" routine - it should not print anything out.
  */
 void
-begin_burn(struct obj* obj, boolean already_lit)
+begin_burn(struct obj *obj, boolean already_lit)
 {
     int radius = 3;
     long turns = 0;
@@ -1544,7 +1621,7 @@ begin_burn(struct obj* obj, boolean already_lit)
     }
 
     if (obj->lamplit && !already_lit) {
-        xchar x, y;
+        coordxy x, y;
 
         if (get_obj_location(obj, &x, &y, CONTAINED_TOO | BURIED_TOO))
             new_light_source(x, y, radius, LS_OBJECT, obj_to_any(obj));
@@ -1558,7 +1635,7 @@ begin_burn(struct obj* obj, boolean already_lit)
  * light source.
  */
 void
-end_burn(struct obj* obj, boolean timer_attached)
+end_burn(struct obj *obj, boolean timer_attached)
 {
     if (!obj->lamplit) {
         impossible("end_burn: obj %s not lit", xname(obj));
@@ -1582,19 +1659,18 @@ end_burn(struct obj* obj, boolean timer_attached)
  * Cleanup a burning object if timer stopped.
  */
 static void
-cleanup_burn(anything* arg, long expire_time)
+cleanup_burn(anything *arg, long expire_time)
 {
     struct obj *obj = arg->a_obj;
+
     if (!obj->lamplit) {
         impossible("cleanup_burn: obj %s not lit", xname(obj));
         return;
     }
 
     del_light_source(LS_OBJECT, obj_to_any(obj));
-
     /* restore unused time */
-    obj->age += expire_time - g.monstermoves;
-
+    obj->age += expire_time - g.moves;
     obj->lamplit = 0;
 
     if (obj->where == OBJ_INVENT)
@@ -1657,7 +1733,7 @@ do_storms(void)
  *  boolean start_timer(long timeout,short kind,short func_index,
  *                      anything *arg)
  *      Start a timer of kind 'kind' that will expire at time
- *      g.monstermoves+'timeout'.  Call the function at 'func_index'
+ *      g.moves+'timeout'.  Call the function at 'func_index'
  *      in the timeout table using argument 'arg'.  Return TRUE if
  *      a timer was started.  This places the timer on a list ordered
  *      "sooner" to "later".  If an object, increment the object's
@@ -1721,15 +1797,9 @@ typedef struct {
     timeout_proc f, cleanup;
 #ifdef VERBOSE_TIMER
     const char *name;
-#define TTAB(a, b, c) \
-    {                 \
-        a, b, c       \
-    }
+#define TTAB(a, b, c) { a, b, c }
 #else
-#define TTAB(a, b, c) \
-    {                 \
-        a, b          \
-    }
+#define TTAB(a, b, c) { a, b } /* ignore c for !VERBOSE_TIMER */
 #endif
 } ttable;
 
@@ -1742,7 +1812,8 @@ static const ttable timeout_funcs[NUM_TIME_FUNCS] = {
     TTAB(burn_object, cleanup_burn, "burn_object"),
     TTAB(hatch_egg, (timeout_proc) 0, "hatch_egg"),
     TTAB(fig_transform, (timeout_proc) 0, "fig_transform"),
-    TTAB(melt_ice_away, (timeout_proc) 0, "melt_ice_away")
+    TTAB(melt_ice_away, (timeout_proc) 0, "melt_ice_away"),
+    TTAB(shrink_glob, (timeout_proc) 0, "shrink_glob"),
 };
 #undef TTAB
 
@@ -1788,6 +1859,7 @@ print_queue(winid win, timer_element* base)
     }
 }
 
+/* the #timeout command */
 int
 wiz_timeout_queue(void)
 {
@@ -1799,9 +1871,9 @@ wiz_timeout_queue(void)
 
     win = create_nhwindow(NHW_MENU); /* corner text window */
     if (win == WIN_ERR)
-        return 0;
+        return ECMD_OK;
 
-    Sprintf(buf, "Current time = %ld.", g.monstermoves);
+    Sprintf(buf, "Current time = %ld.", g.moves);
     putstr(win, 0, buf);
     putstr(win, 0, "");
     putstr(win, 0, "Active timeout queue:");
@@ -1848,10 +1920,22 @@ wiz_timeout_queue(void)
             }
         }
     }
+    if (u.uswldtim) {
+        putstr(win, 0, "");
+        /* decremented when engulfer makes a move, so can last longer than
+           the number of turns reported if engulfer is slow */
+        Sprintf(buf, "Swallow countdown is %u.", u.uswldtim);
+        putstr(win, 0, buf);
+    }
+    if (u.uinvault) {
+        putstr(win, 0, "");
+        Sprintf(buf, "Vault counter is %d.", u.uinvault);
+        putstr(win, 0, buf);
+    }
     display_nhwindow(win, FALSE);
     destroy_nhwindow(win);
 
-    return 0;
+    return ECMD_OK;
 }
 
 void
@@ -1860,7 +1944,7 @@ timer_sanity_check(void)
     timer_element *curr;
 
     /* this should be much more complete */
-    for (curr = g.timer_base; curr; curr = curr->next)
+    for (curr = g.timer_base; curr; curr = curr->next) {
         if (curr->kind == TIMER_OBJECT) {
             struct obj *obj = curr->arg.a_obj;
 
@@ -1868,7 +1952,20 @@ timer_sanity_check(void)
                 impossible("timer sanity: untimed obj %s, timer %ld",
                       fmt_ptr((genericptr_t) obj), curr->tid);
             }
+        } else if (curr->kind == TIMER_LEVEL) {
+            long where = curr->arg.a_long;
+            coordxy x = (coordxy) ((where >> 16) & 0xFFFF),
+                  y = (coordxy) (where & 0xFFFF);
+
+            if (!isok(x, y)) {
+                impossible("timer sanity: spot timer %lu at <%d,%d>",
+                           curr->tid, x, y);
+            } else if (curr->func_index == MELT_ICE_AWAY && !is_ice(x, y)) {
+                impossible("timer sanity: melt timer %lu on non-ice %d <%d,%d>",
+                           curr->tid, levl[x][y].typ, x, y);
+            }
         }
+    }
 }
 
 /*
@@ -1885,7 +1982,7 @@ run_timers(void)
      * any time.  The list is ordered, we are done when the first element
      * is in the future.
      */
-    while (g.timer_base && g.timer_base->timeout <= g.monstermoves) {
+    while (g.timer_base && g.timer_base->timeout <= g.moves) {
         curr = g.timer_base;
         g.timer_base = curr->next;
 
@@ -1934,7 +2031,7 @@ start_timer(
     (void) memset((genericptr_t) gnu, 0, sizeof *gnu);
     gnu->next = 0;
     gnu->tid = g.timer_id++;
-    gnu->timeout = g.monstermoves + when;
+    gnu->timeout = g.moves + when;
     gnu->kind = kind;
     gnu->needs_fixup = 0;
     gnu->func_index = func_index;
@@ -1954,6 +2051,7 @@ start_timer(
 long
 stop_timer(short func_index, anything *arg)
 {
+    timeout_proc cleanup_func;
     timer_element *doomed;
     long timeout;
 
@@ -1963,10 +2061,10 @@ stop_timer(short func_index, anything *arg)
         timeout = doomed->timeout;
         if (doomed->kind == TIMER_OBJECT)
             (arg->a_obj)->timed--;
-        if (timeout_funcs[doomed->func_index].cleanup)
-            (*timeout_funcs[doomed->func_index].cleanup)(arg, timeout);
+        if ((cleanup_func = timeout_funcs[doomed->func_index].cleanup) != 0)
+            (*cleanup_func)(arg, timeout);
         free((genericptr_t) doomed);
-        return (timeout - g.monstermoves);
+        return (timeout - g.moves);
     }
     return 0L;
 }
@@ -2017,7 +2115,7 @@ obj_split_timers(struct obj* src, struct obj* dest)
     for (curr = g.timer_base; curr; curr = next_timer) {
         next_timer = curr->next; /* things may be inserted */
         if (curr->kind == TIMER_OBJECT && curr->arg.a_obj == src) {
-            (void) start_timer(curr->timeout - g.monstermoves, TIMER_OBJECT,
+            (void) start_timer(curr->timeout - g.moves, TIMER_OBJECT,
                                curr->func_index, obj_to_any(dest));
         }
     }
@@ -2030,6 +2128,7 @@ obj_split_timers(struct obj* src, struct obj* dest)
 void
 obj_stop_timers(struct obj* obj)
 {
+    timeout_proc cleanup_func;
     timer_element *curr, *prev, *next_timer = 0;
 
     for (prev = 0, curr = g.timer_base; curr; curr = next_timer) {
@@ -2039,9 +2138,8 @@ obj_stop_timers(struct obj* obj)
                 prev->next = curr->next;
             else
                 g.timer_base = curr->next;
-            if (timeout_funcs[curr->func_index].cleanup)
-                (*timeout_funcs[curr->func_index].cleanup)(&curr->arg,
-                                                           curr->timeout);
+            if ((cleanup_func = timeout_funcs[curr->func_index].cleanup) != 0)
+                (*cleanup_func)(&curr->arg, curr->timeout);
             free((genericptr_t) curr);
         } else {
             prev = curr;
@@ -2066,8 +2164,9 @@ obj_has_timer(struct obj* object, short timer_type)
  *
  */
 void
-spot_stop_timers(xchar x, xchar y, short func_index)
+spot_stop_timers(coordxy x, coordxy y, short func_index)
 {
+    timeout_proc cleanup_func;
     timer_element *curr, *prev, *next_timer = 0;
     long where = (((long) x << 16) | ((long) y));
 
@@ -2079,9 +2178,8 @@ spot_stop_timers(xchar x, xchar y, short func_index)
                 prev->next = curr->next;
             else
                 g.timer_base = curr->next;
-            if (timeout_funcs[curr->func_index].cleanup)
-                (*timeout_funcs[curr->func_index].cleanup)(&curr->arg,
-                                                           curr->timeout);
+            if ((cleanup_func = timeout_funcs[curr->func_index].cleanup) != 0)
+                (*cleanup_func)(&curr->arg, curr->timeout);
             free((genericptr_t) curr);
         } else {
             prev = curr;
@@ -2094,7 +2192,7 @@ spot_stop_timers(xchar x, xchar y, short func_index)
  * Returns 0L if no such timer.
  */
 long
-spot_time_expires(xchar x, xchar y, short func_index)
+spot_time_expires(coordxy x, coordxy y, short func_index)
 {
     timer_element *curr;
     long where = (((long) x << 16) | ((long) y));
@@ -2108,10 +2206,10 @@ spot_time_expires(xchar x, xchar y, short func_index)
 }
 
 long
-spot_time_left(xchar x, xchar y, short func_index)
+spot_time_left(coordxy x, coordxy y, short func_index)
 {
     long expires = spot_time_expires(x, y, func_index);
-    return (expires > 0L) ? expires - g.monstermoves : 0L;
+    return (expires > 0L) ? expires - g.moves : 0L;
 }
 
 /* Insert timer into the global queue */
