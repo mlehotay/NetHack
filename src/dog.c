@@ -1086,7 +1086,7 @@ dopet()
     int tx, ty;
     struct obj *otmp;
 
-    if (nohands(g.youmonst.data) || nolimbs(g.youmonst.data)) {
+    if (nohands(gy.youmonst.data) || nolimbs(gy.youmonst.data)) {
         pline("Without hands, you can't pet anything!");
         return 0;
     }
@@ -1108,7 +1108,7 @@ dopet()
 
     if (u.dx == 0 && u.dy == 0) {
         You("pat yourself on the %s for doing such a good job.",
-            mbodypart(&g.youmonst, HEAD));
+            mbodypart(&gy.youmonst, HEAD));
         return 1;
     }
 
@@ -1159,7 +1159,7 @@ petmon:
     mtmp->mstrategy &= ~STRAT_WAITMASK;
 
     pline("You run your %s over the %s on %s %s.",
-          makeplural(mbodypart(&g.youmonst, HAND)), mbodypart(mtmp, HAIR),
+          makeplural(mbodypart(&gy.youmonst, HAND)), mbodypart(mtmp, HAIR),
           s_suffix(mon_nam(mtmp)), mbodypart(mtmp, HEAD));
 
     if (mtmp->mtame)
@@ -1170,10 +1170,10 @@ petmon:
     /* petting a cockatrice with bare hands is bad news */
     if (touch_petrifies(mtmp->data) && !uarmg) {
         if (!Stone_resistance
-            && !(poly_when_stoned(g.youmonst.data)
+            && !(poly_when_stoned(gy.youmonst.data)
                  && polymon(PM_STONE_GOLEM))) {
-            Sprintf(g.killer.name, "petting %s", a_monnam(mtmp));
-            g.killer.format = KILLED_BY;
+            Sprintf(gk.killer.name, "petting %s", a_monnam(mtmp));
+            gk.killer.format = KILLED_BY;
             You("turn to stone.");
             done(STONING);
         }
