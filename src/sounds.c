@@ -938,13 +938,13 @@ domonnoise(register struct monst* mtmp)
                     break;
                 }
 
-                if (could_seduce(mtmp, &g.youmonst, (struct attack *) 0) == 1) {
+                if (could_seduce(mtmp, &gy.youmonst, (struct attack *) 0) == 1) {
                     (void) doseduce(mtmp);
                     break;
                 }
             } /* S_AMOROUS_DEMON */
 
-            swval = ((could_seduce(mtmp, &g.youmonst, NULL) == 1) ? rn2(3) : 0);
+            swval = ((could_seduce(mtmp, &gy.youmonst, NULL) == 1) ? rn2(3) : 0);
         } else
             swval = ((poly_gender() == 0) ? rn2(3) : 0);
         switch (swval) {
