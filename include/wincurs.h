@@ -58,10 +58,8 @@ typedef enum orient_type
     UNDEFINED
 } orient;
 
-#ifdef GCC_WARN
 int wprintw(WINDOW *, const char *, ...) PRINTF_F(2, 3);
 int mvwprintw(WINDOW *, int, int, const char *, ...) PRINTF_F(4, 5);
-#endif
 
 /* cursmain.c */
 
@@ -151,6 +149,7 @@ extern boolean curses_map_borders(int *sx, int *sy, int *ex, int *ey,
 
 /* cursmisc.c */
 
+extern int curses_getch(void);
 extern int curses_read_char(void);
 extern void curses_toggle_color_attr(WINDOW *win, int color, int attr,
                                      int onoff);

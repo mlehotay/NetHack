@@ -1,8 +1,7 @@
 .\" $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.464 $ $NHDT-Date: 1655461129 2022/06/17 10:18:49 $
 .\"
 .\" This is an excerpt from the 'roff' man page from the 'groff' package.
-.\" Guidebook.mn currently does *not* fully adhere to these guidelines.
-.\"|||
+.\"+--
 .\"| o Never include empty or blank lines in a roff document.  Instead,  use
 .\"|   the empty request (a line consisting of a dot only) or a line comment
 .\"|   .\" if a structuring element is needed.
@@ -13,7 +12,9 @@
 .\"|   is handled differently depending on whether it terminates an abbrevi-
 .\"|   ation or a sentence.  To distinguish both cases, do a line break  af-
 .\"|   ter each sentence.
-.\"|||
+.\"+--
+.\" Guidebook.mn has been updated to adhere to the first two guidelines
+.\" but does not yet fully honor the third.  New changes should do so.
 .\"
 .
 .\" Usage:
@@ -36,7 +37,7 @@
 .ds f0 "\*(vr
 .ds f1
 .\"DO NOT REMOVE NH_DATESUB .ds f2 "DATE(%B %-d, %Y)
-.ds f2 "August 21, 2022
+.ds f2 "October 27, 2022
 .
 .\" A note on some special characters:
 .\" \(lq = left double quote
@@ -1495,7 +1496,7 @@ Default key is \(oqR\(cq.
 Repeat the previous command.
 Default key is \(oq\(haA\(cq.
 .lp "#reqmenu "
-Prefix key to modify the behaviour or request menu from some commands.
+Prefix key to modify the behavior or request menu from some commands.
 Prevents autopickup when used with movement commands.
 Default key is \(oqm\(cq.
 .lp "#retravel"
@@ -1560,9 +1561,9 @@ configuration file.
 Use the shell command \(oq\f(CRexit\fP\(cq to return to the game.
 Default key is \(oq!\(cq.
 .lp "#showgold"
-Report the gold in your inventory and if you are inside a shop,
-report any credit or debt you have in that shop.
-Does not report on any gold inside containers you're carrying.
+Report the gold in your inventory, including gold you know about in
+containers you're carrying.  If you are inside a shop, report any credit
+or debt you have in that shop.
 Default key is \(oq$\(cq.
 .lp #showspells
 List and reorder known spells.
@@ -1671,9 +1672,22 @@ In some circumstances it can also be used to rescue trapped monsters.
 Go up a staircase.
 Default key is \(oq<\(cq.
 .lp #vanquished
-List vanquished monsters.
+List vanquished monsters by type and count.
+.lp ""
+Note that the vanquished monsters list includes all monsters killed by
+traps and each other as well as by you, and omits any which got removed
+from the game without being killed (perhaps by genocide, or by a mollified
+shopkeeper dismissing summoned Kops).
+.lp ""
+Using the \(lqrequest menu\(rq prefix prior to #vanquished brings up
+a menu of sorting orders available.
+Whichever one is picked is remembered for subsequent #vanquished commands
+during the current play session but not saved and restored across sessions.
+During end-of-game disclosure, when asked whether to show vanquished
+monsters answering \(oq\f(CRa\fP\(cq will let you choose from the sort menu.
+.lp ""
 Autocompletes.
-Debug mode only.
+Default key is \(oqM-V\(cq.
 .lp "#version "
 Print compile time options for this version of NetHack.
 .lp ""
@@ -1812,7 +1826,7 @@ On other systems, if typing \(lqAlt\(rq plus another key transmits a
 two character sequence consisting of an \fBEscape\fP
 followed by the other key, you may set the
 .op altmeta
-option to have NetHack combine them into meta+key.
+option to have NetHack combine them into meta+<key>.
 (This combining action only takes place when NetHack is expecting a
 command to execute, not when accepting input to name something or to
 make a wish.)
@@ -1821,7 +1835,7 @@ Unlike control characters, where \(hax and \(haX denote the same thing,
 meta characters are case-sensitive:  M-x and M-X represent different things.
 Some commands which can be run via a meta character require that the
 letter be capitalized because the lower-case equivalent is used for
-another command, so the three key combination meta+shift+letter is needed.
+another command, so the three key combination meta+Shift+<letter> is needed.
 .BR 1
 .
 .lp M-?
@@ -1874,6 +1888,8 @@ option is enabled)
 #untrap
 .lp M-v
 #version
+.lp M-V
+#vanquished
 .lp M-w
 #wipe
 .lp M-X
@@ -2003,18 +2019,21 @@ Other traps can send you to different locations.
 Teleporters send you elsewhere on the same dungeon level.
 Level teleporters send you to a random dungeon level, the destination
 chosen from a few levels lower all the way to the top.
+These traps choose a new destination each time they're activated.
 Trap doors and holes also send you to another level, but one which is
 always below the current level.
 Usually that will be the next level down but it can be farther.
-All of these traps choose a new destination each time they're activated.
-Magic portals also send you to a different level but behave differently.
+Unlike (level) teleporters, the destination level of a particular trap door
+or hole is persistent, so falling into one will bring you to the same level
+each time\(emthough not necessarily the same spot on the level.
+Magic portals behave similarly, but with some additional variation.
 Some portals are two-way and their remote destination is always the same:
 another portal which can take you back.
 Others are one-way and send you to a specific destination level but not
 necessarily to a specific location there.
 .pg
 There is a special multi-level branch of the dungeon with pre-mapped levels
-based on the classic computer game \(lqSokoban.\(rq
+based on the classic computer game \(lq\fISokoban\fP.\(rq
 In that game, you operate as a warehouse worker who pushes crates around
 obstacles to position them at designated locations.
 In NetHack, the goal is to push boulders into pits or holes until those
@@ -2109,9 +2128,8 @@ where it was obtained; other shopkeepers won't honor it.
 find a \(lqcredit card\(rq in the dungeon, don't bother trying to use it in
 shops; shopkeepers will not accept it.)
 .pg
-The \(oq$\(cq command, which reports the amount of gold you are carrying
-(in inventory, not inside bags or boxes), will also show current shop
-debt or credit, if any.
+The \(oq$\(cq command, which reports the amount of gold you are carrying,
+will also show current shop debt or credit, if any.
 The \(lqIu\(rq command lists unpaid items
 (those which still belong to the shop) if you are carrying any.
 The \(lqIx\(rq command shows an inventory-like display of any unpaid
@@ -3977,8 +3995,8 @@ Key to jump to the first page in a menu.
 Default \(oq\(ha\(cq.
 .lp menu_headings
 Controls how the headings in a menu are highlighted.
-Values are \(lqnone\(rq, \(lqbold\(rq, \(lqdim\(rq, \(lqunderline\(rq,
-\(lqblink\(rq, or \(lqinverse\(rq.
+Values are \(lqnone\(rq, \(lqbold\(rq, \(lqdim\(rq, \(lqitalic\(rq,
+\(lqunderline\(rq, \(lqblink\(rq, or \(lqinverse\(rq.
 Not all ports can actually display all types.
 .lp menu_invert_all
 Key to invert all items in a menu.
@@ -4418,7 +4436,7 @@ When pausing momentarily for display effect, such as with explosions and
 moving objects, use a timer rather than sending extra characters to the
 screen.
 (Applies to \(lqtty\(rq and \(lqcurses\(rq interfaces only; \(lqX11\(rq interface always
-uses a timer based delay.
+uses a timer-based delay.
 The default is on if configured into the program.)
 Persistent.
 .lp tombstone
@@ -4615,8 +4633,8 @@ Acceptable values are \f(CR2\fP and \f(CR3\fP (default is \f(CR2\fP).
 When set to \f(CR3\fP, the \f(CRtty\fP interface moves some fields around and
 mainly shows status conditions on their own line.
 A display capable of showing at least 25 lines is recommended.
-The value can be toggled back and forth during the game with the \(oqO\(cq
-command.
+The value can be toggled back and forth during the game with the
+\(oq\f(CRO\fP\(cq command.
 .lp ""
 The \f(CRcurses\fP interface does likewise if the
 .op align_status
@@ -4633,6 +4651,11 @@ original format, with the status window spread out vertically.
 A value of \f(CR2\fP makes status be slightly condensed, moving some
 fields to different lines to eliminate one whole line, reducing the
 height needed.
+(If NetHack has been built using a version of \f(CRQt\fP
+older than \f(CRqt-5.9\fP,
+.op statuslines
+can only be set in the run-time configuration file or via NETHACKOPTIONS,
+not during play with the \(oq\f(CRO\fP\(cq command.)
 .lp "term_cols\ \ \fIand\fP"
 .lp term_rows
 Curses interface only.
@@ -5092,7 +5115,7 @@ orange, light-green, yellow, light-blue, light-magenta, light-cyan, and white.
 And \f(CRno-color\fP, the default foreground color, which isn't necessarily
 the same as any of the other colors.
 .lp ""
-Allowed attributes are none, bold, dim, underline, blink, and inverse.
+Allowed attributes are none, bold, dim, italic, underline, blink, and inverse.
 \(lqNormal\(rq is a synonym for \(lqnone\(rq.
 Note that the platform used may interpret the attributes any way it
 wants.
@@ -5613,7 +5636,8 @@ display of the customizations, such as the Enhanced symset.
 Configuring NetHack for Play by the Blind
 .pg
 NetHack can be set up to use only standard ASCII characters for making
-maps of the dungeons. This makes the MS-DOS versions of NetHack completely
+maps of the dungeons. This makes even the MS-DOS versions of NetHack
+(which use special line-drawing characters by default) completely
 accessible to the blind who use speech and/or Braille access technologies.
 Players will require a good working knowledge of their screen-reader's
 review features, and will have to know how to navigate horizontally and
@@ -5745,6 +5769,9 @@ POINTSMIN\ =\ Minimum number of points to get an entry in the score file.
 .lp
 PERS_IS_UID\ =\ 0 or 1 to use user names or numeric userids, respectively,
 to identify unique people for the score file.
+.lp
+HIDEUSAGE\ =\ 0 or 1 to control whether the help menu entry for command
+line usage is shown or suppressed.
 .lp
 MAX_STATUENAME_RANK\ =\ Maximum number of score file entries to use for
 random statue names (default is 10).

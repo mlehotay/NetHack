@@ -19,7 +19,7 @@
  * Returns the head of the list of objects that the player can see
  * at location (x,y).  [Vestige of unimplemented invisible objects.]
  */
-#define vobj_at(x, y) (g.level.objects[x][y])
+#define vobj_at(x, y) (gl.level.objects[x][y])
 
 /*
  * sensemon()
@@ -47,15 +47,14 @@
           /* OR 2b. hero is using a telepathy inducing */  \
           /*        object and in range                */  \
           || (Unblind_telepat                              \
-              && (distu(mon->mx, mon->my) <= (BOLT_LIM * BOLT_LIM)))))
+              && (mdistu(mon) <= (BOLT_LIM * BOLT_LIM)))))
 
 /* organized to perform cheaper tests first;
    is_pool() vs is_pool_or_lava(): hero who is underwater can see adjacent
    lava, but presumeably any monster there is on top so not sensed */
 #define _sensemon(mon) \
-    (   (!u.uswallow || (mon) == u.ustuck)                                 \
-     && (!Underwater || (distu((mon)->mx, (mon)->my) <= 2                  \
-                         && is_pool((mon)->mx, (mon)->my)))                \
+    (   (!u.uswallow || (mon) == u.ustuck)                                   \
+     && (!Underwater || (mdistu(mon) <= 2 && is_pool((mon)->mx, (mon)->my))) \
      && (Detect_monsters || tp_sensemon(mon) || MATCH_WARN_OF_MON(mon))   )
 
 /*
@@ -63,8 +62,8 @@
  * vicinity, and a glyph representing the warning level is displayed.
  */
 #define _mon_warning(mon) \
-    (Warning && !(mon)->mpeaceful && (distu((mon)->mx, (mon)->my) < 100) \
-     && (((int) ((mon)->m_lev / 4)) >= g.context.warnlevel))
+    (Warning && !(mon)->mpeaceful && (mdistu(mon) < 100)     \
+     && (((int) ((mon)->m_lev / 4)) >= gc.context.warnlevel))
 
 /*
  * mon_visible()
@@ -149,7 +148,7 @@
      && ((cansee((mon)->mx, (mon)->my)                                  \
           && (See_invisible || Detect_monsters))                        \
          || (!Blind && (HTelepat & ~INTRINSIC)                          \
-             && distu((mon)->mx, (mon)->my) <= (BOLT_LIM * BOLT_LIM))))
+             && mdistu(mon) <= (BOLT_LIM * BOLT_LIM))))
 
 /*
  * is_safemon(mon)
@@ -251,11 +250,11 @@
         ((int) U_AP_TYPE == M_AP_NOTHING)                               \
         ? hero_glyph                                                    \
         : ((int) U_AP_TYPE == M_AP_FURNITURE)                           \
-          ? cmap_to_glyph((int) g.youmonst.mappearance)                 \
+          ? cmap_to_glyph((int) gy.youmonst.mappearance)                 \
           : ((int) U_AP_TYPE == M_AP_OBJECT)                            \
-            ? objnum_to_glyph((int) g.youmonst.mappearance)             \
+            ? objnum_to_glyph((int) gy.youmonst.mappearance)             \
             /* else U_AP_TYPE == M_AP_MONSTER */                        \
-            : monnum_to_glyph((int) g.youmonst.mappearance, Ugender)))
+            : monnum_to_glyph((int) gy.youmonst.mappearance, Ugender)))
 
 /*
  * NetHack glyphs
@@ -638,7 +637,7 @@ enum glyph_offsets {
 /* The hero's glyph when seen as a monster.
  */
 #define hero_glyph \
-    monnum_to_glyph((Upolyd || !flags.showrace) ? u.umonnum : g.urace.mnum, \
+    monnum_to_glyph((Upolyd || !flags.showrace) ? u.umonnum : gu.urace.mnum, \
                     (Ugender))
 
 /*
@@ -802,8 +801,8 @@ enum glyph_offsets {
 
 #define obj_is_piletop(obj) \
     ((obj)->where == OBJ_FLOOR                                  \
-        /*&& g.level.objects[(obj)->ox][(obj)->oy]*/            \
-        && g.level.objects[(obj)->ox][(obj)->oy]->nexthere)
+        /*&& gl.level.objects[(obj)->ox][(obj)->oy]*/            \
+        && gl.level.objects[(obj)->ox][(obj)->oy]->nexthere)
 
 #define glyph_is_body_piletop(glyph) \
     (((glyph) >= GLYPH_BODY_PILETOP_OFF)                        \
@@ -907,9 +906,9 @@ enum glyph_offsets {
 /* These have the unfortunate side effect of needing a global variable  */
 /* to store a result. 'otg_temp' is defined and declared in decl.{ch}.  */
 #define random_obj_to_glyph(rng) \
-    ((g.otg_temp = random_object(rng)) == CORPSE        \
+    ((go.otg_temp = random_object(rng)) == CORPSE        \
          ? (random_monster(rng) + GLYPH_BODY_OFF)       \
-         : (g.otg_temp + GLYPH_OBJ_OFF))
+         : (go.otg_temp + GLYPH_OBJ_OFF))
 #define corpse_to_glyph(obj) \
     ((int) ((obj)->corpsenm + (obj_is_piletop(obj)        \
                                 ? GLYPH_BODY_PILETOP_OFF  \
@@ -968,7 +967,7 @@ enum glyph_offsets {
         || glyph_is_obj_piletop(glyph))
 #endif
 
-/* mgflags for altering map_glyphinfo() internal behaviour */
+/* mgflags for altering map_glyphinfo() internal behavior */
 #define MG_FLAG_NORMAL     0x00
 #define MG_FLAG_NOOVERRIDE 0x01 /* disregard accessibility override values */
 

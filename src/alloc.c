@@ -19,7 +19,7 @@ extern int FITSint_(LUA_INTEGER, const char *, int);
 #define FITSuint(x) FITSuint_(x, __func__, (int) __LINE__)
 extern unsigned FITSuint_(unsigned long long, const char *, int);
 
-char *fmt_ptr(const genericptr);
+char *fmt_ptr(const genericptr) NONNULL;
 
 #ifdef MONITOR_HEAP
 #undef alloc
@@ -32,25 +32,13 @@ static FILE *heaplog = 0;
 static boolean tried_heaplog = FALSE;
 #endif
 
-long *alloc(unsigned int);
-long *re_alloc(long *, unsigned int);
+long *alloc(unsigned int) NONNULL;
+long *re_alloc(long *, unsigned int) NONNULL;
 extern void panic(const char *, ...);
 
 long *
 alloc(unsigned int lth)
 {
-#ifdef LINT
-    /*
-     * a ridiculous definition, suppressing
-     *  "possible pointer alignment problem" for (long *) malloc()
-     * from lint
-     */
-    long dummy = ftell(stderr);
-
-    if (lth)
-        dummy = 0; /* make sure arg is used */
-    return &dummy;
-#else
     register genericptr_t ptr;
 
     ptr = malloc(lth);
@@ -59,18 +47,12 @@ alloc(unsigned int lth)
         panic("Memory allocation failure; cannot get %u bytes", lth);
 #endif
     return (long *) ptr;
-#endif
 }
 
 /* realloc() call that might get substituted by nhrealloc(p,n,file,line) */
 long *
 re_alloc(long *oldptr, unsigned int newlth)
 {
-    /*
-     * If LINT support ever gets resurrected,
-     * we'll probably need some hackery here.
-     */
-
     long *newptr = (long *) realloc((genericptr_t) oldptr, (size_t) newlth);
 #ifndef MONITOR_HEAP
     /* "extend to":  assume it won't ever fail if asked to shrink */
@@ -221,7 +203,8 @@ char *
 dupstr_n(const char *string, unsigned int *lenout)
 {
     size_t len = strlen(string);
-    if(len >= LARGEST_INT)
+
+    if (len >= LARGEST_INT)
         panic("string too long");
     *lenout = (unsigned int) len;
     return strcpy((char *) alloc(len + 1), string);

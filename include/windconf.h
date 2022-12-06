@@ -5,7 +5,7 @@
 #ifndef WINDCONF_H
 #define WINDCONF_H
 
-/* #define SHELL */	/* nt use of pcsys routines caused a hang */
+/* #define SHELL */    /* nt use of pcsys routines caused a hang */
 
 #define TEXTCOLOR /* Color text */
 
@@ -29,7 +29,7 @@
 #define DUMPLOG_MSG_COUNT 50
 
 #define USER_SOUNDS
-#define TTY_SOUND_ESCCODES
+/* #define TTY_SOUND_ESCCODES */
 
 /*#define CHANGE_COLOR*/ /* allow palette changes */
 
@@ -185,8 +185,6 @@ typedef SSIZE_T ssize_t;
 #endif
 
 #define NO_SIGNAL
-#define index strchr
-#define rindex strrchr
 
 /* Time stuff */
 #include <time.h>
@@ -213,7 +211,7 @@ typedef SSIZE_T ssize_t;
 
 #ifndef M
 #define M(c) ((char) (0x80 | (c)))
-/* #define M(c)		((c) - 128) */
+/* #define M(c) ((c) - 128) */
 #endif
 
 #ifndef C

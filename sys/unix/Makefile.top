@@ -91,7 +91,7 @@ LUA_VERSION = 5.4.4
 # end of configuration
 #
 
-DATHELP = help hh cmdhelp keyhelp history opthelp optmenu wizhelp
+DATHELP = help hh cmdhelp keyhelp history opthelp optmenu usagehlp wizhelp
 
 SPEC_LEVS = asmodeus.lua baalz.lua bigrm-*.lua castle.lua fakewiz?.lua \
 	juiblex.lua knox.lua medusa-?.lua minend-?.lua minefill.lua \
@@ -143,6 +143,10 @@ include/nhlua.h: $(TOPLUALIB)
 lib/lua-$(LUA_VERSION)/src/lua.h:
 	@echo "Please do 'make fetch-lua' to obtain lua-$(LUA_VERSION)"
 	@false
+luabin:
+	( cd $(LUATOP) \
+	  && make $(LUAMAKEFILES) all && cd $(LUA2NHTOP) )
+
 # hints file could set LUATESTTARGET to this if GITSUBMODULES is defined
 submodules/lua/lua.h:
 	git submodule init submodules/lua

@@ -5,11 +5,11 @@
 /* tty.c - (Windows console) version */
 
 /*
- * Initial Creation 				M. Allison	1993/01/31
- * Switch to low level console output routines	M. Allison	2003/10/01
- * Restrict cursor movement until input pending	M. Lehotay	2003/10/02
- * Call Unicode version of output API on NT     R. Chason	2005/10/28
- * Use of back buffer to improve performance    B. House	2018/05/06
+ * Initial Creation                             M. Allison      1993/01/31
+ * Switch to low level console output routines  M. Allison      2003/10/01
+ * Restrict cursor movement until input pending M. Lehotay      2003/10/02
+ * Call Unicode version of output API on NT     R. Chason       2005/10/28
+ * Use of back buffer to improve performance    B. House        2018/05/06
  *
  */
 
@@ -884,7 +884,7 @@ void buffer_fill_to_end(cell_t * buffer, cell_t * fill, int x, int y)
     while (dst != sentinel)
         *dst++ = *fill;
 
-    if ((iflags.debug.immediateflips || !g.program_state.in_moveloop)
+    if ((iflags.debug.immediateflips || !gp.program_state.in_moveloop)
         && buffer == console.back_buffer)
         back_buffer_flip();
 }
@@ -900,7 +900,7 @@ static void buffer_clear_to_end_of_line(cell_t * buffer, int x, int y)
     while (dst != sentinel)
         *dst++ = clear_cell;
 
-    if (iflags.debug.immediateflips || !g.program_state.in_moveloop)
+    if (iflags.debug.immediateflips || !gp.program_state.in_moveloop)
         back_buffer_flip();
 }
 
@@ -912,7 +912,7 @@ void buffer_write(cell_t * buffer, cell_t * cell, COORD pos)
     cell_t * dst = buffer + (console.width * pos.Y) + pos.X;
     *dst = *cell;
 
-    if ((iflags.debug.immediateflips || !g.program_state.in_moveloop)
+    if ((iflags.debug.immediateflips || !gp.program_state.in_moveloop)
         && buffer == console.back_buffer)
         back_buffer_flip();
 }
@@ -921,7 +921,7 @@ void buffer_write(cell_t * buffer, cell_t * cell, COORD pos)
  * Called after returning from ! or ^Z
  */
 void
-gettty()
+gettty(void)
 {
 #ifndef TEXTCOLOR
     int k;
@@ -963,7 +963,7 @@ settty(const char* s)
 
 /* called by init_nhwindows() and resume_nhwindows() */
 void
-setftty()
+setftty(void)
 {
     start_screen();
 }
@@ -985,7 +985,7 @@ tty_number_pad(int state)
 }
 
 void
-tty_start_screen()
+tty_start_screen(void)
 {
     if (iflags.num_pad)
         tty_number_pad(1); /* make keypad send digits */
@@ -1000,7 +1000,7 @@ tty_start_screen()
 }
 
 void
-tty_end_screen()
+tty_end_screen(void)
 {
     clear_screen();
     really_move_cursor();
@@ -1013,7 +1013,7 @@ static BOOL
 CtrlHandler(DWORD ctrltype)
 {
     switch (ctrltype) {
-    /*	case CTRL_C_EVENT: */
+    /* case CTRL_C_EVENT: */
     case CTRL_BREAK_EVENT:
         clear_screen();
     case CTRL_CLOSE_EVENT:
@@ -1055,7 +1055,7 @@ consoletty_open(int mode)
 }
 
 void
-consoletty_exit()
+consoletty_exit(void)
 {
     /* go back to using the safe routines */
     safe_routines();
@@ -1071,7 +1071,7 @@ process_keystroke(
     int ch;
 
 #ifdef QWERTZ_SUPPORT
-    if (g.Cmd.swap_yz)
+    if (gc.Cmd.swap_yz)
         numberpad |= 0x10;
 #endif
     ch = keyboard_handling.pProcessKeystroke(
@@ -1086,13 +1086,13 @@ process_keystroke(
 }
 
 int
-consoletty_kbhit()
+consoletty_kbhit(void)
 {
     return keyboard_handling.pNHkbhit(console.hConIn, &ir);
 }
 
 int
-tgetch()
+tgetch(void)
 {
     int mod;
     coord cc;
@@ -1103,11 +1103,11 @@ tgetch()
     if (iflags.debug_fuzzer)
         return randomkey();
 #ifdef QWERTZ_SUPPORT
-    if (g.Cmd.swap_yz)
+    if (gc.Cmd.swap_yz)
         numpad |= 0x10;
 #endif
 
-    return (g.program_state.done_hup)
+    return (gp.program_state.done_hup)
                ? '\033'
                : keyboard_handling.pCheckInput(
                    console.hConIn, &ir, &count, numpad, 0, &mod, &cc);
@@ -1132,10 +1132,10 @@ console_poskey(coordxy *x, coordxy *y, int *mod)
         return poskey;
     }
 #ifdef QWERTZ_SUPPORT
-    if (g.Cmd.swap_yz)
+    if (gc.Cmd.swap_yz)
         numpad |= 0x10;
 #endif
-    ch = (g.program_state.done_hup)
+    ch = (gp.program_state.done_hup)
              ? '\033'
              : keyboard_handling.pCheckInput(
                    console.hConIn, &ir, &count, numpad, 1, mod, &cc);
@@ -1159,7 +1159,7 @@ static void set_console_cursor(int x, int y)
 }
 
 static void
-really_move_cursor()
+really_move_cursor(void)
 {
 #ifdef PORT_DEBUG
     char oldtitle[BUFSZ], newtitle[BUFSZ];
@@ -1962,7 +1962,7 @@ map_subkeyvalue(char* op)
 
     idx = -1;
     val = -1;
-    kp = index(op, '/');
+    kp = strchr(op, '/');
     if (kp) {
         *kp = '\0';
         kp++;
@@ -1970,14 +1970,14 @@ map_subkeyvalue(char* op)
         if (length < 1 || length > 3)
             return;
         for (i = 0; i < length; i++)
-            if (!index(digits, kp[i]))
+            if (!strchr(digits, kp[i]))
                 return;
         val = atoi(kp);
         length = strlen(op);
         if (length < 1 || length > 3)
             return;
         for (i = 0; i < length; i++)
-            if (!index(digits, op[i]))
+            if (!strchr(digits, op[i]))
                 return;
         idx = atoi(op);
     }
@@ -2025,7 +2025,7 @@ static int CALLBACK EnumFontCallback(
  * correctly, then it will change the font to a known good font.
  */
 void
-check_and_set_font()
+check_and_set_font(void)
 {
     if (!check_font_widths()) {
         raw_print("WARNING: glyphs too wide in console font."
@@ -2039,7 +2039,7 @@ check_and_set_font()
  */
 boolean
 #ifndef VIRTUAL_TERMINAL_SEQUENCES
-check_font_widths()
+check_font_widths(void)
 #else /* VIRTUAL_TERMINAL_SEQUENCES */
 check_font_widths(void)
 #endif /* VIRTUAL_TERMINAL_SEQUENCES */
@@ -2104,8 +2104,8 @@ check_font_widths(void)
     boolean used[256];
     memset(used, 0, sizeof(used));
     for (int i = 0; i < SYM_MAX; i++) {
-        used[g.primary_syms[i]] = TRUE;
-        used[g.rogue_syms[i]] = TRUE;
+        used[gp.primary_syms[i]] = TRUE;
+        used[gr.rogue_syms[i]] = TRUE;
     }
 
     int wcUsedCount = 0;
@@ -3519,7 +3519,7 @@ ray_checkinput(
                             else if (ir->Event.MouseEvent.dwButtonState
                                      & RIGHTBUTTON)
                                 *mod = CLICK_2;
-#if 0 /* middle button */			       
+#if 0 /* middle button */       
                             else if (ir->Event.MouseEvent.dwButtonState & MIDBUTTON)
                                 *mod = CLICK_3;
 #endif

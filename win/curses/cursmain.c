@@ -156,9 +156,32 @@ curses_init_nhwindows(int *argcp UNUSED,
 #ifdef PDCURSES
     char window_title[BUFSZ];
 #endif
+#ifdef CURSES_UNICODE
+#ifdef PDCURSES
+    static char pdc_font[BUFSZ] = "";
+#endif
+#endif
 
 #ifdef CURSES_UNICODE
     setlocale(LC_CTYPE, "");
+#ifdef PDCURSES
+    /* Assume the DOSVGA port of PDCursesMod, or the SDL1 or SDL2 port of
+       either PDCurses or PDCursesMod. Honor the font_map option to set
+       a font.
+       On MS-DOS, if no font_map is set, use ter-u16v.psf if it is present.
+       PDC_FONT has no effect on other PDCurses or PDCursesMod ports. */
+    if (iflags.wc_font_map && iflags.wc_font_map[0]) {
+        Snprintf(pdc_font, sizeof(pdc_font), "PDC_FONT=%s",
+                 iflags.wc_font_map);
+#ifdef MSDOS
+    } else if (access("ter-u16v.psf", R_OK) >= 0) {
+        Snprintf(pdc_font, sizeof(pdc_font), "PDC_FONT=ter-u16v.psf");
+#endif
+    }
+    if (pdc_font[0] != '\0') {
+        putenv(pdc_font);
+    }
+#endif
 #endif
 
 #ifdef XCURSES
@@ -274,9 +297,9 @@ curses_askname(void)
         }
 #endif /* SELECTSAVED */
 
-    curses_line_input_dialog("Who are you?", g.plname, PL_NSIZ);
-    (void) mungspaces(g.plname);
-    if (!g.plname[0] || g.plname[0] == '\033')
+    curses_line_input_dialog("Who are you?", gp.plname, PL_NSIZ);
+    (void) mungspaces(gp.plname);
+    if (!gp.plname[0] || gp.plname[0] == '\033')
          goto bail;
 
     iflags.renameallowed = TRUE; /* tty uses this, we don't [yet?] */
@@ -678,7 +701,7 @@ curses_update_inventory(int arg)
     }
 
     /* skip inventory updating during character initialization */
-    if (!g.program_state.in_moveloop && !g.program_state.gameover)
+    if (!gp.program_state.in_moveloop && !gp.program_state.gameover)
         return;
 
     if (!arg) {
@@ -855,7 +878,11 @@ curses_raw_print(const char *str)
 #ifdef PDCURSES
     /* WINDOW *win = curses_get_nhwin(MESSAGE_WIN); */
 
-    curses_message_win_puts(str, FALSE);
+    if (iflags.window_inited) {
+        curses_message_win_puts(str, FALSE);
+    } else {
+        puts(str);
+    }
 #else
     puts(str);
 #endif
@@ -1024,7 +1051,7 @@ void
 curses_delay_output(void)
 {
 #ifdef TIMED_DELAY
-    if (flags.nap) {
+    if (flags.nap && !iflags.debug_fuzzer) {
         /* refreshing the whole display is a waste of time,
          * but that's why we're here */
         refresh();

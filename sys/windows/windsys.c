@@ -5,7 +5,7 @@
 /*
  *  WIN32 system functions.
  * 
- *  Included in both console and window based clients on the windows platform.
+ *  Included in both console-based and window-based clients on the windows platform.
  *
  *  Initial Creation: Michael Allison - January 31/93
  *
@@ -48,6 +48,7 @@ extern int GUILaunched;
 extern boolean getreturn_enabled;
 int redirect_stdout;
 
+#ifdef WIN32CON
 typedef HWND(WINAPI *GETCONSOLEWINDOW)();
 static HWND GetConsoleHandle(void);
 static HWND GetConsoleHwnd(void);
@@ -66,6 +67,21 @@ extern void safe_routines(void);
 
 int def_kbhit(void);
 int (*nt_kbhit)() = def_kbhit;
+#endif /* WIN32CON */
+
+#ifndef WIN32CON
+/* this is used as a printf() replacement when the window
+ * system isn't initialized yet
+ */
+void msmsg
+VA_DECL(const char *, fmt)
+{
+    VA_START(fmt);
+    VA_INIT(fmt, const char *);
+    VA_END();
+    return;
+}
+#endif
 
 char
 switchar(void)
@@ -135,7 +151,7 @@ chdrive(char* str)
 {
     char *ptr;
     char drive;
-    if ((ptr = index(str, ':')) != (char *) 0) {
+    if ((ptr = strchr(str, ':')) != (char *) 0) {
         drive = toupper((uchar) *(ptr - 1));
         _chdrive((drive - 'A') + 1);
     }
@@ -180,15 +196,17 @@ void nt_regularize(char* s) /* normalize file name */
 char *getxxx(void)
 {
 char     szFullPath[MAX_PATH] = "";
-HMODULE  hInst = NULL;  	/* NULL gets the filename of this module */
+HMODULE  hInst = NULL;  /* NULL gets the filename of this module */
 
 GetModuleFileName(hInst, szFullPath, sizeof(szFullPath));
 return &szFullPath[0];
 }
 #endif
 
+#ifdef MSWIN_GRAPHICS
 extern void mswin_raw_print_flush(void);
 extern void mswin_raw_print(const char *);
+#endif
 
 /* fatal error */
 /*VARARGS1*/
@@ -211,8 +229,10 @@ VA_DECL(const char *, s)
         Strcat(buf, "\n");
         raw_printf(buf);
     }
+#ifdef MSWIN_GRAPHICS
     if (windowprocs.win_raw_print == mswin_raw_print)
         mswin_raw_print_flush();
+#endif
     VA_END();
     exit(EXIT_FAILURE);
 }
@@ -233,8 +253,10 @@ win32_abort(void)
             exit_nhwindows((char *) 0);
         iflags.window_inited = FALSE;
     }
+#ifdef WIN32CON
     if (!WINDOWPORT(mswin) && !WINDOWPORT(safestartup))
         safe_routines();
+#endif
     if (wizard) {
         raw_print("Execute debug breakpoint wizard?");
         if ((c = nhgetch()) == 'y' || c == 'Y')
@@ -368,6 +390,7 @@ void port_insert_pastebuf(char *buf)
     return;
 }
 
+#ifdef WIN32CON
 static HWND
 GetConsoleHandle(void)
 {
@@ -405,7 +428,7 @@ GetConsoleHwnd(void)
     /*       printf("%d iterations\n", iterations); */
     return hwndFound;
 }
-
+#endif /* WIN32CON */
 #endif
 
 #ifdef RUNTIME_PORT_ID
@@ -447,12 +470,14 @@ nethack_exit(int code)
      */
 
 
+#ifdef WIN32CON
     if (!GUILaunched) {
         windowprocs = *get_safe_procs(1);
         /* use our custom version which works
            a little cleaner than the stdio one */
         windowprocs.win_nhgetch = windows_console_custom_nhgetch;
     }
+#endif
     if (getreturn_enabled) {
         raw_print("\n");
         wait_synch();
@@ -460,6 +485,7 @@ nethack_exit(int code)
     exit(code);
 }
 
+#ifdef WIN32CON
 #undef kbhit
 #include <conio.h>
 
@@ -488,13 +514,16 @@ getreturn(const char *str)
     in_getreturn = FALSE;
     return;
 }
+#endif
 
 /* nethack_enter_windows() is called from main immediately after
    initializing the window port */
 void nethack_enter_windows(void)
 {
+#ifdef WIN32CON
     if (WINDOWPORT(tty))
         nethack_enter_consoletty();
+#endif
 }
 
 /* CP437 to Unicode mapping according to the Unicode Consortium */
@@ -543,10 +572,26 @@ winos_ascii_to_wide_str(const unsigned char * src, WCHAR * dst, size_t dstLength
     return dst;
 }
 
-WCHAR
-winos_ascii_to_wide(const unsigned char c)
+void
+winos_ascii_to_wide(WCHAR dst[3], UINT32 c)
 {
-    return cp437[c];
+#ifdef ENHANCED_SYMBOLS
+    if (SYMHANDLING(H_UTF8)) {
+        if (c <= 0xFFFF) {
+            dst[0] = (WCHAR) c;
+            dst[1] = L'\0';
+        } else {
+            /* UTF-16 surrogate pair */
+            dst[0] = (WCHAR) ((c >> 10) + 0xD7C0);
+            dst[1] = (WCHAR) ((c & 0x3FF) + 0xDC00);
+            dst[2] = L'\0';
+        }
+    } else
+#endif
+    {
+        dst[0] = cp437[c];
+        dst[1] = L'\0';
+    }
 }
 
 BOOL winos_font_support_cp437(HFONT hFont)
@@ -605,7 +650,7 @@ windows_early_options(const char *window_opt)
 }
 
 /*
- * Add a backslash to any name not ending in /, \ or :	 There must
+ * Add a backslash to any name not ending in /, \ or : There must
  * be room for the \
  */
 void

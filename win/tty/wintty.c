@@ -69,7 +69,7 @@ extern void msmsg(const char *, ...);
 #define AVTC_SOUND_PLAY    4
 #endif
 
-#ifdef HANGUP_HANDLING
+#ifdef HANGUPHANDLING
 /*
  * NetHack's core switches to a dummy windowing interface when it
  * detects SIGHUP, but that's no help for any interface routine which
@@ -80,7 +80,7 @@ extern void msmsg(const char *, ...);
  */
 #define HUPSKIP() \
     do {                                        \
-        if (g.program_state.done_hup) {         \
+        if (gp.program_state.done_hup) {         \
             morc = '\033';                      \
             return;                             \
         }                                       \
@@ -88,13 +88,13 @@ extern void msmsg(const char *, ...);
     /* morc=ESC - in case we bypass xwaitforspace() which sets that */
 #define HUPSKIP_RESULT(RES) \
     do {                                        \
-        if (g.program_state.done_hup)           \
+        if (gp.program_state.done_hup)           \
             return (RES);                       \
     } while (0)
-#else /* !HANGUP_HANDLING */
+#else /* !HANGUPHANDLING */
 #define HUPSKIP() /*empty*/
 #define HUPSKIP_RESULT(RES) /*empty*/
-#endif /* ?HANGUP_HANDLING */
+#endif /* ?HANGUPHANDLING */
 
 /* Interface definition, for windows.c */
 struct window_procs tty_procs = {
@@ -106,7 +106,7 @@ struct window_procs tty_procs = {
 #ifdef MSDOS
      | WC_TILED_MAP | WC_ASCII_MAP
 #endif
-#if defined(WIN32)
+#if defined(WIN32CON)
      | WC_MOUSE_SUPPORT
 #endif
      | WC_COLOR | WC_HILITE_PET | WC_INVERSE | WC_EIGHT_BIT_IN),
@@ -120,7 +120,7 @@ struct window_procs tty_procs = {
 #endif
      | WC2_DARKGRAY | WC2_SUPPRESS_HIST | WC2_URGENT_MESG | WC2_STATUSLINES
      | WC2_U_UTF8STR
-#if !defined(NO_TERMS) || defined(WIN32)
+#if !defined(NO_TERMS) || defined(WIN32CON)
      | WC2_U_24BITCOLOR
 #endif
     ),
@@ -411,7 +411,7 @@ winch_handler(int sig_unused UNUSED)
                 ttyDisplay->toplin = i;
                 flush_screen(1);
                 if (i) {
-                    addtopl(g.toplines);
+                    addtopl(gt.toplines);
                 } else
                     for (i = WIN_INVEN; i < MAXWIN; i++)
                         if (wins[i] && wins[i]->active) {
@@ -555,7 +555,7 @@ tty_preference_update(const char *pref)
         new_status_window();
     }
 
-#if defined(WIN32)
+#if defined(WIN32CON)
     consoletty_preference_update(pref);
 #else
     genl_preference_update(pref);
@@ -637,9 +637,9 @@ tty_player_selection(void)
         tty_putstr(BASE_WINDOW, 0, prompt);
         do {
             pick4u = lowc(readchar());
-            if (index(quitchars, pick4u))
+            if (strchr(quitchars, pick4u))
                 pick4u = 'y';
-        } while (!index(ynaqchars, pick4u));
+        } while (!strchr(ynaqchars, pick4u));
         if ((int) strlen(prompt) + 1 < CO) {
             /* Echo choice and move back down line */
             tty_putsym(BASE_WINDOW, (int) strlen(prompt) + 1, echoline,
@@ -1046,7 +1046,7 @@ tty_player_selection(void)
             Sprintf(plbuf, " %s", genders[GEND].adj);
         else
             *plbuf = '\0'; /* omit redundant gender */
-        Snprintf(pbuf, sizeof(pbuf), "%s, %s%s %s %s", g.plname,
+        Snprintf(pbuf, sizeof(pbuf), "%s, %s%s %s %s", gp.plname,
                  aligns[ALGN].adj, plbuf, races[RACE].adj,
                  (GEND == 1 && roles[ROLE].name.f) ? roles[ROLE].name.f
                                                    : roles[ROLE].name.m);
@@ -1097,8 +1097,8 @@ tty_player_selection(void)
                GEND, ALGN; we'll override that and honor only the name */
             saveROLE = ROLE, saveRACE = RACE, saveGEND = GEND,
                 saveALGN = ALGN;
-            *g.plname = '\0';
-            plnamesuffix(); /* calls askname() when g.plname[] is empty */
+            *gp.plname = '\0';
+            plnamesuffix(); /* calls askname() when gp.plname[] is empty */
             ROLE = saveROLE, RACE = saveRACE, GEND = saveGEND,
                 ALGN = saveALGN;
             break; /* getconfirmation is still True */
@@ -1344,7 +1344,7 @@ setup_algnmenu(winid win, boolean filtering, int role, int race, int gend)
 }
 
 /*
- * g.plname is filled either by an option (-u Player  or  -uPlayer) or
+ * gp.plname is filled either by an option (-u Player  or  -uPlayer) or
  * explicitly (by being the wizard) or by askname.
  * It may still contain a suffix denoting the role, etc.
  * Always called after init_nhwindows() and before display_gamewindows().
@@ -1364,7 +1364,7 @@ tty_askname(void)
         case 0:
             break; /* no game chosen; start new game */
         case 1:
-            return; /* g.plname[] has been set */
+            return; /* gp.plname[] has been set */
         }
 #endif /* SELECTSAVED */
 
@@ -1427,7 +1427,7 @@ tty_askname(void)
                     && !(c >= '0' && c <= '9' && ct > 0))
                     c = '_';
 #endif
-            if (ct < (int) (sizeof g.plname) - 1) {
+            if (ct < (int) (sizeof gp.plname) - 1) {
 #if defined(MICRO)
 #if defined(MSDOS)
                 if (iflags.grmode) {
@@ -1438,13 +1438,13 @@ tty_askname(void)
 #else
                 (void) putchar(c);
 #endif
-                g.plname[ct++] = c;
+                gp.plname[ct++] = c;
 #ifdef WIN32CON
                 ttyDisplay->curx++;
 #endif
             }
         }
-        g.plname[ct] = 0;
+        gp.plname[ct] = 0;
     } while (ct == 0);
 
     /* move to next line to simulate echo of user's <return> */
@@ -1531,11 +1531,13 @@ tty_exit_nhwindows(const char *str)
 #ifndef NO_TERMS    /*(until this gets added to the window interface)*/
     tty_shutdown(); /* cleanup termcap/terminfo/whatever */
 #endif
-#ifdef WIN32
+#ifdef WIN32CON
     consoletty_exit();
 #endif
     iflags.window_inited = 0;
 }
+
+DISABLE_WARNING_UNREACHABLE_CODE
 
 winid
 tty_create_nhwindow(int type)
@@ -1651,6 +1653,8 @@ tty_create_nhwindow(int type)
     return newid;
 }
 
+RESTORE_WARNING_UNREACHABLE_CODE
+
 static void
 erase_menu_or_text(winid window, struct WinDesc *cw, boolean clear)
 {
@@ -1753,11 +1757,11 @@ tty_clear_nhwindow(winid window)
             cw->data[i][n - 1] = '\0';
             /*finalx[i][NOW] = finalx[i][BEFORE] = 0;*/
         }
-        g.context.botlx = 1;
+        gc.context.botlx = 1;
         break;
     case NHW_MAP:
         /* cheap -- clear the whole thing and tell nethack to redraw botl */
-        g.context.botlx = 1;
+        gc.context.botlx = 1;
         /*FALLTHRU*/
     case NHW_BASE:
         clear_screen();
@@ -2039,11 +2043,11 @@ process_menu_window(winid window, struct WinDesc *cw)
                            accelerator; including it in gacc allows gold to
                            be selected via group when not on current page */
                         || curr->gselector == GOLD_SYM)
-                    && !index(gacc, curr->gselector)
+                    && !strchr(gacc, curr->gselector)
                     && (cw->how == PICK_ANY
                         || gcnt[GSELIDX(curr->gselector)] == 1)) {
                     *rp++ = curr->gselector;
-                    *rp = '\0'; /* re-terminate for index() */
+                    *rp = '\0'; /* re-terminate for strchr() */
                 }
     }
     resp_len = 0; /* lint suppression */
@@ -2101,7 +2105,7 @@ process_menu_window(winid window, struct WinDesc *cw)
                        entries, so we don't rely on curr->identifier here) */
                     attr_n = 0; /* whole line */
                     if (curr->str[0] && curr->str[1] == ' '
-                        && curr->str[2] && index("-+#", curr->str[2])
+                        && curr->str[2] && strchr("-+#", curr->str[2])
                         && curr->str[3] == ' ')
                         /* [0]=letter, [1]==space, [2]=[-+#], [3]=space */
                         attr_n = 4; /* [4:N]=entry description */
@@ -2178,7 +2182,7 @@ process_menu_window(winid window, struct WinDesc *cw)
             Strcat(resp, " ");                  /* next page or end */
             Strcat(resp, "0123456789\033\n\r"); /* counts, quit */
             Strcat(resp, gacc);                 /* group accelerators */
-            Strcat(resp, g.mapped_menu_cmds);
+            Strcat(resp, gm.mapped_menu_cmds);
 
             if (cw->npages > 1)
                 Sprintf(cw->morestr, "(%d of %d)", curr_page + 1,
@@ -2198,7 +2202,7 @@ process_menu_window(winid window, struct WinDesc *cw)
         }
 
         really_morc = morc; /* (only used with MENU_EXPLICIT_CHOICE) */
-        if ((rp = index(resp, morc)) != 0 && rp < resp + resp_len)
+        if ((rp = strchr(resp, morc)) != 0 && rp < resp + resp_len)
             /* explicit menu selection; don't override it if it also
                happens to match a mapped menu command (such as ':' to
                look inside a container vs ':' to search) */
@@ -2220,7 +2224,7 @@ process_menu_window(winid window, struct WinDesc *cw)
             /* special case: '0' is also the default ball class;
                some menus use digits as potential group accelerators
                but their entries don't rely on counts */
-            if (!counting && index(gacc, morc))
+            if (!counting && strchr(gacc, morc))
                 goto group_accel;
 
             count = (count * 10L) + (long) (morc - '0');
@@ -2373,11 +2377,11 @@ process_menu_window(winid window, struct WinDesc *cw)
             morc = really_morc;
         /*FALLTHRU*/
         default:
-            if (cw->how == PICK_NONE || !index(resp, morc)) {
+            if (cw->how == PICK_NONE || !strchr(resp, morc)) {
                 /* unacceptable input received */
                 tty_nhbell();
                 break;
-            } else if (index(gacc, morc)) {
+            } else if (strchr(gacc, morc)) {
  group_accel:
                 /* group accelerator; for the PICK_ONE case, we know that
                    it matches exactly one item in order to be in gacc[] */
@@ -2820,7 +2824,7 @@ compress_str(const char *str)
     /* compress out consecutive spaces if line is too long;
        topline wrapping converts space at wrap point into newline,
        we reverse that here */
-    if ((int) strlen(str) >= CO || index(str, '\n')) {
+    if ((int) strlen(str) >= CO || strchr(str, '\n')) {
         const char *in_str = str;
         char c, *outstr = cbuf, *outend = &cbuf[sizeof cbuf - 1];
         boolean was_space = TRUE; /* True discards all leading spaces;
@@ -2915,18 +2919,18 @@ tty_putstr(winid window, int attr, const char *str)
 #ifndef STATUS_HILITES
     case NHW_STATUS:
         ob = &cw->data[cw->cury][j = cw->curx];
-        if (g.context.botlx)
+        if (gc.context.botlx)
             *ob = '\0';
         if (!cw->cury && (int) strlen(str) >= CO) {
             /* the characters before "St:" are unnecessary */
-            nb = index(str, ':');
+            nb = strchr(str, ':');
             if (nb && nb > str + 2)
                 str = nb - 2;
         }
         nb = str;
         for (i = cw->curx + 1, n0 = cw->cols; i < n0; i++, nb++) {
             if (!*nb) {
-                if (*ob || g.context.botlx) {
+                if (*ob || gc.context.botlx) {
                     /* last char printed may be in middle of line */
                     tty_curs(WIN_STATUS, i, cw->cury);
                     cl_end();
@@ -3056,9 +3060,9 @@ tty_display_file(const char *fname, boolean complain)
                 if (complain)
                     raw_printf("Cannot open %s as stdin.", fname);
             } else {
-                (void) execlp(g.catmore, "page", (char *) 0);
+                (void) execlp(gc.catmore, "page", (char *) 0);
                 if (complain)
-                    raw_printf("Cannot exec %s.", g.catmore);
+                    raw_printf("Cannot exec %s.", gc.catmore);
             }
             if (complain)
                 sleep(10); /* want to wait_synch() but stdin is gone */
@@ -3102,13 +3106,13 @@ tty_display_file(const char *fname, boolean complain)
                     wins[datawin]->offy = 0;
             }
             while (dlb_fgets(buf, BUFSZ, f)) {
-                if ((cr = index(buf, '\n')) != 0)
+                if ((cr = strchr(buf, '\n')) != 0)
                     *cr = 0;
 #ifdef MSDOS
-                if ((cr = index(buf, '\r')) != 0)
+                if ((cr = strchr(buf, '\r')) != 0)
                     *cr = 0;
 #endif
-                if (index(buf, '\t') != 0)
+                if (strchr(buf, '\t') != 0)
                     (void) tabexpand(buf);
                 empty = FALSE;
                 tty_putstr(datawin, 0, buf);
@@ -3140,7 +3144,7 @@ tty_start_menu(winid window, unsigned long mbehavior)
     }
     if (mbehavior == MENU_BEHAVE_PERMINV
              && (iflags.perm_invent
-                 || g.perm_invent_toggling_direction == toggling_on)) {
+                 || gp.perm_invent_toggling_direction == toggling_on)) {
         winid w = ttyinv_create_window(window, wins[window]);
         if (w == WIN_ERR) {
             /* something went wrong, so add clean up code here */
@@ -3270,9 +3274,9 @@ tty_end_menu(winid window,       /* menu to use */
     }
 #ifdef TTY_PERM_INVENT
     if (cw->mbehavior == MENU_BEHAVE_PERMINV
-        && (iflags.perm_invent || g.perm_invent_toggling_direction == toggling_on)
+        && (iflags.perm_invent || gp.perm_invent_toggling_direction == toggling_on)
         && window == WIN_INVEN) {
-        if (g.program_state.in_moveloop)
+        if (gp.program_state.in_moveloop)
             ttyinv_render(window, cw);
         return;
     }
@@ -3421,7 +3425,7 @@ tty_select_menu(winid window, int how, menu_item **menu_list)
 char
 tty_message_menu(char let, int how, const char *mesg)
 {
-    HUPSKIP();
+    HUPSKIP_RESULT('\033');
     /* "menu" without selection; use ordinary pline, no more() */
     if (how == PICK_NONE) {
         pline("%s", mesg);
@@ -3606,7 +3610,7 @@ ttyinv_add_menu(winid window UNUSED, struct WinDesc *cw, char ch,
             ignore = FALSE;
     int row, side, slot = 0, rows_per_side = (!show_gold ? 26 : 27);
 
-    if (!g.program_state.in_moveloop)
+    if (!gp.program_state.in_moveloop)
         return;
     slot = selector_to_slot(ch, ttyinvmode, &ignore);
     if (!ignore) {
@@ -3685,7 +3689,7 @@ ttyinv_render(winid window, struct WinDesc *cw)
     int row, col, slot, side, filled_count = 0, slot_limit;
     struct tty_perminvent_cell *cell;
     char invbuf[BUFSZ], *text;
-    boolean force_redraw = g.program_state.in_docrt ? TRUE : FALSE,
+    boolean force_redraw = gp.program_state.in_docrt ? TRUE : FALSE,
             show_gold = (ttyinvmode & InvShowGold) != 0,
             inuse_only = (ttyinvmode & InvInUse) != 0;
     int rows_per_side = (!show_gold ? 26 : 27);
@@ -3716,9 +3720,9 @@ ttyinv_render(winid window, struct WinDesc *cw)
             ttyinv_populate_slot(cw, row, side, text, 0);
     }
     /* has there been a glyph reset since we last got here? */
-    if (g.glyph_reset_timestamp > last_glyph_reset_when) {
+    if (gg.glyph_reset_timestamp > last_glyph_reset_when) {
         //        tty_invent_box_glyph_init(wins[WIN_INVEN]);
-        last_glyph_reset_when = g.glyph_reset_timestamp;
+        last_glyph_reset_when = gg.glyph_reset_timestamp;
         force_redraw = TRUE;
     }
     /* render to the display */
@@ -3980,7 +3984,7 @@ tty_wait_synch(void)
         if (ttyDisplay->inmore) {
             addtopl("--More--");
             (void) fflush(stdout);
-        } else if (ttyDisplay->inread > g.program_state.gameover) {
+        } else if (ttyDisplay->inread > gp.program_state.gameover) {
             /* this can only happen if we were reading and got interrupted */
             ttyDisplay->toplin = TOPLINE_SPECIAL_PROMPT;
             /* do this twice; 1st time gets the Quit? message again */
@@ -4058,7 +4062,7 @@ docorner(register int xmin, register int ymax, int ystart_between_menu_pages)
     if (ymax >= (int) wins[WIN_STATUS]->offy
         && !ystart_between_menu_pages) {
         /* we have wrecked the bottom line */
-        g.context.botlx = 1;
+        gc.context.botlx = 1;
         bot();
     }
 }
@@ -4081,7 +4085,7 @@ end_glyphout(void)
 #endif
 }
 
-#ifndef WIN32
+#ifndef WIN32CON
 void
 g_putch(int in_ch)
 {
@@ -4121,7 +4125,7 @@ g_putch(int in_ch)
 
     return;
 }
-#endif /* !WIN32 */
+#endif /* !WIN32CON */
 
 #if defined(ENHANCED_SYMBOLS) && defined(UNIX)
 void
@@ -4838,7 +4842,7 @@ tty_status_update(int fldidx, genericptr_t ptr, int chg UNUSED, int percent,
         break;
     case BL_GOLD:
         /* \GXXXXNNNN counts as 1 [moot since we use decode_mixed() above] */
-        if ((p = index(status_vals[fldidx], '\\')) != 0 && p[1] == 'G')
+        if ((p = strchr(status_vals[fldidx], '\\')) != 0 && p[1] == 'G')
             tty_status[NOW][fldidx].lth -= (10 - 1);
         break;
     case BL_CAP:
@@ -5139,7 +5143,7 @@ shrink_dlvl(int lvl)
 {
     /* try changing Dlvl: to Dl: */
     char buf[BUFSZ];
-    char *levval = index(status_vals[BL_LEVELDESC], ':');
+    char *levval = strchr(status_vals[BL_LEVELDESC], ':');
 
     if (levval) {
         dlvl_shrinklvl = lvl;
