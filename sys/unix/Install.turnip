@@ -28,10 +28,11 @@ cd sys/unix
 sh setup.sh hints/floatingeye
 cd ../..
 make all
-sudo make install
-cd /opt/dgl
+#sudo make install
 #sudo mkdir dgldir dgldir/userdata dgldir/userdata/root
 #sudo mkdir dgldir/userdata/root/nh370 dgldir/userdata/root/nh370/dumplog
-sudo chown -R games:games nh370 dgldir
-sudo ~/projects/nethack/sys/unix/mkchroot.sh nh370/nethack
+#sudo chown -R games:games nh370 dgldir
+#sudo ~/projects/nethack/sys/unix/mkchroot.sh nh370/nethack
+sudo make update
+cd /opt/dgl
 sudo chroot ./ nh370/nethack
