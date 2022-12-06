@@ -15,6 +15,34 @@ nymph chatting & stealing messages based on gender preferences
 
 --
 
+# to do
+
+remove CONSENT ifdefs
+fix magic numbers in src/mhitu.c and src/dokick.c
+return constants from could_seduce() instead of magic numbers
+encapsulate bit fiddling
+improve orientation initialization, don't want default setting
+do not disrobe/adorn heroes until consent is confirmed
+improve game balance, especially wrt asexual heroes
+try to re-balance tourist goal level (where else are foocubi generated?)
+do not allow player to change consent after it has been given or withheld ?
+
+# guidance from copperwater
+a) be realistic in how orientations work (don't want "fluid orientation")
+b) have players automatically consent to encounters matching their orientation
+c) allow players to play as whatever orientation they please
+d) incompatible foocubus should be unable to disrobe the player
+
+# feedback from AnticlimacticGulp
+likes that it sidesteps issue of "default orientation"
+likes that orientation is integrated into game instead of in a config file
+
+# feedback from MyCatch22Life
+do not nerf foocubi disrobing, it is a rare late-game YASD
+does not like the player determining attack type instead of the foocubus
+
+--
+
 # test procedure
 
 test in wizard mode. wish for amulet of change and use ^G to summon

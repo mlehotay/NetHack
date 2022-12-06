@@ -1297,10 +1297,7 @@ dokick(void)
         }
         if (IS_SINK(gm.maploc->typ)) {
             int gend = poly_gender();
-
-#ifdef CONSENT
             unsigned prefs, mgend;
-#endif
             if (Levitation) {
                 kick_dumb(x, y);
                 return ECMD_TIME;
@@ -1328,7 +1325,6 @@ dokick(void)
                        && !(gm.mvitals[PM_AMOROUS_DEMON].mvflags & G_GONE)) {
                 /* can't resist... */
                 pline("%s returns!", (Blind ? Something : "The dish washer"));
-#ifdef CONSENT
                 prefs = (gend == FEMALE) ? (flags.consent_given & 0x0c)>>2 :
                                            (flags.consent_given & 0x03);
                 switch(gend) {
@@ -1341,12 +1337,10 @@ dokick(void)
                 case 2:
                     mgend = rn2(2) ? MM_FEMALE : MM_MALE;
                 }
-                if (makemon(&mons[PM_AMOROUS_DEMON], x, y, mgend))
-#else
-                if (makemon(&mons[PM_AMOROUS_DEMON], x, y,
-                            MM_NOMSG | ((gend == 1 || (gend == 2 && rn2(2)))
-                                        ? MM_MALE : MM_FEMALE)))
-#endif
+
+                /* can't resist... */
+                pline("%s returns!", (Blind ? Something : "The dish washer"));
+                if (makemon(&mons[PM_AMOROUS_DEMON], x, y, MM_NOMSG | mgend))
                     newsym(x, y);
                 gm.maploc->looted |= S_LDWASHER;
                 exercise(A_DEX, TRUE);

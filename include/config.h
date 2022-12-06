@@ -667,8 +667,6 @@ typedef unsigned char uchar;
 
 #define USE_ISAAC64 /* Use cross-plattform, bundled RNG */
 
-#define CONSENT /* for foocubus interactions */
-
 /* TEMPORARY - MAKE UNCONDITIONAL BEFORE RELEASE */
 /* undef this to check if sandbox breaks something */
 #define NHL_SANDBOX

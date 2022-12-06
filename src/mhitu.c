@@ -1742,7 +1742,6 @@ mdamageu(struct monst *mtmp, int n)
     }
 }
 
-#ifdef CONSENT
 /* ask for consent */
 boolean
 doconsent(query, mask)
@@ -1760,7 +1759,6 @@ const unsigned mask;
 
     return consented;
 }
-#endif
 
 /* returns 0 if seduction impossible,
  *         1 if fine,
@@ -1775,10 +1773,8 @@ could_seduce(
     boolean agrinvis, defperc;
     xint16 genagr, gendef;
     int adtyp;
-#ifdef CONSENT
     boolean fem, ace;
     unsigned mask;
-#endif
 
     if (is_animal(magr->data))
         return 0;
@@ -1790,9 +1786,7 @@ could_seduce(
         pagr = magr->data;
         agrinvis = magr->minvis;
         genagr = gender(magr);
-#ifdef CONSENT
         fem = genagr;
-#endif
     }
     if (mdef == &gy.youmonst) {
         defperc = (See_invisible != 0);
@@ -1800,9 +1794,7 @@ could_seduce(
     } else {
         defperc = perceives(mdef->data);
         gendef = gender(mdef);
-#ifdef CONSENT
         fem = gendef;
-#endif
     }
 
     adtyp = mattk ? mattk->adtyp
@@ -1822,7 +1814,7 @@ could_seduce(
     if ((pagr->mlet != S_NYMPH && pagr != &mons[PM_AMOROUS_DEMON])
         || (adtyp != AD_SEDU && adtyp != AD_SSEX && adtyp != AD_SITM))
         return 0;
-#ifdef CONSENT
+
     if (poly_gender() == FEMALE) {
         mask = fem ? CONSENT_SEDUCE_FF : CONSENT_SEDUCE_MF;
         ace = (((flags.consent_given & 0x0c)>>2) == 0);
@@ -1839,9 +1831,6 @@ could_seduce(
 
     return ((flags.consent_given & mask) != 0) ? 1 :
                        (pagr->mlet == S_NYMPH) ? 2 : 0;
-#else
-    return (genagr == 1 - gendef) ? 1 : (pagr->mlet == S_NYMPH) ? 2 : 0;
-#endif
 }
 
 /* returns 1 if monster teleported (or hero leaves monster's vicinity) */
@@ -1852,15 +1841,14 @@ doseduce(struct monst *mon)
     boolean fem = (mon->data == &mons[PM_AMOROUS_DEMON]
                    && Mgender(mon) == FEMALE); /* otherwise incubus */
     boolean seewho, naked; /* True iff no armor */
+    boolean consent, ace;
     int attr_tot, tried_gloves = 0;
     char qbuf[QBUFSZ], Who[QBUFSZ];
-#ifdef CONSENT
-    boolean consent, ace;
     unsigned swval, chance;
 
     ace = (poly_gender() == FEMALE) ? (((flags.consent_given & 0x0c)>>2) == 0)
                                     : ((flags.consent_given & 0x03) == 0);
-#endif
+
     if (mon->mcan || mon->mspec_used) {
         pline("%s acts as though %s has got a %sheadache.", Monnam(mon),
               mhe(mon), mon->mcan ? "severe " : "");
@@ -1873,12 +1861,11 @@ doseduce(struct monst *mon)
     seewho = canseemon(mon);
     if (!seewho)
         pline("Someone caresses you...");
-#ifdef CONSENT
     else if (ace)
         pline("%s attempts to seduce you.", Monnam(mon));
-#endif
     else
         You_feel("very attracted to %s.", mon_nam(mon));
+
     /* cache the seducer's name in a local buffer */
     Strcpy(Who, (!seewho ? (fem ? "She" : "He") : Monnam(mon)));
 
@@ -2007,7 +1994,6 @@ doseduce(struct monst *mon)
     if (u.utotype || !next2u(mon->mx, mon->my))
         return 1;
 
-#ifdef CONSENT
     /* ask for consent */
     if (!uarm && !uarmc) {
         unsigned mask;
@@ -2028,10 +2014,8 @@ doseduce(struct monst *mon)
             consent = doconsent(qbuf, mask);
         }
     }
+
     if (uarm || uarmc || !consent) {
-#else
-    if (uarm || uarmc) {
-#endif
         if (!Deaf) {
             if (!(ld() && mon->female)) {
                 verbalize("You're such a %s; I wish...",
@@ -2186,7 +2170,6 @@ doseduce(struct monst *mon)
         }
     }
 
-#ifdef CONSENT
     /*
      * try to maintain game balance when player changes orientation
      *
@@ -2230,9 +2213,6 @@ doseduce(struct monst *mon)
     }
 
     if (rn2(25) < chance)
-#else
-    if (!rn2(25))
-#endif
         mon->mcan = 1; /* monster is worn out */
     if (!tele_restrict(mon))
         (void) rloc(mon, RLOC_MSG);
