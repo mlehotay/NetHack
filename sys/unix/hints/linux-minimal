@@ -7,11 +7,17 @@
 # Hints file for a minimal build
 # This hints file provides the base for a minimal tty build for Linux
 
-PREFIX=$(wildcard ~)/nethack-minimal
-HACKDIR=$(PREFIX)/games/lib/$(GAME)dir
-SHELLDIR=$(PREFIX)/games
+#PREFIX=$(wildcard ~)/nethack-minimal
+#HACKDIR=$(PREFIX)/games/lib/$(GAME)dir
+#SHELLDIR=$(PREFIX)/games
+
+PREFIX=$(wildcard ~)/.local/bin
+HACKDIR=$(wildcard ~)/.local/lib/$(GAME)dir
+SHELLDIR=$(PREFIX)
 INSTDIR=$(HACKDIR)
 VARDIR=$(HACKDIR)
+
+POSTINSTALL=cp -n sys/unix/sysconf $(INSTDIR)/sysconf; $(CHOWN) $(GAMEUID) $(INSTDIR)/sysconf; $(CHGRP) $(GAMEGRP) $(INSTDIR)/sysconf; chmod $(VARFILEPERM) $(INSTDIR)/sysconf;
 
 CFLAGS=-g -I../include
 
