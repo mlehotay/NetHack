@@ -1,4 +1,4 @@
-/* NetHack 3.7	winprocs.h	$NHDT-Date: 1596498572 2020/08/03 23:49:32 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.56 $ */
+/* NetHack 3.7	winprocs.h	$NHDT-Date: 1671326645 2022/12/18 01:24:05 $  $NHDT-Branch: towel $:$NHDT-Revision: 1.72 $ */
 /* Copyright (c) David Cohrs, 1992                                */
 /* NetHack may be freely redistributed.  See license for details. */
 
@@ -7,7 +7,7 @@
 
 #include "botl.h"
 
-enum wp_ids { wp_tty = 1, wp_X11, wp_Qt, wp_mswin, wp_curses, 
+enum wp_ids { wp_tty = 1, wp_X11, wp_Qt, wp_mswin, wp_curses, wp_stdio,
               wp_chainin, wp_chainout, wp_safestartup, wp_shim,
               wp_hup, wp_guistubs, wp_ttystubs,
 #ifdef OUTDATED_STUFF
@@ -177,10 +177,10 @@ extern
 #define ctrl_nhwindow (*windowprocs.win_ctrl_nhwindow)
 
 /*
- * 
+ *
  */
 #define WPID(name) #name, wp_##name
-#define WPIDMINUS(name) "-" #name, wp_##name 
+#define WPIDMINUS(name) "-" #name, wp_##name
 
 /*
  * WINCAP

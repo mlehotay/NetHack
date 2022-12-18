@@ -1,4 +1,4 @@
-/* NetHack 3.7	windows.c	$NHDT-Date: 1661202202 2022/08/22 21:03:22 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.97 $ */
+/* NetHack 3.7	windows.c	$NHDT-Date: 1671326644 2022/12/18 01:24:04 $  $NHDT-Branch: towel $:$NHDT-Revision: 1.103 $ */
 /* Copyright (c) D. Cohrs, 1993. */
 /* NetHack may be freely redistributed.  See license for details. */
 
@@ -44,6 +44,10 @@ extern struct window_procs mswin_procs;
 #endif
 #ifdef SHIM_GRAPHICS
 extern struct window_procs shim_procs;
+#endif
+#ifdef STDIO_GRAPHICS
+extern struct window_procs stdio_procs;
+extern void stdio_init_nhwindows(int *, char **);
 #endif
 #ifdef WINCHAIN
 extern struct window_procs chainin_procs;
@@ -128,6 +132,9 @@ static struct win_choices {
 #endif
 #ifdef SHIM_GRAPHICS
     { &shim_procs, 0 CHAINR(0) },
+#endif
+#ifdef STDIO_GRAPHICS
+    { &stdio_procs, stdio_init_nhwindows CHAINR(0)},
 #endif
 #ifdef WINCHAIN
     { &chainin_procs, chainin_procs_init, chainin_procs_chain },

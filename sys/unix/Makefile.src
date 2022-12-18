@@ -1,5 +1,5 @@
 #	NetHack Makefile.
-# NetHack 3.7  Makefile.src    $NHDT-Date: 1654287121 2022/06/03 20:12:01 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.145 $
+# NetHack 3.7  Makefile.src    $NHDT-Date: 1671326646 2022/12/18 01:24:06 $  $NHDT-Branch: towel $:$NHDT-Revision: 1.152 $
 # Copyright (c) 2018 by Pasi Kallinen
 # NetHack may be freely redistributed.  See license for details.
 
@@ -283,6 +283,10 @@ WINQTOBJ = $(TARGETPFX)qt_bind.o $(TARGETPFX)qt_click.o \
 WINSHIMSRC = ../win/shim/winshim.c
 WINSHIMOBJ = winshim.o
 
+# Files for stdio window port
+WINSTDIOSRC = ../win/stdio/winstdio.c
+WINSTDIOOBJ = $(TARGETPFX)winstdio.o
+
 #
 # Files for a BeOS InterfaceKit port -- not ready for prime time
 WINBESRC =
@@ -511,7 +515,7 @@ SYSCXXSRC = ../sys/share/cppregex.cpp
 GENCSRC = #tile.c
 
 # all windowing-system-dependent .c (for dependencies and such)
-WINCSRC = $(WINTTYSRC) $(WINCURSESSRC) $(WINX11SRC) $(WINSHIMSRC)
+WINCSRC = $(WINTTYSRC) $(WINCURSESSRC) $(WINX11SRC) $(WINSHIMSRC) $(WINSTDIOSRC)
 # all windowing-system-dependent .cpp (for dependencies and such)
 WINCXXSRC = $(WINQTSRC) $(WINQT3SRC) $(WINBESRC)
 
@@ -1054,6 +1058,9 @@ qt_xcmd.moc: ../win/Qt/qt_xcmd.h $(QTn_H)
 	$(MOCPATH) -o $@ ../win/Qt/qt_xcmd.h
 qt_yndlg.moc: ../win/Qt/qt_yndlg.h $(QTn_H)
 	$(MOCPATH) -o $@ ../win/Qt/qt_yndlg.h
+$(TARGETPFX)winstdio.o: ../win/stdio/winstdio.c ../win/stdio/winstdio.h \
+		$(HACK_H)
+	$(TARGET_CC) $(TARGET_CFLAGS) -c -o $@ ../win/stdio/winstdio.c
 $(TARGETPFX)wc_chainin.o: ../win/chain/wc_chainin.c $(HACK_H)
 	$(TARGET_CC) $(TARGET_CFLAGS) -c -o $@ ../win/chain/wc_chainin.c
 $(TARGETPFX)wc_chainout.o: ../win/chain/wc_chainout.c $(HACK_H)

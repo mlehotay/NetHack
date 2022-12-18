@@ -1,4 +1,4 @@
-/* NetHack 3.7  mdlib.c  $NHDT-Date: 1655402414 2022/06/16 18:00:14 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.31 $ */
+/* NetHack 3.7  mdlib.c  $NHDT-Date: 1671326644 2022/12/18 01:24:04 $  $NHDT-Branch: towel $:$NHDT-Revision: 1.41 $ */
 /* Copyright (c) Stichting Mathematisch Centrum, Amsterdam, 1985. */
 /*-Copyright (c) Kenneth Lorber, Kensington, Maryland, 2015. */
 /* Copyright (c) M. Stephenson, 1990, 1991.                       */
@@ -136,6 +136,9 @@ static struct win_information window_opts[] = {
 #endif
 #ifdef SHIM_GRAPHICS
     { "shim", "NetHack Library Windowing Shim", TRUE },
+#endif
+#ifdef STDIO_GRAPHICS
+    { "stdio", "standard input and output streams", TRUE },
 #endif
 
 #if 0  /* remainder have been retired */

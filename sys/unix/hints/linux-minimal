@@ -1,7 +1,7 @@
 #
-# NetHack 3.7  linux $NHDT-Date: 1596498416 2020/08/03 23:46:56 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.2 $
+# NetHack 3.7  linux $NHDT-Date: 1671326647 2022/12/18 01:24:07 $  $NHDT-Branch: towel $:$NHDT-Revision: 1.6 $
 # Copyright (c) Patric Mueller
-# NetHack may be freely redistributed.  See license for details. 
+# NetHack may be freely redistributed.  See license for details.
 #
 #-PRE
 # Hints file for a minimal build
@@ -28,11 +28,15 @@ SYSCFLAGS=-DLUA_USE_POSIX
 
 LINK=$(CC)
 
-WINSRC = $(WINTTYSRC)
-WINOBJ = $(WINTTYOBJ)
-WINLIB = $(WINTTYLIB)
+#WINSRC = $(WINTTYSRC)
+#WINOBJ = $(WINTTYOBJ)
+#WINLIB = $(WINTTYLIB)
+#WINTTYLIB=-lncurses -ltinfo
 
-WINTTYLIB=-lncurses -ltinfo
+WINSRC = $(WINSTDIOSRC)
+WINOBJ = $(WINSTDIOOBJ)
+WINLIB = $(WINSTDIOLIB)
+WINSTDIOLIB=
 
 CHOWN=true
 CHGRP=true
