@@ -139,7 +139,8 @@ push(@rawlist,'.') if($#rawlist == -1);
 
 # pick up the prefix for substitutions in this repo
 #TEST my $PREFIX = &git_config('nethack','substprefix');
-my $PREFIX = "NHDT";
+#my $PREFIX = "NHDT";
+my $PREFIX = &git_config('nethack','substprefix');
 print "PREFIX: '$PREFIX'\n" if($opt{v});
 
 while(@rawlist){
@@ -326,7 +327,7 @@ sub cmdparse {
 				}
 #need to deal with options that eat a following element (-m, -F etc etc)
 #add: nothing?
-#commit: -c -C  -F -m 
+#commit: -c -C  -F -m
 #   -u<mode> mode is optional
 # -S<keyid>  keyid is optional
 				if($opt{cmd} eq 'commit'){
@@ -497,7 +498,7 @@ Do not write any files.
 
 =item C<-f>
 
-Force, version 1:  
+Force, version 1:
 Perform substitution even if the file has not changed,
 except no dot files are processed unless listed directly on the command line.
 This prevents accidents with editor temporary files while recursing.  Note

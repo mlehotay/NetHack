@@ -1,0 +1,44 @@
+NAME
+    nhgitset.pl - Setup program for NetHack git repositories
+
+SYNOPSIS
+     cd THE_REPO
+     [git config nethack.gitadddir GITADDDIR]
+     perl SOME_PATH/DEVEL/nhgitset.pl [-v][-n][-f]
+
+DESCRIPTION
+    nhgitset.pl installs NetHack-specific setup after a "git clone" (or
+    after changes to the desired configuration, which are installed by
+    re-running nhgitset.pl).
+
+    The follwing options are available:
+
+    -f Force. Do not use this unless the program requests it.
+
+    -n Make no changes.
+
+    -v Verbose output.
+
+CONFIG
+    nhgitset.pl uses the following non-standard "git config" variables:
+
+    nethack.gitadddir
+
+       DOTGIT/INSTEAD
+       DOTGIT/PRE
+       DOTGIT/POST
+       hooksdir/INSTEAD
+       hooksdir/PRE
+       hooksdir/POST
+
+    nethack.setupversion
+
+    nethack.substprefix
+
+EXIT STATUS
+    0 Success.
+
+    1 Fail.
+
+    2 Intervention required.
+

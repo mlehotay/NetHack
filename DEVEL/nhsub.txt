@@ -1,0 +1,52 @@
+NAME
+    "nhsub" - NetHack git command for substitution variables
+
+SYNOPSIS
+    "git nhsub [-v[v[v]] [-n] [-f|-F] [-m] [--] [file...]"
+
+DESCRIPTION
+    "nhsub" rewrites the specified files by doing variable substitution for
+    variables starting with the prefix specified in the repository's
+    "nethack.substprefix" configuration variable. "nhsub" is also invoked
+    internally from the implementation of the "nhadd" and "nhcommit"
+    commands.
+
+    The program re-writes those files listed on the command line; if the
+    file is actually a directory, the program recurses into that directory
+    tree. Not all files found are re-written; some are ignored and those
+    with no substitution variables are not re-written. Unless changed by the
+    options, files that have not changed are not affected.
+
+    If no files are listed on the command line, the current directory is
+    checked as if specified as ".". Files listed directly on the command
+    line are always checked. The ".git" directory is never processed.
+
+    The following command line options are available:
+
+    "-v[v[v]]"
+        Verbose output; may be (usefully) specified up to 3 times. Not
+        available when invoked as part of "nhadd" or "nhcommit".
+
+    "-n"
+        Do not write any files.
+
+    "-f"
+        Force, version 1: Perform substitution even if the file has not
+        changed, except no dot files are processed unless listed directly on
+        the command line. This prevents accidents with editor temporary
+        files while recursing. Note that this overloads the "-f" option of
+        "git add" and "git commit".
+
+    "-F"
+        Force, version 2: Perform substitution even if the file has not
+        changed, even if the NHSUBST attribute is not set for the file, and
+        only if the file is not ignored by git. Not available when invoked
+        as part of "nhadd" or "nhcommit".
+
+    "-m"
+        Use metadata ("git log" and "git cat-file") to find the last change
+        date to substitute. Often used with "-f". This is useful for
+        cleaning up dates in files that were not updated when last changed.
+        (Do not use "git nhadd"/"git nhcommit" after "nhsub -m" or the
+        changes will be overwritten with the current date.)
+

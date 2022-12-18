@@ -1,0 +1,50 @@
+NAME
+    NHgithook - common code for NetHack git hooks (and other git bits)
+
+SYNOPSIS
+      BEGIN {
+            my $DS = quotemeta('/');
+            my $PDS = '/';
+            if ($^O eq "MSWin32")
+            {
+                $DS = quotemeta('\\');
+                $PDS = '\\';
+            }
+
+            push(@INC, $ENV{GIT_DIR}.$PDS."hooks");    # for most hooks
+            push(@INC, ($0 =~ m!^(.*)$DS!)[0]);       # when the above doesn't work
+
+            $gitdir = `git rev-parse --git-dir`;      # and when the above really doesn't work
+            $gitdir =~ s/[\r\n]*$/;
+            push(@INC, $gitdir.$PDS."hooks");
+      }
+      use NHgithook;
+  
+      &NHgithook::saveSTDIN;
+      &NHgithook::PRE;
+      (core hook code)
+      &NHgithook::POST;
+
+DESCRIPTION
+    Buffers call information so multiple independent actions may be coded
+    for Git hooks and similar Git callouts.
+
+SETUP
+    Changing the $trace and $tracefile variables requires editing the module
+    source. Setting $trace enables tracing, logs basic information, and
+    leaves the "TRACE" filehandle open for additional output; output to this
+    filehandle must be guarded by $NHgithook::trace. Setting $tracefile
+    specifies the file used for trace output. Note that $$ may be useful
+    since multiple processes may be live at the same time.
+
+FUNCTIONS
+      NHgithook::saveSTDIN  reads STDIN until EOF and saves it
+      NHgithook::PRE        runs the PRE hook, if it exists
+      NHgithook::POST       runs the POST hook, if it exists
+
+BUGS
+    Some features not well tested, especially under Windows.
+
+AUTHOR
+    Kenneth Lorber (keni@his.com)
+
