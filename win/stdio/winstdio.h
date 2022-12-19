@@ -1,4 +1,4 @@
-/* NetHack 3.7  winstdio.h $FLEY-Date: 1671395425 2022/12/18 20:30:25 $ $FLEY-Branch: towel $ $FLEY-Revision: 1.0 $ */
+/* NetHack 3.7  winstdio.h $FLEY-Date: 1671491378 2022/12/19 23:09:38 $ $FLEY-Branch: towel $ $FLEY-Revision: 1.0 $ */
 /* Copyright (c) Michael Lehotay, 2022. */
 /* NetHack may be freely redistributed. See license for details. */
 
@@ -8,6 +8,7 @@
 #include "hack.h"
 
 extern struct window_procs stdio_procs;
+extern void stdio_ini_routine(int);
 
 extern void stdio_init_nhwindows(int *, char **);
 extern void stdio_askname(void);

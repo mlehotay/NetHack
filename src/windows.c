@@ -47,7 +47,7 @@ extern struct window_procs shim_procs;
 #endif
 #ifdef STDIO_GRAPHICS
 extern struct window_procs stdio_procs;
-extern void stdio_init_nhwindows(int *, char **);
+extern void stdio_ini_routine(int);
 #endif
 #ifdef WINCHAIN
 extern struct window_procs chainin_procs;
@@ -134,7 +134,7 @@ static struct win_choices {
     { &shim_procs, 0 CHAINR(0) },
 #endif
 #ifdef STDIO_GRAPHICS
-    { &stdio_procs, stdio_init_nhwindows CHAINR(0)},
+    { &stdio_procs, stdio_ini_routine CHAINR(0) },
 #endif
 #ifdef WINCHAIN
     { &chainin_procs, chainin_procs_init, chainin_procs_chain },
