@@ -19,8 +19,9 @@ VARDIR=$(HACKDIR)
 
 POSTINSTALL=cp -n sys/unix/sysconf $(INSTDIR)/sysconf; $(CHOWN) $(GAMEUID) $(INSTDIR)/sysconf; $(CHGRP) $(GAMEGRP) $(INSTDIR)/sysconf; chmod $(VARFILEPERM) $(INSTDIR)/sysconf;
 
+#CFLAGS += -O -I../include
 CFLAGS += -g -I../include
-CFLAGS += -DSTDIO_GRAPHICS -DNOTTYGRAPHICS
+CFLAGS += -DSTDIO_GRAPHICS -DNOTTYGRAPHICS -DSAFEPROCS
 
 # when building liblua.a, avoid warning that use of tmpnam() should be
 # replaced by mkstemp(); the lua code doesn't use nethack's config.h so
@@ -29,14 +30,13 @@ SYSCFLAGS=-DLUA_USE_POSIX
 
 LINK=$(CC)
 
-#WINSRC = $(WINTTYSRC) $(WINSTDIOSRC)
-#WINOBJ = $(WINTTYOBJ) $(WINSTDIOOBJ)
-#WINLIB = $(WINTTYLIB) $(WINSTDIOLIB)
-#WINTTYLIB = -lncurses -ltinfo
-#WINSTDIOLIB =
+WINSRC = $(WINTTYSRC)
+WINOBJ = $(WINTTYOBJ)
+WINLIB = $(WINTTYLIB)
+WINTTYLIB = -lncurses -ltinfo
 
-WINSRC = $(WINSTDIOSRC)
-WINOBJ = $(WINSTDIOOBJ)
+WINSRC += $(WINSTDIOSRC)
+WINOBJ += $(WINSTDIOOBJ)
 
 CHOWN=true
 CHGRP=true

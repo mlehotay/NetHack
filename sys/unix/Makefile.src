@@ -284,8 +284,8 @@ WINSHIMSRC = ../win/shim/winshim.c
 WINSHIMOBJ = winshim.o
 
 # Files for stdio window port
-WINSTDIOSRC = ../win/stdio/winstdio.c
-WINSTDIOOBJ = $(TARGETPFX)winstdio.o
+WINSTDIOSRC = ../win/stdio/winstdio.c ../win/share/safeproc.c
+WINSTDIOOBJ = $(TARGETPFX)winstdio.o $(TARGETPFX)safeproc.o
 
 #
 # Files for a BeOS InterfaceKit port -- not ready for prime time
@@ -1058,9 +1058,10 @@ qt_xcmd.moc: ../win/Qt/qt_xcmd.h $(QTn_H)
 	$(MOCPATH) -o $@ ../win/Qt/qt_xcmd.h
 qt_yndlg.moc: ../win/Qt/qt_yndlg.h $(QTn_H)
 	$(MOCPATH) -o $@ ../win/Qt/qt_yndlg.h
-$(TARGETPFX)winstdio.o: ../win/stdio/winstdio.c ../win/stdio/winstdio.h \
-		$(HACK_H)
+$(TARGETPFX)winstdio.o: ../win/stdio/winstdio.c ../win/stdio/winstdio.h $(HACK_H)
 	$(TARGET_CC) $(TARGET_CFLAGS) -c -o $@ ../win/stdio/winstdio.c
+$(TARGETPFX)safeproc.o: ../win/share/safeproc.c $(HACK_H)
+	$(TARGET_CC) $(TARGET_CFLAGS) -c -o $@ ../win/share/safeproc.c
 $(TARGETPFX)wc_chainin.o: ../win/chain/wc_chainin.c $(HACK_H)
 	$(TARGET_CC) $(TARGET_CFLAGS) -c -o $@ ../win/chain/wc_chainin.c
 $(TARGETPFX)wc_chainout.o: ../win/chain/wc_chainout.c $(HACK_H)
