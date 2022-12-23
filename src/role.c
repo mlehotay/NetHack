@@ -2109,7 +2109,8 @@ genl_player_selection(void)
     /*NOTREACHED*/
 }
 
-#if defined(TTY_GRAPHICS) || defined(CURSES_GRAPHICS)
+#if defined(TTY_GRAPHICS) || defined(CURSES_GRAPHICS) \
+        || defined(STDIO_GRAPHICS)
 /* ['#else' far below] */
 
 static boolean reset_role_filtering(void);

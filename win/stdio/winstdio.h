@@ -1,4 +1,4 @@
-/* NetHack 3.7  winstdio.h $FLEY-Date: 1671641738 2022/12/21 16:55:38 $ $FLEY-Branch: towel $ $FLEY-Revision: 1.1 $ */
+/* NetHack 3.7  winstdio.h $FLEY-Date: 1671806328 2022/12/23 14:38:48 $ $FLEY-Branch: towel $ $FLEY-Revision: 1.2 $ */
 /* Copyright (c) Michael Lehotay, 2022. */
 /* NetHack may be freely redistributed. See license for details. */
 
@@ -28,8 +28,8 @@ extern void stdio_putmixed(winid window, int attr, const char *str);
 extern void stdio_display_file(const char * fname, boolean complain);
 extern void stdio_start_menu(winid window, unsigned long mbehavior);
 extern void stdio_add_menu(winid window, const glyph_info *glyphinfo,
-    const anything *identifier, char ch, char gch, int attr, int clr,
-    const char *str, unsigned int itemflags);
+        const anything *identifier, char ch, char gch, int attr, int clr,
+        const char *str, unsigned int itemflags);
 extern void stdio_end_menu(winid window, const char *prompt);
 extern int stdio_select_menu(winid window, int how, menu_item **menu_list);
 extern char stdio_message_menu(char let, int how, const char *mesg);
@@ -39,7 +39,7 @@ extern void stdio_wait_synch(void);
 extern void stdio_cliparound(int x, int y);
 #endif /* CLIPPING */
 extern void stdio_print_glyph(winid window, coordxy x, coordxy y,
-    const glyph_info *glyphinfo, const glyph_info *bkglyphinfo);
+        const glyph_info *glyphinfo, const glyph_info *bkglyphinfo);
 extern void stdio_raw_print(const char *str);
 extern void stdio_raw_print_bold(const char *str);
 extern int stdio_nhgetch(void);
@@ -57,12 +57,12 @@ extern int stdio_get_ext_cmd(void);
 extern void stdio_number_pad(int mode);
 extern void stdio_delay_output(void);
 #ifdef CHANGE_COLOR
-extern extern void stdio_change_color(int color, long rgb, int reverse);
+extern void stdio_change_color(int color, long rgb, int reverse);
 #ifdef MAC
-extern extern void stdio_change_background(int white_or_black);
-extern extern short stdio_set_font_name(winid window, char *fontname)
+extern void stdio_change_background(int white_or_black);
+extern short stdio_set_font_name(winid window, char *fontname)
 #endif /* MAC */
-extern extern char *stdio_get_color_string(void);
+extern char *stdio_get_color_string(void);
 #endif /* CHANGE_COLOR */
 extern void stdio_start_screen(void);
 extern void stdio_end_screen(void);
@@ -72,9 +72,9 @@ extern char *stdio_getmsghistory(boolean init);
 extern void stdio_putmsghistory(const char *msg, boolean is_restoring);
 extern void stdio_status_finish(void);
 extern void stdio_status_enablefield(int fieldidx, const char *nm,
-    const char *fmt, boolean enable);
+        const char *fmt, boolean enable);
 extern void stdio_status_update(int idx, genericptr_t ptr, int chg,
-    int percent, int color, unsigned long *colormasks);
+        int percent, int color, unsigned long *colormasks);
 extern void stdio_update_inventory(int arg);
 extern win_request_info *stdio_ctrl_nhwindow(winid window, int request,
     win_request_info *wri);

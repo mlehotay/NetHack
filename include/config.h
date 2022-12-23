@@ -151,6 +151,7 @@
 #endif
 
 #ifdef STDIO_GRAPHICS
+#define SAFEPROCS /* some stdio_procs live in safeproc.c */
 #ifndef DEFAULT_WINDOW_SYS
 #define DEFAULT_WINDOW_SYS "stdio"
 #endif

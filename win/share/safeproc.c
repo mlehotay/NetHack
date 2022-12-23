@@ -1,5 +1,5 @@
-/* NetHack 3.7	safeproc.c   */	
-/* Copyright (c) Michael Allison, 2018                            */
+/* NetHack 3.7	safeproc.c $NHDT-Date$ $NHDT-Branch$ $NHDT-Revision$ */
+/* Copyright (c) Michael Allison, 2018 */
 /* NetHack may be freely redistributed.  See license for details. */
 
 /* must #define SAFEPROCS in xxxconf.h or via CFLAGS or this won't compile */
@@ -29,7 +29,7 @@
  * The base functions established by a call to get_safe_procs()
  * accomplish the goal of preventing crashes, but not much
  * else.
- * 
+ *
  * There are also a few additional functions provided in here
  * that can be selected optionally to provide some startup
  * functionality for getting messages out to the user about
@@ -49,12 +49,12 @@
  * call.
  *
  *  Usage:
- *   
+ *
  *    windowprocs = *get_safe_procs(0);
  *   initializes a set of winprocs function pointers that ensure
  *   none of the function pointers are left null, but that's all
  *   it does.
- *   
+ *
  *    windowprocs = *get_safe_procs(1);
  *   initializes a set of winprocs functions pointers that ensure
  *   none of the function pointers are left null, but also
@@ -89,7 +89,7 @@ struct window_procs safe_procs = {
 #ifdef CHANGE_COLOR /* the Mac uses a palette device */
     safe_change_color,
 #ifdef MAC
-    safe_change_background, set_safe_font_name,
+    safe_change_background, safe_set_font_name,
 #endif
     safe_get_color_string,
 #endif
@@ -114,7 +114,7 @@ get_safe_procs(int optn)
         safe_procs.win_nhgetch = stdio_nhgetch;
         safe_procs.win_wait_synch = stdio_wait_synch;
         if (optn == 2)
-            safe_procs.win_raw_print = stdio_nonl_raw_print;        
+            safe_procs.win_raw_print = stdio_nonl_raw_print;
     }
     return &safe_procs;
 }
@@ -410,6 +410,34 @@ safe_delay_output(void)
     return;
 }
 
+#ifdef CHANGE_COLOR
+void
+safe_change_color(int color UNUSED, long rgb UNUSED, int reverse UNUSED)
+{
+    return;
+}
+
+#ifdef MAC
+void
+safe_change_background(int white_or_black UNUSED)
+{
+    return;
+}
+
+short
+safe_set_font_name(winid window UNUSED, char *fontname UNUSED)
+{
+    return 0;
+}
+#endif /* MAC */
+
+char *
+safe_get_color_string(void)
+{
+    return (char *) 0;
+}
+#endif /* CHANGE_COLOR */
+
 void
 safe_start_screen(void)
 {
@@ -468,7 +496,7 @@ safe_status_update(
     int idx UNUSED,
     genericptr_t ptr UNUSED,
     int chg UNUSED,
-    int percent UNUSED, 
+    int percent UNUSED,
     int color UNUSED,
     unsigned long *colormasks UNUSED)
 {
