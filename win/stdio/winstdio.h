@@ -1,4 +1,4 @@
-/* NetHack 3.7  winstdio.h $FLEY-Date: 1671806328 2022/12/23 14:38:48 $ $FLEY-Branch: towel $ $FLEY-Revision: 1.2 $ */
+/* NetHack 3.7  winstdio.h $FLEY-Date: 1671979175 2022/12/25 14:39:35 $ $FLEY-Branch: towel $ $FLEY-Revision: 1.3 $ */
 /* Copyright (c) Michael Lehotay, 2022. */
 /* NetHack may be freely redistributed. See license for details. */
 
@@ -80,3 +80,5 @@ extern win_request_info *stdio_ctrl_nhwindow(winid window, int request,
     win_request_info *wri);
 
 #endif /* WINSTDIO_H */
+
+/* winstdio.h */

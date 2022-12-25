@@ -1,4 +1,4 @@
-/* NetHack 3.7  winstdio.c $FLEY-Date: 1671806328 2022/12/23 14:38:48 $ $FLEY-Branch: towel $ $FLEY-Revision: 1.2 $ */
+/* NetHack 3.7  winstdio.c $FLEY-Date: 1671983958 2022/12/25 15:59:18 $ $FLEY-Branch: towel $ $FLEY-Revision: 1.3 $ */
 /* Copyright (c) Michael Lehotay, 2022 */
 /* NetHack may be freely redistributed. See license for details. */
 
@@ -82,10 +82,17 @@ extern void stdio_nonl_raw_print(const char* str); /* safeproc.c */
 extern void genl_putmixed(winid window, int attr, const char *str); /* windows.c */
 extern int stdio_nhgetch(void);  /* safeproc.c */
 
+/*
+ *  stdio_curs
+ *
+ *  Next output to window will start at (x,y), also moves
+ *  displayable cursor to (x,y).  For backward compatibility,
+ *  1 <= x < cols, 0 <= y < rows, where cols and rows are
+ *  the size of window.
+ */
 void
 stdio_curs(winid window UNUSED, int x UNUSED, int y UNUSED)
 {
-    /* todo */
     return;
 }
 
@@ -98,7 +105,6 @@ stdio_putstr(winid window UNUSED, int attr UNUSED, const char *str)
 void
 stdio_get_nh_event(void)
 {
-    /* noop */
     return;
 }
 
@@ -113,39 +119,114 @@ stdio_nh_poskey(coordxy *x UNUSED, coordxy *y UNUSED, int *mod UNUSED)
 extern void genl_player_selection(void); /* role.c */
 extern void genl_display_file(const char * fname, boolean complain); /* windows.c */
 
+extern NEARDATA long yn_number; /* decl.c */
+extern const char quitchars[]; /* decl.c */
+
 /*
  *  stdio_print_glyph
  *
  *  Print the glyph to the output device.  Don't flush the output device.
+ *
+ *	Print a glyph found within the glyphinfo at (x,y) on the given window. The
+ *	glyphs within the glyph_info struct are integers and can be mapped to
+ *	whatever the window- port wants (symbol, font, color, attributes,
+ *	...there's a 1-1 map between glyphs and distinct things on the map).
+ *
+ *  bkglyphinfo contains a background glyph for potential use by some
+ *  graphical or tiled environments to allow the depiction to fall against a
+ *  background consistent with the grid around x,y.  If bkglyphinfo->glyph is
+ *  NO_GLYPH, then the parameter should be ignored (do nothing with it).
+ *
+ *  glyph_info struct fields:
+ *      int glyph;        the display entity
+ *      int color;        color for window ports not using a tile
+ *      int ttychar;      the character mapping for the original tty interface
+ *      short int symidx;       offset into syms array
+ *      unsigned glyphflags;    more detail about the entity
  */
 void
-stdio_print_glyph(
-    winid window UNUSED,
-    coordxy x UNUSED,
-    coordxy y UNUSED,
-    const glyph_info *glyphinfo UNUSED,
-    const glyph_info *bkglyphinfo UNUSED)
+stdio_print_glyph(winid window UNUSED, coordxy x UNUSED, coordxy y UNUSED,
+        const glyph_info *glyphinfo, const glyph_info *bkglyphinfo UNUSED)
 {
-    return;
+    if(glyphinfo) {
+        putchar(glyphinfo->ttychar);
+    }
 }
 
+/*
+ * stdio_yn_function
+ *
+ * Generic yes/no function.  'def' is the default (returned by space
+ * or return; 'esc' returns 'q', or 'n', or the default, depending on
+ * what's in the expected-response string.  The 'query' string is
+ * printed before the user is asked about the string.
+ *
+ * If resp is NULL, any single character is accepted and returned.
+ * If not-NULL, only characters in it are allowed (exceptions:  the
+ * quitchars are always allowed, and if it contains '#' then digits
+ * are allowed).  If it includes an <esc>, anything beyond that won't
+ * be shown in the prompt to the user but will be acceptable as input.
+ */
 char
-stdio_yn_function(const char *query UNUSED,
-                 const char *resp UNUSED, char def UNUSED)
+stdio_yn_function(const char *query, const char *resp, char def)
 {
-    return '\033';
+    char *p, c;
+
+    fprintf(stdout, "%s", query);
+    fflush(stdout);
+
+    while (!fscanf(stdin, "%c", &c) ||  (resp == NULL) ||
+            !strchr(resp, c) || (c == def))
+        ;
+    if (resp == NULL)
+        return c;
+
+    if (!strchr(resp, '#')) {
+        fscanf(stdin, "%lu", &yn_number);
+        return '#';
+    }
+
+    if (c == '\033') {
+        if (!(p = strchr(resp, 'q')) || !(p = strchr(resp, 'n')))
+            c = *p;
+        else
+            c = def;
+    } else if (!strchr(quitchars, c)) {
+        c = def;
+    }
+    return c;
 }
 
+/*
+ *  stdio_getlin
+ *
+ *  Prints ques as a prompt and reads a single line of text, up to a newline.
+ *  The string entered is returned without the newline.  ESC is used to
+ *  cancel, in which case the string "\033\000" is returned.
+ *
+ *  getlin() must call flush_screen(1) before doing anything.
+ *
+ *  getlin() can assume the input buffer is at least BUFSZ bytes in size and
+ *  must truncate inputs to fit, including the nul character.
+ */
 void
-stdio_getlin(const char* prompt UNUSED, char *outbuf)
+stdio_getlin(const char* prompt, char *outbuf)
 {
-    Strcpy(outbuf, "\033");
+    fprintf(stdout, "%s", prompt);
+    fflush(stdout);
+    fscanf(stdin, " %c", outbuf);
 }
 
+/*
+ *  stdio_get_ext_cmd
+ *
+ *  Get an extended command in a window-port specific way. An index into
+ *  extcmdlist[] is returned on a successful selection, -1 otherwise.
+ */
 int
 stdio_get_ext_cmd(void)
 {
-    return '\033';
+    return -1;
 }
 
 void
@@ -154,6 +235,11 @@ stdio_update_inventory(int arg UNUSED)
     return;
 }
 
+/*
+ *  stdio_doprev_message
+ *
+ *	Display previous messages.  Used by the ^P command.
+ */
 int
 stdio_doprev_message(void)
 {
@@ -187,7 +273,7 @@ stdio_exit_nhwindows(const char *str UNUSED)
 winid
 stdio_create_nhwindow(int type UNUSED)
 {
-    return WIN_ERR;
+    return (winid) 0;
 }
 
 void
@@ -359,3 +445,5 @@ stdio_end_screen(void)
 {
     return;
 }
+
+/* winstdio.c */
