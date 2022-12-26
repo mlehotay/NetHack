@@ -1,45 +1,32 @@
 #
-# NetHack 3.7  linux $NHDT-Date: 1671326647 2022/12/18 01:24:07 $  $NHDT-Branch: towel $:$NHDT-Revision: 1.6 $
+# NetHack 3.7  linux $NHDT-Date: 1596498416 2020/08/03 23:46:56 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.2 $
 # Copyright (c) Patric Mueller
-# NetHack may be freely redistributed.  See license for details.
+# NetHack may be freely redistributed.  See license for details. 
 #
 #-PRE
 # Hints file for a minimal build
 # This hints file provides the base for a minimal tty build for Linux
 
-#PREFIX=$(wildcard ~)/nethack-minimal
-#HACKDIR=$(PREFIX)/games/lib/$(GAME)dir
-#SHELLDIR=$(PREFIX)/games
+PREFIX=$(wildcard ~)/nethack-minimal
+HACKDIR=$(PREFIX)/games/lib/$(GAME)dir
+SHELLDIR=$(PREFIX)/games
+INSTDIR=$(HACKDIR)
+VARDIR=$(HACKDIR)
 
-PREFIX = $(wildcard ~)/.local/bin
-HACKDIR = $(wildcard ~)/.local/lib/$(GAME)dir
-SHELLDIR = $(PREFIX)
-INSTDIR = $(HACKDIR)
-VARDIR = $(HACKDIR)
+CFLAGS=-g -I../include
 
-POSTINSTALL+= cp -n sys/unix/sysconf $(INSTDIR)/sysconf; \
-	$(CHOWN) $(GAMEUID) $(INSTDIR)/sysconf; \
-	$(CHGRP) $(GAMEGRP) $(INSTDIR)/sysconf; \
-	chmod $(VARFILEPERM) $(INSTDIR)/sysconf;
+# when building liblua.a, avoid warning that use of tmpnam() should be
+# replaced by mkstemp(); the lua code doesn't use nethack's config.h so
+# this needs to be passed via make rather than defined in unixconf.h
+SYSCFLAGS=-DLUA_USE_POSIX
 
-CFLAGS += -g -I../include
-CFLAGS += -DSTDIO_GRAPHICS -DNOTTYGRAPHICS -DWINCHAIN
+LINK=$(CC)
 
-SYSCFLAGS = -DLUA_USE_POSIX
+WINSRC = $(WINTTYSRC)
+WINOBJ = $(WINTTYOBJ)
+WINLIB = $(WINTTYLIB)
 
-LINK = $(CC)
-LFLAGS += -rdynamic
-
-#WINSRC += $(WINTTYSRC)
-#WINOBJ += $(WINTTYOBJ)
-#WINLIB += $(WINTTYLIB)
-#WINTTYLIB = -lncurses -ltinfo
-
-HINTSRC += $(CHAINSRC)
-HINTOBJ += $(CHAINOBJ)
-
-WINSRC += $(WINSTDIOSRC) $(HINTSRC)
-WINOBJ += $(WINSTDIOOBJ)
+WINTTYLIB=-lncurses -ltinfo
 
 CHOWN=true
 CHGRP=true
