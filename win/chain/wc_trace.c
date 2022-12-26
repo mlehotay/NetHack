@@ -55,7 +55,6 @@ void trace_add_menu(void *,winid, const glyph_info *, const ANY_P *,
 void trace_end_menu(void *,winid, const char *);
 int trace_select_menu(void *,winid, int, MENU_ITEM_P **);
 char trace_message_menu(void *,char, int, const char *);
-void trace_update_inventory(void *,int);
 void trace_mark_synch(void *);
 void trace_wait_synch(void *);
 #ifdef CLIPPING
@@ -101,6 +100,8 @@ void trace_status_update(void *,int, genericptr_t, int, int, int,
                          unsigned long *);
 
 boolean trace_can_suspend(void *);
+void trace_update_inventory(void *,int);
+win_request_info *trace_ctrl_nhwindow(void *, winid, int, win_request_info *);
 
 void trace_procs_init(int dir);
 void *trace_procs_chain(int cmd, int n, void *me, void *nextprocs, void *nextdata);
@@ -1152,7 +1153,7 @@ trace_status_update(
     void *vp,
     int idx,
     genericptr_t ptr,
-    int chg, 
+    int chg,
     int percent,
     int color,
     unsigned long *colormasks)
@@ -1185,8 +1186,34 @@ trace_can_suspend(void *vp)
     return rv;
 }
 
+win_request_info *
+trace_ctrl_nhwindow(
+    void *vp,
+    winid window,
+    int request,
+    win_request_info *wri)
+{
+    struct trace_data *tdp = vp;
+    win_request_info *rv;
+
+    fprintf(wc_tracelogf, "%sctrl_nhwindow(%p %d %d %p)\n", INDENT, vp,
+            window, request, wri);
+
+    PRE;
+    rv = (*tdp->nprocs->win_ctrl_nhwindow)(tdp->ndata, window, request, wri);
+    POST;
+
+    if (rv) {
+        fprintf(wc_tracelogf, "%s=> %p\n", INDENT, rv);
+    } else {
+        fprintf(wc_tracelogf, "%s=> NULL\n", INDENT);
+    }
+
+    return rv;
+}
+
 struct chain_procs trace_procs = {
-    "+trace", 0, /* wincap */
+    WPIDPLUS(trace), 0, /* wincap */
     0,           /* wincap2 */
     {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1}, /* color availability */
     /*
@@ -1202,7 +1229,7 @@ struct chain_procs trace_procs = {
     trace_create_nhwindow, trace_clear_nhwindow, trace_display_nhwindow,
     trace_destroy_nhwindow, trace_curs, trace_putstr, trace_putmixed,
     trace_display_file, trace_start_menu, trace_add_menu, trace_end_menu,
-    trace_select_menu, trace_message_menu, trace_update_inventory,
+    trace_select_menu, trace_message_menu,
     trace_mark_synch, trace_wait_synch,
 #ifdef CLIPPING
     trace_cliparound,
@@ -1228,4 +1255,6 @@ struct chain_procs trace_procs = {
     trace_status_init, trace_status_finish, trace_status_enablefield,
     trace_status_update,
     trace_can_suspend,
+    trace_update_inventory,
+    trace_ctrl_nhwindow,
 };

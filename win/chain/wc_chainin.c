@@ -584,7 +584,7 @@ chainin_ctrl_nhwindow(
     int request,
     win_request_info *wri)
 {
-    boolean rv;
+    win_request_info *rv;
 
     rv = (*cibase->nprocs->win_ctrl_nhwindow)(cibase->ndata, window,
                                                    request, wri);
@@ -592,7 +592,7 @@ chainin_ctrl_nhwindow(
 }
 
 struct window_procs chainin_procs = {
-    WPIDMINUS(chainin), 0, /* wincap */
+    WPIDMINUS(trace), 0, /* wincap */
     0,             /* wincap2 */
     {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1}, /* color availability */
     /*
@@ -609,7 +609,7 @@ struct window_procs chainin_procs = {
     chainin_display_nhwindow, chainin_destroy_nhwindow, chainin_curs,
     chainin_putstr, chainin_putmixed, chainin_display_file,
     chainin_start_menu, chainin_add_menu, chainin_end_menu,
-    chainin_select_menu, chainin_message_menu, chainin_update_inventory,
+    chainin_select_menu, chainin_message_menu,
     chainin_mark_synch, chainin_wait_synch,
 #ifdef CLIPPING
     chainin_cliparound,
