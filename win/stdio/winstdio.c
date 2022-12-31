@@ -1,4 +1,4 @@
-/* NetHack 3.7  winstdio.c $FLEY-Date: 1672456612 2022/12/31 03:16:52 $ $FLEY-Branch: towel $ $FLEY-Revision: 1.4 $ */
+/* NetHack 3.7  winstdio.c $FLEY-Date: 1672518721 2022/12/31 20:32:01 $ $FLEY-Branch: towel $ $FLEY-Revision: 1.5 $ */
 /* Copyright (c) Michael Lehotay, 2022 */
 /* NetHack may be freely redistributed. See license for details. */
 
@@ -46,14 +46,8 @@ win_stdio_init(int dir)
 {
     if (dir == WININIT) {
         /* initialize window port */
-        if (!setvbuf(stdin, NULL, _IONBF, 0)) { /* make stdin unbuffered */
-            fprintf(stderr, "win_stdio_init(%d) sets _IONBF\n", dir);
-        } else {
-            fputs("setvbuf() fails\n", stderr);
-        }
     } else if (dir == WININIT_UNDO) {
         /* undo side effects of initialization (if any) */
-        fprintf(stderr, "win_stdio_init(%d) says goodbye\n", dir);
     }
 }
 
@@ -80,6 +74,17 @@ extern winid WIN_MESSAGE, WIN_MAP, WIN_INVEN; /* the three standard windows */
 
 extern struct wc_Opt wc_options[];  /* wincap options defined in options.c */
 
+#ifndef MAXWIN /* from wintty.h */
+#define MAXWIN 20
+#endif
+
+struct stdio_nhwin {
+    int type;
+    coord cursor;
+};
+
+struct stdio_nhwin stdio_windows[MAXWIN];
+
 /** Low-level routines ******************************************************/
 
 extern void stdio_raw_print(const char *str); /* safeproc.c */
@@ -88,18 +93,11 @@ extern void stdio_nonl_raw_print(const char* str); /* safeproc.c */
 extern void genl_putmixed(winid window, int attr, const char *str); /* windows.c */
 extern int stdio_nhgetch(void);  /* safeproc.c */
 
-/*
- *  stdio_curs
- *
- *  Next output to window will start at (x,y), also moves
- *  displayable cursor to (x,y).  For backward compatibility,
- *  1 <= x < cols, 0 <= y < rows, where cols and rows are
- *  the size of window.
- */
 void
-stdio_curs(winid window UNUSED, int x UNUSED, int y UNUSED)
+stdio_curs(winid window, int x, int y)
 {
-    return;
+    stdio_windows[window].cursor.x = x; /* 1 <= x < cols */
+    stdio_windows[window].cursor.y = y; /* 0 <= y < rows */
 }
 
 void
@@ -257,26 +255,63 @@ void
 stdio_init_nhwindows(int *argcp UNUSED, char **argv UNUSED)
 {
     int i;
-    for (i = 1; i <= 4; ++i)
+
+    /* make stdin unbuffered */
+    if (!setvbuf(stdin, NULL, _IONBF, 0)) {
+        fputs("stdio_init_nhwindows sets _IONBF\n", stderr);
+    } else {
+        fputs("setvbuf() fails in stdio_init_nhwindows\n", stderr);
+    }
+
+    /* print the copyright banner */
+    for (i = 1; i <= 4; ++i) {
         stdio_raw_print(copyright_banner_line(i));
+    }
+
+    /* initialize the window array */
+    for (i = 0; i < MAXWIN; i++) {
+        stdio_windows[i].type = WIN_ERR;
+        stdio_clear_nhwindow(i);
+    }
+
+    /* create the standard windows */
+    WIN_MESSAGE = stdio_create_nhwindow(NHW_MESSAGE);
+    WIN_MAP = stdio_create_nhwindow(NHW_MAP);
+    WIN_INVEN = stdio_create_nhwindow(NHW_MENU);
 }
 
 void
-stdio_exit_nhwindows(const char *str UNUSED)
+stdio_exit_nhwindows(const char *str)
 {
-    return;
+    if (str != NULL) {
+        stdio_raw_print(str);
+    }
+
+    fputs("stdio_exit_nhwindows says goodbye\n", stderr);
 }
 
 winid
-stdio_create_nhwindow(int type UNUSED)
+stdio_create_nhwindow(int type)
 {
-    return (winid) 0;
+    winid id = WIN_ERR;
+    int i;
+
+    for (i = 0; i < MAXWIN; i++) {
+        if (stdio_windows[i].type == WIN_ERR) {
+            id = i;
+            stdio_windows[id].type = type;
+            stdio_clear_nhwindow(id);
+            break;
+        }
+    }
+
+    return id;
 }
 
 void
-stdio_clear_nhwindow(winid window UNUSED)
+stdio_clear_nhwindow(winid window)
 {
-    return;
+    stdio_curs(window, 1, 0);
 }
 
 void
@@ -292,9 +327,9 @@ stdio_dismiss_nhwindow(winid window UNUSED)
 }
 
 void
-stdio_destroy_nhwindow(winid window UNUSED)
+stdio_destroy_nhwindow(winid window)
 {
-    return;
+    stdio_windows[window].type = WIN_ERR;
 }
 
 win_request_info *
