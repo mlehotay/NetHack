@@ -1,4 +1,4 @@
-/* NetHack 3.7  winstdio.c $FLEY-Date: 1671983958 2022/12/25 15:59:18 $ $FLEY-Branch: towel $ $FLEY-Revision: 1.3 $ */
+/* NetHack 3.7  winstdio.c $FLEY-Date: 1672456612 2022/12/31 03:16:52 $ $FLEY-Branch: towel $ $FLEY-Revision: 1.4 $ */
 /* Copyright (c) Michael Lehotay, 2022 */
 /* NetHack may be freely redistributed. See license for details. */
 
@@ -26,7 +26,7 @@ struct window_procs stdio_procs = {
  #endif
      stdio_print_glyph, stdio_raw_print, stdio_raw_print_bold, stdio_nhgetch,
      stdio_nh_poskey, stdio_nhbell, stdio_doprev_message, stdio_yn_function,
-     stdio_getlin, stdio_get_ext_cmd, stdio_number_pad, stdio_delay_output,
+     stdio_getlin, extcmd_via_menu, stdio_number_pad, stdio_delay_output,
  #ifdef CHANGE_COLOR
      safe_change_color,
  #ifdef MAC /* old OS 9, not OSX */
@@ -46,8 +46,14 @@ win_stdio_init(int dir)
 {
     if (dir == WININIT) {
         /* initialize window port */
+        if (!setvbuf(stdin, NULL, _IONBF, 0)) { /* make stdin unbuffered */
+            fprintf(stderr, "win_stdio_init(%d) sets _IONBF\n", dir);
+        } else {
+            fputs("setvbuf() fails\n", stderr);
+        }
     } else if (dir == WININIT_UNDO) {
         /* undo side effects of initialization (if any) */
+        fprintf(stderr, "win_stdio_init(%d) says goodbye\n", dir);
     }
 }
 
@@ -118,6 +124,7 @@ stdio_nh_poskey(coordxy *x UNUSED, coordxy *y UNUSED, int *mod UNUSED)
 
 extern void genl_player_selection(void); /* role.c */
 extern void genl_display_file(const char * fname, boolean complain); /* windows.c */
+extern int extcmd_via_menu(void); /* cmd.c */
 
 extern NEARDATA long yn_number; /* decl.c */
 extern const char quitchars[]; /* decl.c */
@@ -175,9 +182,11 @@ stdio_yn_function(const char *query, const char *resp, char def)
     fprintf(stdout, "%s", query);
     fflush(stdout);
 
-    while (!fscanf(stdin, "%c", &c) ||  (resp == NULL) ||
-            !strchr(resp, c) || (c == def))
-        ;
+    do {
+        c = fgetc(stdin);
+    } while (resp != NULL && !strchr(resp, c) && c != def);
+    fprintf(stderr, "stdio_yn_function() reads %c\n", c);
+
     if (resp == NULL)
         return c;
 
@@ -214,19 +223,7 @@ stdio_getlin(const char* prompt, char *outbuf)
 {
     fprintf(stdout, "%s", prompt);
     fflush(stdout);
-    fscanf(stdin, " %c", outbuf);
-}
-
-/*
- *  stdio_get_ext_cmd
- *
- *  Get an extended command in a window-port specific way. An index into
- *  extcmdlist[] is returned on a successful selection, -1 otherwise.
- */
-int
-stdio_get_ext_cmd(void)
-{
-    return -1;
+    fscanf(stdin, " %c\n", outbuf);
 }
 
 void

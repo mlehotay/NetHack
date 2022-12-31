@@ -1,5 +1,5 @@
 #
-# NetHack 3.7  linux-stdio  $FLEY-Date: 1672073180 2022/12/26 16:46:20 $ $FLEY-Branch: towel $ $FLEY-Revision: 1.0 $
+# NetHack 3.7  linux-stdio  $FLEY-Date: 1672456613 2022/12/31 03:16:53 $ $FLEY-Branch: towel $ $FLEY-Revision: 1.13 $
 # Copyright (c) Michael Lehotay, 2022
 # NetHack may be freely redistributed.  See license for details.
 #
@@ -13,25 +13,25 @@ SHELLDIR = $(PREFIX)
 INSTDIR = $(HACKDIR)
 VARDIR = $(HACKDIR)
 
-POSTINSTALL+= cp -n sys/unix/sysconf $(INSTDIR)/sysconf; \
+POSTINSTALL += cp -n sys/unix/sysconf $(INSTDIR)/sysconf; \
 	$(CHOWN) $(GAMEUID) $(INSTDIR)/sysconf; \
 	$(CHGRP) $(GAMEGRP) $(INSTDIR)/sysconf; \
 	chmod $(VARFILEPERM) $(INSTDIR)/sysconf;
 
 CFLAGS += -g -I../include
-CFLAGS += -DSTDIO_GRAPHICS -DWINCHAIN
-#CFLAGS += -DNOTTYGRAPHICS
-CFLAGS += -DHACKDIR=\"$(HACKDIR)\"
+CFLAGS += -DSTDIO_GRAPHICS
+CFLAGS += -DNOTTYGRAPHICS
+CFLAGS += -DWINCHAIN -DHACKDIR=\"$(HACKDIR)\"
 
 SYSCFLAGS = -DLUA_USE_POSIX
 
 LINK = $(CC)
 LFLAGS += -rdynamic
 
-WINSRC += $(WINTTYSRC)
-WINOBJ += $(WINTTYOBJ)
-WINLIB += $(WINTTYLIB)
-WINTTYLIB = -lncurses -ltinfo
+#WINSRC += $(WINTTYSRC)
+#WINOBJ += $(WINTTYOBJ)
+#WINLIB += $(WINTTYLIB)
+#WINTTYLIB = -lncurses -ltinfo
 
 HINTSRC += $(CHAINSRC)
 HINTOBJ += $(CHAINOBJ)
@@ -39,8 +39,8 @@ HINTOBJ += $(CHAINOBJ)
 WINSRC += $(WINSTDIOSRC) $(HINTSRC)
 WINOBJ += $(WINSTDIOOBJ)
 
-CHOWN=true
-CHGRP=true
+CHOWN = true
+CHGRP = true
 
 VARDIRPERM = 0755
 VARFILEPERM = 0600
