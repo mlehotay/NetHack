@@ -114,6 +114,7 @@ chainin_procs_chain(
         tdp = me;
         tdp->nprocs = nextprocs;
         tdp->ndata = nextdata;
+        cibase = tdp;
         break;
     default:
         panic("chainin_procs_chain: bad cmd\n");
