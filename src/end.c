@@ -29,7 +29,7 @@ static void disclose(int, boolean);
 static void get_valuables(struct obj *);
 static void sort_valuables(struct valuable_data *, int);
 static void artifact_score(struct obj *, boolean, winid);
-static void really_done(int) NORETURN;
+ATTRNORETURN static void really_done(int) NORETURN;
 static void savelife(int);
 static boolean should_query_disclose_option(int, char *);
 #ifdef DUMPLOG
@@ -38,7 +38,7 @@ static void dump_plines(void);
 static void dump_everything(int, time_t);
 
 #if defined(__BEOS__) || defined(MICRO) || defined(OS2) || defined(WIN32)
-extern void nethack_exit(int) NORETURN;
+ATTRNORETURN extern void nethack_exit(int) NORETURN;
 #else
 #define nethack_exit exit
 #endif
@@ -656,11 +656,7 @@ panic VA_DECL(const char *, str)
     {
         char buf[BUFSZ];
 
-#if !defined(NO_VSNPRINTF)
         (void) vsnprintf(buf, sizeof buf, str, VA_ARGS);
-#else
-        Vsprintf(buf, str, VA_ARGS);
-#endif
         raw_print(buf);
         paniclog("panic", buf);
     }
@@ -979,8 +975,9 @@ get_valuables(struct obj *list) /* inventory or container contents */
                 ga.amulets[i].typ = obj->otyp;
             } else
                 ga.amulets[i].count += obj->quan; /* always adds one */
-        } else if (obj->oclass == GEM_CLASS && obj->otyp < LUCKSTONE) {
-            i = min(obj->otyp, LAST_GEM + 1) - FIRST_GEM;
+        } else if (obj->oclass == GEM_CLASS && obj->otyp <= LAST_GLASS_GEM) {
+            /* last+1: combine all glass gems into one slot */
+            i = min(obj->otyp, LAST_REAL_GEM + 1) - FIRST_REAL_GEM;
             if (!gg.gems[i].count) {
                 gg.gems[i].count = obj->quan;
                 gg.gems[i].typ = obj->otyp;
@@ -1613,7 +1610,8 @@ really_done(int how)
 
                 if (count == 0L)
                     continue;
-                if (objects[typ].oc_class != GEM_CLASS || typ <= LAST_GEM) {
+                if (objects[typ].oc_class != GEM_CLASS
+                    || typ <= LAST_REAL_GEM) {
                     otmp = mksobj(typ, FALSE, FALSE);
                     discover_object(otmp->otyp, TRUE, FALSE);
                     otmp->known = 1;  /* for fake amulets */

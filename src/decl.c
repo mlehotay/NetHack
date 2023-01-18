@@ -232,6 +232,9 @@ const struct instance_globals_b g_init_b = {
     UNDEFINED_PTR, /* branches */
     /* files.c */
     BONESINIT, /* bones */
+    /* hack.c */
+    0U, /* bldrpush_oid - last boulder pushed */
+    0L, /* bldrpushtime - turn message was given about pushing that boulder */
     /* mkmaze.c */
     { {COLNO, ROWNO, 0, 0}, {COLNO, ROWNO, 0, 0},
             FALSE, FALSE, 0, 0, { 0 } }, /* bughack */
@@ -357,6 +360,7 @@ const struct instance_globals_g g_init_g = {
     { { { 0 } } }, /* gbuf */
     UNDEFINED_VALUES, /* gbuf_start */
     UNDEFINED_VALUES, /* gbug_stop */
+
     /* do_name.c */
     UNDEFINED_PTR, /* gloc_filter_map */
     UNDEFINED_VALUE, /* gloc_filter_floodfill_match_glyph */
@@ -584,6 +588,7 @@ const struct instance_globals_o g_init_o = {
     UNDEFINED_PTR, /* occupation */
     0, /* occtime */
     UNDEFINED_VALUE, /* otg_temp */
+    NULL, /* otg_otmp */
     NULL, /* occtxt */
     /* symbols.c */
     DUMMY, /* ov_primary_syms */
@@ -593,6 +598,7 @@ const struct instance_globals_o g_init_o = {
     /* o_init.c */
     DUMMY, /* oclass_prob_totals */
     /* options.c */
+    0, /* opt_phase */
     FALSE, /* opt_initial */
     FALSE, /* opt_from_file */
     FALSE, /* opt_need_redraw */
@@ -799,7 +805,6 @@ const struct instance_globals_v g_init_v = {
       0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 }, /* valset */
     /* end.c */
     { UNDEFINED_VALUES }, /* valuables */
-    VANQ_MLVL_MNDX,   /* vanq_sortmode */
     /* mhitm.c */
     FALSE, /* vis */
     /* mklev.c */
@@ -831,6 +836,9 @@ const struct instance_globals_w g_init_w = {
     UNDEFINED_VALUE, /* wc */
     /* mkmaze.c */
     UNDEFINED_PTR, /* wportal */
+    /* new */
+    { wdmode_traditional, NO_COLOR },       /* wsettings */
+
     TRUE, /* havestate*/
     IVMAGIC  /* w_magic used to validate that structure layout has been preserved */
 };

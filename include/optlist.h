@@ -78,9 +78,9 @@ static int optfn_##a(int, int, boolean, char *, char *);
     { m, OptS_##sec, 0, b, opt_##a, s, OthrOpt, n, v, d, No, c,         \
       (boolean *) 0, &optfn_##a, al, z, (const char *) 0, On, On, 0 },
 
-/* this is not reliable because USE_TILES might be defined in a
-   multi-interface binary but not apply to the current interface */
-#ifdef USE_TILES
+/* this is not reliable because TILES_IN_GLYPHMAP might be defined
+ * in a multi-interface binary but not apply to the current interface */
+#ifdef TILES_IN_GLYPHMAP
 #define tiled_map_Def On
 #define ascii_map_Def Off
 #else
@@ -115,16 +115,16 @@ static int optfn_##a(int, int, boolean, char *, char *);
                 No, Yes, No, No, NoAlias,
                 "your character's name (e.g., name:Merlin-W)")
     NHOPTC(role, Advanced, PL_CSIZ, opt_in, set_gameview,
-                No, Yes, No, No, "character",
+                Yes, Yes, Yes, No, "character",
                 "your starting role (e.g., Barbarian, Valkyrie)")
     NHOPTC(race, Advanced, PL_CSIZ, opt_in, set_gameview,
-                No, Yes, No, No, NoAlias,
+                Yes, Yes, Yes, No, NoAlias,
                 "your starting race (e.g., Human, Elf)")
     NHOPTC(gender, Advanced, 8, opt_in, set_gameview,
-                No, Yes, No, No, NoAlias,
+                Yes, Yes, Yes, No, NoAlias,
                 "your starting gender (male or female)")
-    NHOPTC(align, Advanced, 8, opt_in, set_gameview,
-                No, Yes, No, No, NoAlias,
+    NHOPTC(alignment, Advanced, 8, opt_in, set_gameview,
+                Yes, Yes, Yes, No, "align",
                 "your starting alignment (lawful, neutral, or chaotic)")
     /* end of special ordering; remainder of entries are in alphabetical order
      */
@@ -537,6 +537,9 @@ static int optfn_##a(int, int, boolean, char *, char *);
                 "sort object selection lists by description")
     NHOPTB(sortpack, Advanced, 0, opt_out, set_in_game,
                 On, Yes, No, No, NoAlias, &flags.sortpack)
+    NHOPTC(sortvanquished, Advanced, 0, opt_in, set_in_game,
+                Yes, Yes, No, Yes, NoAlias,
+                "preferred order when displaying vanquished monsters")
     NHOPTB(sparkle, Map, 0, opt_out, set_in_game,
                 On, Yes, No, No, NoAlias, &flags.sparkle)
     NHOPTB(splash_screen, Advanced, 0, opt_out, set_in_config,

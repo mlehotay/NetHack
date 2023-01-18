@@ -679,11 +679,11 @@ static const char *cache_nomovemsg = NULL, *cache_multi_reason = NULL;
 do {                                                        \
     boolean clear_cache = FALSE, refresh_cache = FALSE;     \
                                                             \
-    if (gm.multi < 0) {                                      \
-        if (gn.nomovemsg || gm.multi_reason) {                \
-            if (cache_nomovemsg != gn.nomovemsg)             \
+    if (gm.multi < 0) {                                     \
+        if (gn.nomovemsg || gm.multi_reason) {              \
+            if (cache_nomovemsg != gn.nomovemsg)            \
                 refresh_cache = TRUE;                       \
-            if (cache_multi_reason != gm.multi_reason)       \
+            if (cache_multi_reason != gm.multi_reason)      \
                 refresh_cache = TRUE;                       \
         } else {                                            \
             clear_cache = TRUE;                             \
@@ -696,8 +696,8 @@ do {                                                        \
         cache_multi_reason = (const char *) 0;              \
     }                                                       \
     if (refresh_cache) {                                    \
-        cache_nomovemsg = gn.nomovemsg;                      \
-        cache_multi_reason = gm.multi_reason;                \
+        cache_nomovemsg = gn.nomovemsg;                     \
+        cache_multi_reason = gm.multi_reason;               \
     }                                                       \
     if (clear_cache || refresh_cache) {                     \
         cache_reslt[0] = cache_avail[0] = FALSE;            \
@@ -1220,8 +1220,9 @@ eval_notify_windowport_field(int fld, boolean *valsetlist, int idx)
         || (fld == BL_HP && iflags.wc2_hitpointbar)) {
         fldmax = curr->idxmax;
         pc = (fldmax == BL_EXP) ? exp_percentage()
-             : (fldmax >= 0) ? percentage(curr, &gb.blstats[idx][fldmax])
-               : 0; /* bullet proofing; can't get here */
+             : (fldmax >= 0 && fldmax < MAXBLSTATS)
+                ? percentage(curr, &gb.blstats[idx][fldmax])
+                : 0; /* bullet proofing; can't get here */
         if (pc != prev->percent_value)
             chg = 1;
         curr->percent_value = pc;

@@ -418,7 +418,7 @@ mattacku(register struct monst *mtmp)
      *     excessively verbose miss feedback when monster can do multiple
      *     attacks and would miss the same wrong spot each time.)
      */
-    boolean ranged, range2, foundyou, youseeit,
+    boolean ranged, range2, foundyou, firstfoundyou, youseeit,
             skipnonmagc = FALSE;
 
     calc_mattacku_vars(mtmp, &ranged, &range2, &foundyou, &youseeit);
@@ -663,12 +663,13 @@ mattacku(register struct monst *mtmp)
     }
 
     gs.skipdrin = FALSE; /* [see mattackm(mhitm.c)] */
+    firstfoundyou = foundyou;
 
     for (i = 0; i < NATTK; i++) {
         /* recalc in case attack moved hero */
         calc_mattacku_vars(mtmp, &ranged, &range2, &foundyou, &youseeit);
         sum[i] = MM_MISS;
-        if (i > 0 && foundyou /* previous attack might have moved hero */
+        if (i > 0 && firstfoundyou /* previous attack might have moved hero */
             && (mtmp->mux != u.ux || mtmp->muy != u.uy))
             continue; /* fill in sum[] with 'miss' but skip other actions */
         mon_currwep = (struct obj *) 0;
@@ -1517,45 +1518,56 @@ gazemu(struct monst *mtmp, struct attack *mattk)
         "dulled",                /* [7] */
     };
     int react = -1;
-    boolean cancelled = (mtmp->mcan != 0), already = FALSE;
-    boolean mcanseeu = canseemon(mtmp) && couldsee(mtmp->mx, mtmp->my)
-        && mtmp->mcansee;
+    boolean is_medusa, reflectable,
+            cancelled = (mtmp->mcan != 0), already = FALSE,
+            mcanseeu = (canseemon(mtmp) && couldsee(mtmp->mx, mtmp->my)
+                        && mtmp->mcansee);
 
     if (m_seenres(mtmp, cvt_adtyp_to_mseenres(mattk->adtyp)))
         return MM_MISS;
 
+    is_medusa = (mtmp->data == &mons[PM_MEDUSA]);
+    reflectable = (Reflecting && couldsee(mtmp->mx, mtmp->my) && is_medusa);
     /* assumes that hero has to see monster's gaze in order to be
        affected, rather than monster just having to look at hero;
+       Unaware:  asleep or unconscious => not blind but won't see;
        when hallucinating, hero's brain doesn't register what
        it's seeing correctly so the gaze is usually ineffective
        [this could be taken a lot farther and select a gaze effect
        appropriate to what's currently being displayed, giving
        ordinary monsters a gaze attack when hero thinks he or she
        is facing a gazing creature, but let's not go that far...] */
-    if (Hallucination && rn2(4))
+    if ((Hallucination && rn2(4)) || (Unaware && !reflectable))
         cancelled = TRUE;
 
     switch (mattk->adtyp) {
     case AD_STON:
+        /* note: Medusa is the only monster with stoning gaze, so
+           'is_medusa' will always be True here */
         if (cancelled || !mtmp->mcansee) {
             if (!canseemon(mtmp))
                 break; /* silently */
-            pline("%s %s.", Monnam(mtmp),
-                  (mtmp->data == &mons[PM_MEDUSA] && mtmp->mcan)
-                      ? "doesn't look all that ugly"
-                      : "gazes ineffectually");
+            if (Unaware) { /* can't see attacker even though not blind */
+                react = is_medusa ? 4 : 2; /* irritated or puzzled */
+                break;
+            }
+            if (is_medusa && Hallucination && !rn2(3))
+                pline("Someone seems overdue for a serpent cut.");
+            else
+                pline("%s %s.", Monnam(mtmp),
+                      (is_medusa && mtmp->mcan && !react)
+                          ? "doesn't look all that ugly"
+                          : "gazes ineffectually");
             break;
-        }
-        if (Reflecting && couldsee(mtmp->mx, mtmp->my)
-            && mtmp->data == &mons[PM_MEDUSA]) {
+         }
+        if (reflectable) {
             /* hero has line of sight to Medusa and she's not blind */
             boolean useeit = canseemon(mtmp);
 
             if (useeit)
                 (void) ureflects("%s gaze is reflected by your %s.",
                                  s_suffix(Monnam(mtmp)));
-            if (mon_reflects(
-                    mtmp, !useeit ? (char *) 0
+            if (mon_reflects(mtmp, !useeit ? (char *) 0
                                   : "The gaze is reflected away by %s %s!"))
                 break;
             if (!m_canseeu(mtmp)) { /* probably you're invisible */
@@ -1575,7 +1587,7 @@ gazemu(struct monst *mtmp, struct attack *mattk)
             return MM_AGR_DIED;
         }
         if (canseemon(mtmp) && couldsee(mtmp->mx, mtmp->my)
-            && !Stone_resistance) {
+            && !Stone_resistance && !Unaware) {
             You("meet %s gaze.", s_suffix(mon_nam(mtmp)));
             stop_occupation();
             if (poly_when_stoned(gy.youmonst.data) && polymon(PM_STONE_GOLEM))
@@ -1854,7 +1866,7 @@ doseduce(struct monst *mon)
               mhe(mon), mon->mcan ? "severe " : "");
         return 0;
     }
-    if (unconscious()) {
+    if (unresponsive()) {
         pline("%s seems dismayed at your lack of response.", Monnam(mon));
         return 0;
     }
@@ -1894,7 +1906,7 @@ doseduce(struct monst *mon)
                                  " looks pretty.  May I have it?\"", ring,
                                  xname, simpleonames, "ring");
                 makeknown(RIN_ADORNMENT);
-                if (yn(qbuf) == 'n')
+                if (y_n(qbuf) == 'n')
                     continue;
             } else
                 pline("%s decides she'd like %s, and takes it.",
@@ -1924,7 +1936,7 @@ doseduce(struct monst *mon)
                                  " looks pretty.  Would you wear it for me?\"",
                                  ring, xname, simpleonames, "ring");
                 makeknown(RIN_ADORNMENT);
-                if (yn(qbuf) == 'n')
+                if (y_n(qbuf) == 'n')
                     continue;
             } else {
                 pline("%s decides you'd look prettier wearing %s,",
@@ -2240,7 +2252,7 @@ mayberem(struct monst *mon,
     } else if (rn2(20) < ACURR(A_CHA)) {
         Sprintf(qbuf, "\"Shall I remove your %s, %s?\"", str,
                 (!rn2(2) ? "lover" : !rn2(2) ? "dear" : "sweetheart"));
-        if (yn(qbuf) == 'n')
+        if (y_n(qbuf) == 'n')
             return;
     } else {
         char hairbuf[BUFSZ];
@@ -2378,11 +2390,11 @@ passiveum(
                     tmp = 127;
                 if (mtmp->mcansee && haseyes(mtmp->data) && rn2(3)
                     && (perceives(mtmp->data) || !Invis)) {
-                    if (Blind)
+                    if (Blind) {
                         pline("As a blind %s, you cannot defend yourself.",
                               pmname(gy.youmonst.data,
                                      flags.female ? FEMALE : MALE));
-                    else {
+                    } else {
                         if (mon_reflects(mtmp,
                                          "Your gaze is reflected by %s %s."))
                             return 1;

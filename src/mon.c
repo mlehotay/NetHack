@@ -475,13 +475,13 @@ pm_to_cham(int mndx)
 }
 
 /* for deciding whether corpse will carry along full monster data */
-#define KEEPTRAITS(mon)                                                 \
-    ((mon)->isshk || (mon)->mtame || unique_corpstat((mon)->data)       \
-     || is_reviver((mon)->data)                                         \
-        /* normally quest leader will be unique, */                     \
-        /* but he or she might have been polymorphed  */                \
+#define KEEPTRAITS(mon)                                                  \
+    ((mon)->isshk || (mon)->mtame || unique_corpstat((mon)->data)        \
+     || is_reviver((mon)->data)                                          \
+        /* normally quest leader will be unique, */                      \
+        /* but he or she might have been polymorphed  */                 \
      || (mon)->m_id == gq.quest_status.leader_m_id                       \
-        /* special cancellation handling for these */                   \
+        /* special cancellation handling for these */                    \
      || (dmgtype((mon)->data, AD_SEDU) || dmgtype((mon)->data, AD_SSEX)))
 
 /* Creates a monster corpse, a "special" corpse, or nothing if it doesn't
@@ -582,7 +582,7 @@ make_corpse(struct monst *mtmp, unsigned int corpseflags)
     case PM_GLASS_GOLEM:
         num = d(2, 4); /* very low chance of creating all glass gems */
         while (num--)
-            obj = mksobj_at((LAST_GEM + rnd(NUM_GLASS_GEMS)),
+            obj = mksobj_at(FIRST_GLASS_GEM + rn2(NUM_GLASS_GEMS),
                             x, y, TRUE, FALSE);
         free_mgivenname(mtmp);
         break;
@@ -2465,6 +2465,11 @@ m_detach(
         mtmp->mstate |= MON_DETACH;
         iflags.purge_monsters++;
     }
+
+    /* hero is thrown from his steed when it dies or gets genocided */
+    if (mtmp == u.usteed)
+        dismount_steed(DISMOUNT_GENERIC);
+    return;
 }
 
 /* give a life-saved monster a reasonable mhpmax value in case it has
@@ -2636,10 +2641,6 @@ mondead(struct monst *mtmp)
     if (mtmp->isgd && !grddead(mtmp))
         return;
 
-    /* Player is thrown from his steed when it dies */
-    if (mtmp == u.usteed)
-        dismount_steed(DISMOUNT_GENERIC);
-
     mptr = mtmp->data; /* save this for m_detach() */
     /* restore chameleon, lycanthropes to true form at death */
     if (mtmp->cham >= LOW_PM) {
@@ -2740,6 +2741,7 @@ mondead(struct monst *mtmp)
 
     if (glyph_is_invisible(levl[mtmp->mx][mtmp->my].glyph))
         unmap_object(mtmp->mx, mtmp->my);
+
     m_detach(mtmp, mptr);
     return;
 }
@@ -2834,9 +2836,6 @@ mongone(struct monst* mdef)
        his temporary corridor to/from the vault has been removed */
     if (mdef->isgd && !grddead(mdef))
         return;
-    /* hero is thrown from his steed when it disappears */
-    if (mdef == u.usteed)
-        dismount_steed(DISMOUNT_GENERIC);
     /* stuck to you? release */
     unstuck(mdef);
     /* drop special items like the Amulet so that a dismissed Kop or nurse

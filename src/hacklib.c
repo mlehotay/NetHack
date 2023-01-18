@@ -41,6 +41,7 @@
         char *          visctrl         (char)
         char *          strsubst        (char *, const char *, const char *)
         int             strNsubst       (char *,const char *,const char *,int)
+        const char *    findword        (const char *,const char *,int,boolean)
         const char *    ordin           (int)
         char *          sitoa           (int)
         int             sgn             (int)
@@ -613,6 +614,30 @@ strNsubst(
         Strcpy(inoutbuf, workbuf);
     }
     return rcount;
+}
+
+/* search for a word in a space-separated list; returns non-Null if found */
+const char *
+findword(
+    const char *list,   /* string of space-separated words */
+    const char *word,   /* word to try to find */
+    int wordlen,        /* so that it isn't required to be \0 terminated */
+    boolean ignorecase) /* T: case-blind, F: case-sensitive */
+{
+    const char *p = list;
+
+    while (p) {
+        while (*p == ' ')
+            ++p;
+        if (!*p)
+            break;
+        if ((ignorecase ? !strncmpi(p, word, wordlen)
+                        : !strncmp(p, word, wordlen))
+            && (p[wordlen] == '\0' || p[wordlen] == ' '))
+            return p;
+        p = strchr(p + 1, ' ');
+    }
+    return (const char *) 0;
 }
 
 /* return the ordinal suffix of a number */
@@ -1312,11 +1337,7 @@ nh_snprintf(
     int n;
 
     va_start(ap, fmt);
-#ifdef NO_VSNPRINTF
-    n = vsprintf(str, fmt, ap);
-#else
     n = vsnprintf(str, size, fmt, ap);
-#endif
     va_end(ap);
     if (n < 0 || (size_t) n >= size) { /* is there a problem? */
         impossible("snprintf %s: func %s, file line %d",

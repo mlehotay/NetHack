@@ -501,12 +501,11 @@ ucatchgem(
     struct monst *mon)
 {
     /* won't catch rock or gray stone; catch (then drop) worthless glass */
-    if (gem->otyp <= LAST_GEM + NUM_GLASS_GEMS
-        && is_unicorn(gy.youmonst.data)) {
+    if (gem->otyp <= LAST_GLASS_GEM && is_unicorn(gy.youmonst.data)) {
         char *gem_xname = xname(gem),
              *mon_s_name = s_suffix(mon_nam(mon));
 
-        if (gem->otyp > LAST_GEM) {
+        if (gem->otyp >= FIRST_GLASS_GEM) {
             You("catch the %s.", gem_xname);
             You("are not interested in %s junk.", mon_s_name);
             makeknown(gem->otyp);
@@ -523,22 +522,22 @@ ucatchgem(
 }
 
 #define MT_FLIGHTCHECK(pre,forcehit) \
-    (/* missile hits edge of screen */                                  \
-     !isok(gb.bhitpos.x + dx, gb.bhitpos.y + dy)                          \
-     /* missile hits the wall */                                        \
-     || IS_ROCK(levl[gb.bhitpos.x + dx][gb.bhitpos.y + dy].typ)           \
-     /* missile hit closed door */                                      \
-     || closed_door(gb.bhitpos.x + dx, gb.bhitpos.y + dy)                 \
-     /* missile might hit iron bars */                                  \
-     /* the random chance for small objects hitting bars is */          \
-     /* skipped when reaching them at point blank range */              \
-     || (levl[gb.bhitpos.x + dx][gb.bhitpos.y + dy].typ == IRONBARS       \
-         && hits_bars(&singleobj,                                       \
-                      gb.bhitpos.x, gb.bhitpos.y,                         \
-                      gb.bhitpos.x + dx, gb.bhitpos.y + dy,               \
-                      ((pre) ? 0 : forcehit), 0))                       \
-     /* Thrown objects "sink" */                                        \
-     || (!(pre) && IS_SINK(levl[gb.bhitpos.x][gb.bhitpos.y].typ))         \
+    (/* missile hits edge of screen */                                 \
+     !isok(gb.bhitpos.x + dx, gb.bhitpos.y + dy)                       \
+     /* missile hits the wall */                                       \
+     || IS_ROCK(levl[gb.bhitpos.x + dx][gb.bhitpos.y + dy].typ)        \
+     /* missile hit closed door */                                     \
+     || closed_door(gb.bhitpos.x + dx, gb.bhitpos.y + dy)              \
+     /* missile might hit iron bars */                                 \
+     /* the random chance for small objects hitting bars is */         \
+     /* skipped when reaching them at point blank range */             \
+     || (levl[gb.bhitpos.x + dx][gb.bhitpos.y + dy].typ == IRONBARS    \
+         && hits_bars(&singleobj,                                      \
+                      gb.bhitpos.x, gb.bhitpos.y,                      \
+                      gb.bhitpos.x + dx, gb.bhitpos.y + dy,            \
+                      ((pre) ? 0 : forcehit), 0))                      \
+     /* Thrown objects "sink" */                                       \
+     || (!(pre) && IS_SINK(levl[gb.bhitpos.x][gb.bhitpos.y].typ))      \
      )
 
 void

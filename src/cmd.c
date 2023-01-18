@@ -1,4 +1,4 @@
-/* NetHack 3.7	cmd.c	$NHDT-Date: 1661240704 2022/08/23 07:45:04 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.616 $ */
+/* NetHack 3.7	cmd.c	$NHDT-Date: 1671222065 2022/12/16 20:21:05 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.650 $ */
 /* Copyright (c) Stichting Mathematisch Centrum, Amsterdam, 1985. */
 /*-Copyright (c) Robert Patrick Rankin, 2013. */
 /* NetHack may be freely redistributed.  See license for details. */
@@ -1917,14 +1917,14 @@ DISABLE_WARNING_CONDEXPR_IS_CONSTANT
 static int
 wiz_smell(void)
 {
-    int ans = 0;
-    int mndx;  /* monster index */
-    coord cc;  /* screen pos of unknown glyph */
-    int glyph; /* glyph at selected position */
+    struct monst *mtmp; /* monster being smelled */
+    struct permonst *mptr;
+    int ans, glyph;
+    coord cc; /* screen pos to sniff */
+    boolean is_you;
 
     cc.x = u.ux;
     cc.y = u.uy;
-    mndx = 0; /* gcc -Wall lint */
     if (!olfaction(gy.youmonst.data)) {
         You("are incapable of detecting odors in your present form.");
         return ECMD_OK;
@@ -1937,18 +1937,36 @@ wiz_smell(void)
         if (ans < 0 || cc.x < 0) {
             return ECMD_CANCEL; /* done */
         }
-        /* Convert the glyph at the selected position to a mndxbol. */
+        is_you = FALSE;
+        if (u_at(cc.x, cc.y)) {
+            if (u.usteed) {
+                mptr = u.usteed->data;
+            } else {
+                mptr = gy.youmonst.data;
+                is_you = TRUE;
+            }
+        } else if ((mtmp = m_at(cc.x, cc.y)) != (struct monst *) 0) {
+            mptr = mtmp->data;
+        } else {
+            mptr = (struct permonst *) 0;
+        }
+        /* Buglet: mapping or unmapping "remembered, unseen monster" should
+           cause time to elapse; since we're in wizmode, don't bother */
         glyph = glyph_at(cc.x, cc.y);
-        if (glyph_is_monster(glyph))
-            mndx = glyph_to_mon(glyph);
-        else
-            mndx = 0;
         /* Is it a monster? */
-        if (mndx) {
-            if (!usmellmon(&mons[mndx]))
-                pline("That monster seems to give off no smell.");
-        } else
-            pline("That is not a monster.");
+        if (mptr) {
+            if (is_you)
+                You("surreptitiously sniff under your %s.", body_part(ARM));
+            if (!usmellmon(mptr))
+                pline("%s to not give off any smell.",
+                      is_you ? "You seem" : "That monster seems");
+            if (!glyph_is_monster(glyph))
+                map_invisible(cc.x, cc.y);
+        } else {
+            You("don't smell any monster there.");
+            if (glyph_is_invisible(glyph))
+                unmap_invisible(cc.x, cc.y);
+        }
     } while (TRUE);
     return ECMD_OK;
 }
@@ -6561,7 +6579,7 @@ paranoid_query(boolean be_paranoid, const char *prompt)
     if (be_paranoid) {
         char pbuf[BUFSZ], qbuf[QBUFSZ], ans[BUFSZ];
         const char *promptprefix = "",
-                *responsetype = ParanoidConfirm ? "(yes|no)" : "(yes) [no]";
+                *responsetype = ParanoidConfirm ? "[yes|no]" : "[yes|n] (n)";
         int k, trylimit = 6; /* 1 normal, 5 more with "Yes or No:" prefix */
 
         copynchars(pbuf, prompt, BUFSZ - 1);
@@ -6588,9 +6606,9 @@ paranoid_query(boolean be_paranoid, const char *prompt)
                 break;
             promptprefix = "\"Yes\" or \"No\": ";
         } while (ParanoidConfirm && strcmpi(ans, "no") && --trylimit);
-    } else
-        confirmed_ok = (yn(prompt) == 'y');
-
+    } else {
+        confirmed_ok = (y_n(prompt) == 'y');
+    }
     return confirmed_ok;
 }
 

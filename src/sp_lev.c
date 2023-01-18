@@ -3694,6 +3694,12 @@ lspo_level_flags(lua_State *L)
             gc.coder->allow_flips &= ~1;
         else if (!strcmpi(s, "noflip"))
             gc.coder->allow_flips = 0;
+        else if (!strcmpi(s, "temperate"))
+            gl.level.flags.temperature = 0;
+        else if (!strcmpi(s, "hot"))
+            gl.level.flags.temperature = 1;
+        else if (!strcmpi(s, "cold"))
+            gl.level.flags.temperature = -1;
         else {
             char buf[BUFSZ];
             Sprintf(buf, "Unknown level flag %s", s);
@@ -4600,12 +4606,12 @@ struct selectionvar *
 selection_not(struct selectionvar* s)
 {
     int x, y;
-
+    NhRect tmprect;
 
     for (x = 0; x < s->wid; x++)
         for (y = 0; y < s->hei; y++)
             selection_setpoint(x, y, s, selection_getpoint(x, y, s) ? 0 : 1);
-
+    selection_getbounds(s, &tmprect);
     return s;
 }
 
@@ -6466,6 +6472,7 @@ DISABLE_WARNING_UNREACHABLE_CODE
 /* map({ halign = "center", valign = "center", map = [[...]] }); */
 /* map({ map = [[...]], contents = function(map) ... end }); */
 /* map([[...]]) */
+/* local selection = map( ... ); */
 int
 lspo_map(lua_State *L)
 {
@@ -6493,6 +6500,8 @@ TODO: gc.coder->croom needs to be updated
     boolean has_contents = FALSE;
     int tryct = 0;
     int ox, oy;
+    boolean lit = FALSE;
+    struct selectionvar *sel;
 
     create_des_coder();
 
@@ -6510,6 +6519,7 @@ TODO: gc.coder->croom needs to be updated
         tb = t_or_b2i[get_table_option(L, "valign", "none", top_or_bot)];
         get_table_xy_or_coord(L, &x, &y);
         tmpstr = get_table_str(L, "map");
+        lit = (boolean) get_table_boolean_opt(L, "lit", FALSE);
         lua_getfield(L, 1, "contents");
         if (lua_type(L, -1) == LUA_TFUNCTION) {
             lua_remove(L, -2);
@@ -6527,6 +6537,7 @@ TODO: gc.coder->croom needs to be updated
         return 0;
     }
 
+    sel = selection_new();
     ox = x;
     oy = y;
  redo_maploc:
@@ -6575,6 +6586,7 @@ TODO: gc.coder->croom needs to be updated
         } else {
             mapfrag_free(&mf);
             nhl_error(L, "Map requires either x,y or halign,valign params");
+            selection_free(sel, TRUE);
             return 0;
         }
     } else {
@@ -6671,8 +6683,9 @@ TODO: gc.coder->croom needs to be updated
                 }
                 if (mptyp >= MAX_TYPE)
                     continue;
+                selection_setpoint(x, y, sel, 1);
                 levl[x][y].typ = mptyp;
-                levl[x][y].lit = FALSE;
+                levl[x][y].lit = lit;
                 /* clear out levl: load_common_data may set them */
                 levl[x][y].flags = 0;
                 levl[x][y].horizontal = 0;
@@ -6712,9 +6725,14 @@ TODO: gc.coder->croom needs to be updated
         if (nhl_pcall(L, 1, 0)){
             impossible("Lua error: %s", lua_tostring(L, -1));
         }
+        reset_xystart_size();
     }
 
-    return 0;
+    /* return selection where map locations were put */
+    l_selection_push_copy(L, sel);
+    selection_free(sel, TRUE);
+
+    return 1;
 }
 
 RESTORE_WARNING_UNREACHABLE_CODE
@@ -6786,6 +6804,7 @@ sp_level_coder_init(void)
     (void) memset((genericptr_t) SpLev_Map, 0, sizeof SpLev_Map);
 
     gl.level.flags.is_maze_lev = 0;
+    gl.level.flags.temperature = In_hell(&u.uz) ? 1 : 0;
 
     reset_xystart_size();
 

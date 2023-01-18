@@ -174,6 +174,8 @@ revival via undead turning of corpse carried by hero said "your <mon> corpse
 	comes alive" even when revived monster was undead
 prevent searching or waiting next to a hostile monster if boolean option
 	safe_wait is on - override with 'm'
+prevent searching or waiting if hero is slimed, stoning, strangled,
+	or deadly ill if safe_wait is on - override with 'm'
 allow random mimics to show up mimicing more furniture than just stairs
 scatter exploding bag of holding contents instead of outright deleting them
 male hero poly'd into nymph chooses charm vs seduce message based on being
@@ -1065,6 +1067,26 @@ map browsing during gold detection didn't describe fake gold marking traps
 if hero's action caused engulfer to expel swallowed hero, it might do so onto
 	a level teleporter and then have its memory accessed after being
 	freed when current level was saved in order to load destination level
+throwing recoil while levitating could send hero out of shop while carrying
+	unpaid items, triggering sanity check warnings; once outside, taking
+	a step other than back into the shop was treated as a robbery
+if punished and iron ball was cursed and wielded--so welded to hand--falling
+	when doors would drop it instead of keeping it welded
+if player's run-time config file had OPTIONS=role:Val and the environment had
+	NETHACKOPTIONS='role:!Val' the hero would be a Val instead of !Val
+sleeping or unconscious hero attacked by Medusa would meet her gaze
+if a trap killed both the hero's steed and the hero an impossible "dmonsfree:
+	N+1 removed doesn't match N pending" warning could occur
+prevent paralyzed hero from helping nymph or succubus remove worn armor
+when identifying items via menu and more than one pass is needed (so when
+	identifying 3 items and player only picks 1, for instance), issue
+	--More-- because the next menu might cover up the ID message(s)
+slightly more interesting Gehennom filler levels
+don't reveal color of potions, gems, or spellbooks that haven't been seen up
+	close (seeing faraway monster operate on an object counts as up close)
+fix freeing a worn object when forced to drop it by falling down stairs
+allow setting per-level "temperature": hot, cold, or temperate, currently
+	only affects some messages
 
 
 Fixes to 3.7.0-x Problems that Were Exposed Via git Repository
@@ -1435,6 +1457,13 @@ the #saveoptions command included options changed via doset_simple() but not
 fix 'nethack --scores' as alias for 'nethack -s'
 adding command line 'nethack --usage' broke 'nethack -u name' (however,
 	'nethack -uname' still worked for names other than "sage")
+being hit by a big monster and getting knockback effect could send hero out
+	of a shop (or into its "free spot") while carrying unpaid goods;
+	robbery wasn't noticed until hero eventually moved to a different spot
+hallucination of objects incorrectly included generic objects as candidates
+	for what objects looked like; if an object had its dknown flag set,
+	formatting a generic object in its place was unreliable (Null pointer
+	deference prior to static analyzer fix, odd fake name "generic" after)
 
 curses: 'msg_window' option wasn't functional for curses unless the binary
 	also included tty support
@@ -1528,6 +1557,8 @@ curses: if a menu of objects contains at least one iron ball, and player is
 	not already in the midst of entering a count, recognize '0' as a
 	group accelerator rather than the start of a count
 curses: obey timed_delay option
+curses: support tty-style extended role/race/&c selection at start of new game
+curses: implement mark_synch() and wait_synch()
 macOS: Xcode project was failing to build if the path to the NetHack source
 	tree contained a space; the issue was within some shell script code
 	contained within the project
@@ -1672,6 +1703,12 @@ user_sounds: move the message hook from inside individual window display ports
 	issue that the curses port on Windows not working with user_sounds
 Windows: update for new status condition fields
 Windows: include commented-out 'PORTABLE_DEVICE_PATHS' in sysconf.template
+Windows: When there was no interesting background in get_bk_glyph()
+	in display.c, a default value of GLYPH_UNEXPLORED was returned to
+	the caller and then passed on to the interface; the graphical
+	Windows version, NetHackW.exe, was trying to use the tile mapped to
+	GLYPH_UNEXPLORED as a background tile to merge with the
+	foreground tile, so check for GLYPH_UNEXPLORED and bypass that
 X11: substantial overhaul of status display, both 'fancy' and 'tty-style'
 X11: extend fancy status one-turn inverse video status-change highlighting to
 	hunger, encumbrance, and conditions
@@ -1890,6 +1927,8 @@ very large humanoids can wear mummy wrappings
 for ranger characters, shooting any type of arrow while wielding the Longbow
 	of Diana gets an extra +1 to multi-shot
 change the #vanquished command from debug-only to general user command
+add 'sortvanquished' option to be able to set the preferred sort order without
+	using 'm #vanquished' and to have it persist across save/restore
 have 'I u' mention whether there are any unpaid items on the floor (unusual
 	but not impossible); it doesn't itemize them or show shop price
 
@@ -2189,4 +2228,5 @@ replace some old 'time_t' hackery in system.h and hacklib.c with something
 	less obtrusive in unixconf.h
 remove the per dungeon level door limit
 remove various '#if LINT' hacks used to suppress warnings from pre-ANSI 'lint'
+VMS: removed NO_VSNPRINTF conditional code
 

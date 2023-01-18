@@ -103,16 +103,27 @@ extern void interject(int);
  */
 
 #ifdef __MINGW32__
+#define MD_USE_TMPFILE_S
+#if !defined(__cplusplus)
+extern errno_t tmpfile_s(FILE * restrict * restrict streamptr);
+#endif
+#
 #ifdef strncasecmp
 #undef strncasecmp
 #endif
 #ifdef strcasecmp
 #undef strcasecmp
+/* https://sourceforge.net/p/mingw-w64/wiki2/gnu%20printf/ */
+#ifdef __USE_MINGW_ANSI_STDIO
+#undef __USE_MINGW_ANSI_STDIO
+#endif
+#define __USE_MINGW_ANSI_STDIO 1
 #endif
 /* extern int getlock(void); */
 #endif
 
 #ifdef _MSC_VER
+#define MD_USE_TMPFILE_S
 #define HAS_STDINT
 #if (_MSC_VER > 1000)
 /* Visual C 8 warning elimination */
@@ -277,7 +288,7 @@ extern int alternative_palette(char *);
 #endif
 
 #define nethack_enter(argc, argv) nethack_enter_windows()
-extern void nethack_exit(int) NORETURN;
+ATTRNORETURN extern void nethack_exit(int) NORETURN;
 extern boolean file_exists(const char *);
 extern boolean file_newer(const char *, const char *);
 #ifndef SYSTEM_H

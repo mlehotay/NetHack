@@ -8,11 +8,10 @@
 static void setgemprobs(d_level *);
 static void shuffle(int, int, boolean);
 static void shuffle_all(void);
-static boolean interesting_to_discover(int);
 static int QSORTCALLBACK discovered_cmp(const genericptr, const genericptr);
 static char *oclass_to_name(char, char *);
 
-#ifdef USE_TILES
+#ifdef TILES_IN_GLYPHMAP
 extern glyph_map glyphmap[MAX_GLYPH];
 static void shuffle_tiles(void);
 
@@ -32,15 +31,17 @@ shuffle_tiles(void)
     short tmp_tilemap[2][NUM_OBJECTS];
 
     for (i = 0; i < NUM_OBJECTS; i++) {
-        tmp_tilemap[0][i] = glyphmap[objects[i].oc_descr_idx + GLYPH_OBJ_OFF].tileidx;
-        tmp_tilemap[1][i] = glyphmap[objects[i].oc_descr_idx + GLYPH_OBJ_PILETOP_OFF].tileidx;
+        tmp_tilemap[0][i] = glyphmap[objects[i].oc_descr_idx
+                                     + GLYPH_OBJ_OFF].tileidx;
+        tmp_tilemap[1][i] = glyphmap[objects[i].oc_descr_idx
+                                     + GLYPH_OBJ_PILETOP_OFF].tileidx;
     }
     for (i = 0; i < NUM_OBJECTS; i++) {
         glyphmap[i + GLYPH_OBJ_OFF].tileidx = tmp_tilemap[0][i];
         glyphmap[i + GLYPH_OBJ_PILETOP_OFF].tileidx = tmp_tilemap[1][i];
     }
 }
-#endif /* USE_TILES */
+#endif /* TILES_IN_GLYPHMAP */
 
 static void
 setgemprobs(d_level* dlev)
@@ -57,14 +58,14 @@ setgemprobs(d_level* dlev)
     for (j = 0; j < 9 - lev / 3; j++)
         objects[first + j].oc_prob = 0;
     first += j;
-    if (first > LAST_GEM || objects[first].oc_class != GEM_CLASS
+    if (first > LAST_REAL_GEM || objects[first].oc_class != GEM_CLASS
         || OBJ_NAME(objects[first]) == (char *) 0) {
         raw_printf("Not enough gems? - first=%d j=%d LAST_GEM=%d", first, j,
-                   LAST_GEM);
+                   LAST_REAL_GEM);
         wait_synch();
     }
-    for (j = first; j <= LAST_GEM; j++)
-        objects[j].oc_prob = (171 + j - first) / (LAST_GEM + 1 - first);
+    for (j = first; j <= LAST_REAL_GEM; j++)
+        objects[j].oc_prob = (171 + j - first) / (LAST_REAL_GEM + 1 - first);
 
     /* recompute GEM_CLASS total oc_prob - including rocks/stones */
     for (j = gb.bases[GEM_CLASS]; j < gb.bases[GEM_CLASS + 1]; j++)
@@ -123,17 +124,19 @@ init_objects(void)
 #define COPY_OBJ_DESCR(o_dst, o_src) o_dst.oc_descr_idx = o_src.oc_descr_idx
 #endif
 
-    /* bug fix to prevent "initialization error" abort on Intel Xenix.
-     * reported by mikew@semike
-     */
-    for (i = 0; i <= MAXOCLASSES; i++)
+    for (i = 0; i <= MAXOCLASSES; i++) {
         gb.bases[i] = 0;
+        if (i > 0 && i < MAXOCLASSES && objects[i].oc_class != i)
+            panic(
+              "init_objects: class for generic object #%d doesn't match (%d)",
+                  i, objects[i].oc_class);
+    }
     /* initialize object descriptions */
     for (i = 0; i < NUM_OBJECTS; i++)
         objects[i].oc_name_idx = objects[i].oc_descr_idx = i;
     /* init base; if probs given check that they add up to 1000,
        otherwise compute probs */
-    first = 0;
+    first = MAXOCLASSES;
     prevoclass = -1;
     while (first < NUM_OBJECTS) {
         oclass = objects[first].oc_class;
@@ -179,7 +182,9 @@ init_objects(void)
         prevoclass = (int) oclass;
     }
     /* extra entry allows deriving the range of a class via
-       bases[class] through bases[class+1]-1 for all classes */
+       bases[class] through bases[class+1]-1 for all classes
+       (except for ILLOBJ_CLASS which is separated from WEAPON_CLASS
+       by generic objects) */
     gb.bases[MAXOCLASSES] = NUM_OBJECTS;
     /* hypothetically someone might remove all objects of some class,
        or be adding a new class and not populated it yet, leaving gaps
@@ -189,7 +194,7 @@ init_objects(void)
             gb.bases[last] = gb.bases[last + 1];
 
     /* check objects[].oc_name_known */
-    for (i = 0; i < NUM_OBJECTS; ++i) {
+    for (i = MAXOCLASSES; i < NUM_OBJECTS; ++i) {
         int nmkn = objects[i].oc_name_known != 0;
 
         if (!OBJ_DESCR(objects[i]) ^ nmkn) {
@@ -209,7 +214,7 @@ init_objects(void)
 
     /* shuffle descriptions */
     shuffle_all();
-#ifdef USE_TILES
+#ifdef TILES_IN_GLYPHMAP
     shuffle_tiles();
 #endif
     objects[WAN_NOTHING].oc_dir = rn2(2) ? NODIR : IMMEDIATE;
@@ -225,13 +230,16 @@ init_oclass_probs(void)
     int oclass;
     for (oclass = 0; oclass < MAXOCLASSES; ++oclass) {
         sum = 0;
+        /* note: for ILLOBJ_CLASS, bases[oclass+1]-1 isn't the last item
+           in the class; but all the generic items have probability 0 so
+           adding them to 'sum' has no impact */
         for (i = gb.bases[oclass]; i < gb.bases[oclass + 1]; ++i) {
             sum += objects[i].oc_prob;
         }
         if (sum <= 0 && oclass != ILLOBJ_CLASS
             && gb.bases[oclass] != gb.bases[oclass + 1]) {
-            impossible("zero or negative probability total for oclass %d",
-                       oclass);
+            impossible("%s (%d) probability total for oclass %d",
+                       !sum ? "zero" : "negative", sum, oclass);
             /* gracefully fail by setting all members of this class to 1 */
             for (i = gb.bases[oclass]; i < gb.bases[oclass + 1]; ++i) {
                 objects[i].oc_prob = 1;
@@ -404,7 +412,7 @@ restnames(NHFILE* nhfp)
             }
         }
     }
-#ifdef USE_TILES
+#ifdef TILES_IN_GLYPHMAP
     shuffle_tiles();
 #endif
 }
@@ -447,8 +455,9 @@ undiscover_object(int oindx)
         register boolean found = FALSE;
 
         /* find the object; shift those behind it forward one slot */
-        for (dindx = gb.bases[acls]; dindx < NUM_OBJECTS && gd.disco[dindx] != 0
-                                  && objects[dindx].oc_class == acls;
+        for (dindx = gb.bases[acls];
+             dindx < NUM_OBJECTS && gd.disco[dindx] != 0
+                 && objects[dindx].oc_class == acls;
              dindx++)
             if (found)
                 gd.disco[dindx - 1] = gd.disco[dindx];
@@ -467,7 +476,7 @@ undiscover_object(int oindx)
     }
 }
 
-static boolean
+boolean
 interesting_to_discover(int i)
 {
     /* Pre-discovered objects are now printed with a '*' */
@@ -883,7 +892,7 @@ doclassdisco(void)
            but requires at least one artifact discovery for other styles
            [could fix that by forcing the 'a' choice into the pick-class
            menu when running in wizard mode] */
-        if (wizard && yn("Dump information about all artifacts?") == 'y') {
+        if (wizard && y_n("Dump information about all artifacts?") == 'y') {
             dump_artifact_info(tmpwin);
             ct = NROFARTIFACTS; /* non-zero vs zero is what matters below */
             break;

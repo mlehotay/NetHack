@@ -13,6 +13,7 @@ static void dosinkring(struct obj *);
 static int drop(struct obj *);
 static int menudrop_split(struct obj *, long);
 static boolean engulfer_digests_food(struct obj *);
+static boolean danger_uprops(void);
 static int wipeoff(void);
 static int menu_drop(int);
 static NHFILE *currentlevel_rewrite(void);
@@ -595,6 +596,19 @@ canletgo(struct obj *obj, const char *word)
             Norep("You cannot %s %s you are wearing.", word, something);
         return FALSE;
     }
+    if (obj == uwep && welded(uwep)) {
+        /* no weldmsg(), so uwep->bknown might become set silently
+           if word is "" */
+        if (*word) {
+            const char *hand = body_part(HAND);
+
+            if (bimanual(uwep))
+                hand = makeplural(hand);
+            Norep("You cannot %s %s welded to your %s.", word, something,
+                  hand);
+        }
+        return FALSE;
+    }
     if (obj->otyp == LOADSTONE && obj->cursed) {
         /* getobj() kludge sets corpsenm to user's specified count
            when refusing to split a stack of cursed loadstones */
@@ -1111,7 +1125,7 @@ dodown(void)
     if (on_level(&valley_level, &u.uz) && !u.uevent.gehennom_entered) {
         You("are standing at the gate to Gehennom.");
         pline("Unspeakable cruelty and harm lurk down there.");
-        if (yn("Are you sure you want to enter?") != 'y')
+        if (y_n("Are you sure you want to enter?") != 'y')
             return ECMD_OK;
         pline("So be it.");
         u.uevent.gehennom_entered = 1; /* don't ask again */
@@ -1131,7 +1145,7 @@ dodown(void)
 
             You("don't fit %s easily.", down_or_thru);
             Sprintf(qbuf, "Try to squeeze %s?", down_or_thru);
-            if (yn(qbuf) == 'y') {
+            if (y_n(qbuf) == 'y') {
                 if (!rn2(3)) {
                     actn = "manage to squeeze";
                     losehp(Maybe_Half_Phys(rnd(4)),
@@ -1209,7 +1223,7 @@ doup(void)
     if (ledger_no(&u.uz) == 1) {
         if (iflags.debug_fuzzer)
             return ECMD_OK;
-        if (yn("Beware, there will be no return!  Still climb?") != 'y')
+        if (y_n("Beware, there will be no return!  Still climb?") != 'y')
             return ECMD_OK;
     }
     if (!next_to_u()) {
@@ -1346,6 +1360,7 @@ goto_level(
     char *annotation;
     int dist = depth(newlevel) - depth(&u.uz);
     boolean do_fall_dmg = FALSE;
+    schar prev_temperature = gl.level.flags.temperature;
 
     if (dunlev(newlevel) > dunlevs_in_dungeon(newlevel))
         newlevel->dlevel = dunlevs_in_dungeon(newlevel);
@@ -1612,7 +1627,8 @@ goto_level(
                 You("fall down the %s.", ga.at_ladder ? "ladder" : "stairs");
                 if (Punished) {
                     drag_down();
-                    ballrelease(FALSE);
+                    if (!welded(uball))
+                        ballrelease(FALSE);
                 }
                 /* falling off steed has its own losehp() call */
                 if (u.usteed)
@@ -1632,7 +1648,7 @@ goto_level(
     } else { /* trap door or level_tele or In_endgame */
         u_on_rndspot((up ? 1 : 0) | (was_in_W_tower ? 2 : 0));
         if (falling) {
-            if (Punished)
+            if (Punished && !welded(uball))
                 ballfall();
             selftouch("Falling, you");
             do_fall_dmg = TRUE;
@@ -1696,8 +1712,7 @@ goto_level(
             display_nhwindow(WIN_MESSAGE, FALSE);
 #endif
             You_hear("groans and moans everywhere.");
-        } else
-            hellish_smoke_mesg(); /* "It is hot here.  You smell smoke..." */
+        }
 
         record_achievement(ACH_HELL); /* reached Gehennom */
     }
@@ -1744,9 +1759,6 @@ goto_level(
         }
     } else if (In_quest(&u.uz)) {
         onquest(); /* might be reaching locate|goal level */
-    } else if (In_V_tower(&u.uz)) {
-        if (newdungeon && In_hell(&u.uz0))
-            pline_The("heat and smoke are gone.");
     } else if (Is_knox(&u.uz)) {
         /* alarm stops working once Croesus has died */
         if (new || !gm.mvitals[PM_CROESUS].died) {
@@ -1786,6 +1798,17 @@ goto_level(
                                             : "quest_portal_again");
             }
         }
+    }
+
+    if (prev_temperature != gl.level.flags.temperature) {
+        if (gl.level.flags.temperature)
+            hellish_smoke_mesg();
+        else if (prev_temperature > 0)
+            pline_The("heat %s gone.",
+                      In_hell(&u.uz0)
+                      ? "and smoke are" : "is");
+        else if (prev_temperature < 0)
+            You("are out of the cold.");
     }
 
     /* this was originally done earlier; moved here to be logged after
@@ -1843,8 +1866,12 @@ RESTORE_WARNING_FORMAT_NONLITERAL
 void
 hellish_smoke_mesg(void)
 {
-    if (Inhell && !Is_valley(&u.uz))
-        pline("It is hot here.  You %s smoke...",
+    if (gl.level.flags.temperature)
+        pline("It is %s here.",
+              gl.level.flags.temperature > 0 ? "hot" : "cold");
+
+    if (In_hell(&u.uz) && gl.level.flags.temperature > 0)
+        pline("You %s smoke...",
               olfaction(gy.youmonst.data) ? "smell" : "sense");
 }
 
@@ -2118,19 +2145,32 @@ zombify_mon(anything *arg, long timeout)
     }
 }
 
-boolean
-cmd_safety_prevention(const char *cmddesc, const char *act, int *flagcounter)
+/* return TRUE if hero properties are dangerous to hero */
+static boolean
+danger_uprops(void)
 {
-    if (flags.safe_wait && !iflags.menu_requested
-        && !gm.multi && monster_nearby()) {
+    return (Stoned || Slimed || Strangled || Sick);
+}
+
+boolean
+cmd_safety_prevention(const char *ucverb, const char *cmddesc,
+                      const char *act, int *flagcounter)
+{
+    if (flags.safe_wait && !iflags.menu_requested && !gm.multi) {
         char buf[QBUFSZ];
 
         buf[0] = '\0';
         if (iflags.cmdassist || !(*flagcounter)++)
             Sprintf(buf, "  Use '%s' prefix to force %s.",
                     visctrl(cmd_from_func(do_reqmenu)), cmddesc);
-        Norep("%s%s", act, buf);
-        return TRUE;
+
+        if (monster_nearby()) {
+            Norep("%s%s", act, buf);
+            return TRUE;
+        } else if (danger_uprops()) {
+            Norep("%s doesn't feel like a good idea right now.", ucverb);
+            return TRUE;
+        }
     }
     *flagcounter = 0;
     return FALSE;
@@ -2141,7 +2181,7 @@ cmd_safety_prevention(const char *cmddesc, const char *act, int *flagcounter)
 int
 donull(void)
 {
-    if (cmd_safety_prevention("a no-op (to rest)",
+    if (cmd_safety_prevention("Waiting", "a no-op (to rest)",
                           "Are you waiting to get hit?",
                           &gd.did_nothing_flag))
         return ECMD_OK;

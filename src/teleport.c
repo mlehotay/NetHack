@@ -565,7 +565,7 @@ scrolltele(struct obj* scroll)
         You_feel("disoriented for a moment.");
         /* don't discover the scroll [at least not yet for wizard override];
            disorientation doesn't reveal that this is a teleport attempt */
-        if (!wizard || yn("Override?") != 'y')
+        if (!wizard || y_n("Override?") != 'y')
             return;
     }
     if (((Teleport_control || (scroll && scroll->blessed)) && !Stunned)
@@ -738,7 +738,7 @@ dotele(
 
     if (trap) {
         if (trap->ttyp == LEVEL_TELEP && trap->tseen) {
-            if (yn("There is a level teleporter here. Trigger it?") == 'y') {
+            if (y_n("There is a level teleporter here. Trigger it?") == 'y') {
                 level_tele_trap(trap, FORCETRAP);
                 /* deliberate jumping will always take time even if it doesn't
                  * work */
@@ -749,7 +749,7 @@ dotele(
             trap_once = trap->once; /* trap may get deleted, save this */
             if (trap->once) {
                 pline("This is a vault teleport, usable once only.");
-                if (yn("Jump in?") == 'n') {
+                if (y_n("Jump in?") == 'n') {
                     trap = 0;
                 } else {
                     deltrap(trap);
@@ -1286,7 +1286,7 @@ rloc_pos_ok(
  */
 static void
 rloc_to_core(
-    struct monst* mtmp,
+    struct monst *mtmp,
     coordxy x, coordxy y,
     unsigned rlocflags)
 {
@@ -1370,6 +1370,25 @@ rloc_to_core(
        the latter only happens if you've attacked them with polymorph */
     if (resident_shk && !inhishop(mtmp))
         make_angry_shk(mtmp, oldx, oldy);
+
+    /* if a monster carrying shop goods teleports out of the shop, blame
+       it on the hero; chance of an unpaid item is vanishingly small, but
+       no_charge is easily possible and needs to be cleared if not in shop;
+       a for-sale item is ordinary here--shk won't notice it leaving; if
+       mtmp teleports from one shop into another, no_charge status sticks
+       and an item on the first shk's bill stays there */
+    if (mtmp->minvent && !costly_spot(x, y)) {
+        struct obj *otmp;
+        struct monst *shkp = find_objowner(mtmp->minvent, oldx, oldy);
+        boolean peaceful = !shkp || shkp->mpeaceful;
+
+        for (otmp = mtmp->minvent; otmp; otmp = otmp->nobj) {
+            if (otmp->no_charge)
+                otmp->no_charge = 0;
+            else if (shkp && onshopbill(otmp, shkp, TRUE))
+                stolen_value(otmp, oldx, oldy, peaceful, FALSE);
+        }
+    }
 
     /* if hero is busy, maybe stop occupation */
     if (go.occupation)

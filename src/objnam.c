@@ -54,6 +54,7 @@ static void readobjnam_parse_charges(struct _readobjnam_data *);
 static int readobjnam_postparse1(struct _readobjnam_data *);
 static int readobjnam_postparse2(struct _readobjnam_data *);
 static int readobjnam_postparse3(struct _readobjnam_data *);
+static const char *Japanese_item_name(int, const char *);
 
 struct Jitem {
     int item;
@@ -73,21 +74,21 @@ struct Jitem {
              && typ != SAPPHIRE && typ != BLACK_OPAL && typ != EMERALD \
              && typ != OPAL)))
 
-static struct Jitem Japanese_items[] = { { SHORT_SWORD, "wakizashi" },
-                                             { BROADSWORD, "ninja-to" },
-                                             { FLAIL, "nunchaku" },
-                                             { GLAIVE, "naginata" },
-                                             { LOCK_PICK, "osaku" },
-                                             { WOODEN_HARP, "koto" },
-                                             { KNIFE, "shito" },
-                                             { PLATE_MAIL, "tanko" },
-                                             { HELMET, "kabuto" },
-                                             { LEATHER_GLOVES, "yugake" },
-                                             { FOOD_RATION, "gunyoki" },
-                                             { POT_BOOZE, "sake" },
-                                             { 0, "" } };
-
-static const char *Japanese_item_name(int i);
+static const struct Jitem Japanese_items[] = {
+    { SHORT_SWORD, "wakizashi" },
+    { BROADSWORD, "ninja-to" },
+    { FLAIL, "nunchaku" },
+    { GLAIVE, "naginata" },
+    { LOCK_PICK, "osaku" },
+    { WOODEN_HARP, "koto" },
+    { KNIFE, "shito" },
+    { PLATE_MAIL, "tanko" },
+    { HELMET, "kabuto" },
+    { LEATHER_GLOVES, "yugake" },
+    { FOOD_RATION, "gunyoki" },
+    { POT_BOOZE, "sake" },
+    { 0, "" }
+};
 
 static char *
 strprepend(char *s,const char * pref)
@@ -176,8 +177,13 @@ obj_typename(int otyp)
     const char *un = ocl->oc_uname;
     int nn = ocl->oc_name_known;
 
-    if (Role_if(PM_SAMURAI) && Japanese_item_name(otyp))
-        actualn = Japanese_item_name(otyp);
+    if (Role_if(PM_SAMURAI))
+        actualn = Japanese_item_name(otyp, actualn);
+    /* generic items don't have an actual-name; we shouldn't ever be called
+       for those; pacify static analyzer without resorting to impossible() */
+    if (!actualn)
+        actualn = (otyp > 0 && otyp < MAXOCLASSES) ? "generic" : "object?";
+
     switch (ocl->oc_class) {
     case COIN_CLASS:
         Strcpy(buf, "coin");
@@ -512,8 +518,12 @@ xname_flags(
     boolean known, dknown, bknown;
 
     buf = nextobuf() + PREFIX; /* leave room for "17 -3 " */
-    if (Role_if(PM_SAMURAI) && Japanese_item_name(typ))
-        actualn = Japanese_item_name(typ);
+    if (Role_if(PM_SAMURAI))
+        actualn = Japanese_item_name(typ, actualn);
+    /* generic items don't have an actual-name; we shouldn't ever be called
+       for those; pacify static analyzer without resorting to impossible() */
+    if (!actualn)
+        actualn = (typ > 0 && typ < MAXOCLASSES) ? "generic" : "object?";
     /* As of 3.6.2: this used to be part of 'dn's initialization, but it
        needs to come after possibly overriding 'actualn' */
     if (!dn)
@@ -621,34 +631,21 @@ xname_flags(
         if (is_boots(obj) || is_gloves(obj))
             Strcpy(buf, "pair of ");
 
-        if (obj->otyp >= ELVEN_SHIELD && obj->otyp <= ORCISH_SHIELD
-            && !dknown) {
-            Strcpy(buf, "shield");
-            break;
-        }
-        if (obj->otyp == SHIELD_OF_REFLECTION && !dknown) {
-            Strcpy(buf, "smooth shield");
-            break;
+        if (!dknown) {
+            if (obj->otyp >= ELVEN_SHIELD && obj->otyp <= ORCISH_SHIELD) {
+                Strcpy(buf, "shield");
+                break;
+            } else if (obj->otyp == SHIELD_OF_REFLECTION) {
+                Strcpy(buf, "smooth shield");
+                break;
+            }
         }
 
-        if (nn) {
+        if (nn)
             Strcat(buf, actualn);
-        } else if (un) {
-            if (is_boots(obj))
-                Strcat(buf, "boots");
-            else if (is_gloves(obj))
-                Strcat(buf, "gloves");
-            else if (is_cloak(obj))
-                Strcpy(buf, "cloak");
-            else if (is_helmet(obj))
-                Strcpy(buf, "helmet");
-            else if (is_shield(obj))
-                Strcpy(buf, "shield");
-            else
-                Strcpy(buf, "armor");
-            Strcat(buf, " called ");
-            Strcat(buf, un);
-        } else
+        else if (un)
+            Sprintf(eos(buf), "%s called %s", armor_simple_name(obj), un);
+        else
             Strcat(buf, dn);
         break;
     case FOOD_CLASS:
@@ -2385,9 +2382,9 @@ static const char *const as_is[] = {
 /* singularize/pluralize decisions common to both makesingular & makeplural */
 static boolean
 singplur_lookup(
-char *basestr, char *endstring,    /* base string, pointer to eos(string) */
-boolean to_plural,            /* true => makeplural, false => makesingular */
-const char *const *alt_as_is) /* another set like as_is[] */
+    char *basestr, char *endstring,  /* base string, pointer to eos(string) */
+    boolean to_plural,         /* true => makeplural, false => makesingular */
+    const char *const *alt_as_is)    /* another set like as_is[] */
 {
     const struct sing_plur *sp;
     const char *same, *other, *const *as;
@@ -3071,6 +3068,7 @@ static const struct alt_spellings {
     { "gauntlets of ogre power", GAUNTLETS_OF_POWER },
     { "gauntlets of giant strength", GAUNTLETS_OF_POWER },
     { "elven chain mail", ELVEN_MITHRIL_COAT },
+    { "silver shield", SHIELD_OF_REFLECTION },
     { "potion of sleep", POT_SLEEPING },
     { "scroll of recharging", SCR_CHARGING },
     { "recharging", SCR_CHARGING },
@@ -3153,7 +3151,7 @@ rnd_otyp_by_namedesc(
         lo = gb.bases[(uchar) oclass];
         hi = gb.bases[(uchar) oclass + 1] - 1;
     } else {
-        lo = STRANGE_OBJECT + 1;
+        lo = MAXOCLASSES; /* STRANGE_OBJECT + 1; */
         hi = NUM_OBJECTS - 1;
     }
     /* FIXME:
@@ -4276,7 +4274,7 @@ readobjnam_postparse2(struct _readobjnam_data *d)
             s += 9;
         if (!strcmpi(s, "glass")) { /* choose random color */
             /* 9 different kinds */
-            d->typ = LAST_GEM + rnd(NUM_GLASS_GEMS);
+            d->typ = FIRST_GLASS_GEM + rn2(NUM_GLASS_GEMS);
             if (objects[d->typ].oc_class == GEM_CLASS)
                 return 2; /*goto typfnd;*/
             else
@@ -4304,7 +4302,7 @@ readobjnam_postparse3(struct _readobjnam_data *d)
 
     /* check real names of gems first */
     if (!d->oclass && d->actualn) {
-        for (i = gb.bases[GEM_CLASS]; i <= LAST_GEM; i++) {
+        for (i = gb.bases[GEM_CLASS]; i <= LAST_REAL_GEM; i++) {
             register const char *zn;
 
             if ((zn = OBJ_NAME(objects[i])) != 0 && !strcmpi(d->actualn, zn)) {
@@ -4334,10 +4332,10 @@ readobjnam_postparse3(struct _readobjnam_data *d)
     d->typ = 0;
 
     if (d->actualn) {
-        struct Jitem *j = Japanese_items;
+        const struct Jitem *j = Japanese_items;
 
         while (j->item) {
-            if (d->actualn && !strcmpi(d->actualn, j->name)) {
+            if (!strcmpi(d->actualn, j->name)) {
                 d->typ = j->item;
                 return 2; /*goto typfnd;*/
             }
@@ -4621,7 +4619,7 @@ readobjnam(char *bp, struct obj *no_wish)
                 rn1cnt = 6 - d.gsize;
             if (d.cnt > rn1cnt
                 && (!wizard || gp.program_state.wizkit_wishing
-                    || yn("Override glob weight limit?") != 'y'))
+                    || y_n("Override glob weight limit?") != 'y'))
                 d.cnt = rn1cnt;
             d.otmp->owt *= (unsigned) d.cnt;
         }
@@ -4969,16 +4967,52 @@ rnd_class(int first, int last)
 }
 
 static const char *
-Japanese_item_name(int i)
+Japanese_item_name(int i, const char *ordinaryname)
 {
-    struct Jitem *j = Japanese_items;
+    const struct Jitem *j = Japanese_items;
 
     while (j->item) {
         if (i == j->item)
             return j->name;
         j++;
     }
-    return (const char *) 0;
+    return ordinaryname;
+}
+
+const char *
+armor_simple_name(struct obj *armor)
+{
+    const char *result = 0;
+    unsigned armcat = objects[armor->otyp].oc_armcat;
+
+    switch (armcat) {
+    case ARM_SUIT:
+        result = suit_simple_name(armor);
+        break;
+    case ARM_CLOAK:
+        result = cloak_simple_name(armor);
+        break;
+    case ARM_HELM:
+        result = helm_simple_name(armor);
+        break;
+    case ARM_GLOVES:
+        result = gloves_simple_name(armor);
+        break;
+    case ARM_BOOTS:
+        result = boots_simple_name(armor);
+        break;
+    case ARM_SHIELD:
+        result = shield_simple_name(armor);
+        break;
+    case ARM_SHIRT:
+        result = shirt_simple_name(armor);
+        break;
+    default:
+        result = simpleonames(armor);
+        impossible("unknown armor category (%s => %u)", result, armcat);
+        break;
+    }
+    return result;
 }
 
 const char *

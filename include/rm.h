@@ -386,6 +386,7 @@ struct levelflags {
                                   normal mode descendant of such) */
     Bitfield(corrmaze, 1);     /* Whether corridors are used for the maze
                                   rather than ROOM */
+    schar temperature;         /* +1 == hot, -1 == cold */
 };
 
 typedef struct {
@@ -431,16 +432,16 @@ typedef struct {
 #endif
 #ifdef EXTRA_SANITY_CHECKS
 #define place_worm_seg(m, x, y) \
-    do {                                                            \
-        if (gl.level.monsters[x][y] && gl.level.monsters[x][y] != m)  \
-            impossible("place_worm_seg over mon");                  \
+    do {                                                             \
+        if (gl.level.monsters[x][y] && gl.level.monsters[x][y] != m) \
+            impossible("place_worm_seg over mon");                   \
         gl.level.monsters[x][y] = m;                                 \
     } while(0)
 #define remove_monster(x, y) \
     do {                                                  \
-        if (!gl.level.monsters[x][y])                      \
+        if (!gl.level.monsters[x][y])                     \
             impossible("no monster to remove");           \
-        gl.level.monsters[x][y] = (struct monst *) 0;      \
+        gl.level.monsters[x][y] = (struct monst *) 0;     \
     } while(0)
 #else
 #define place_worm_seg(m, x, y) gl.level.monsters[x][y] = m

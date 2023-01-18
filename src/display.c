@@ -1,4 +1,4 @@
-/* NetHack 3.7	display.c	$NHDT-Date: 1661295668 2022/08/23 23:01:08 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.192 $ */
+/* NetHack 3.7	display.c	$NHDT-Date: 1672561294 2023/01/01 08:21:34 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.200 $ */
 /* Copyright (c) Dean Luick, with acknowledgements to Kevin Darcy */
 /* and Dave Cohrs, 1990.                                          */
 /* NetHack may be freely redistributed.  See license for details. */
@@ -129,7 +129,7 @@ static int swallow_to_glyph(int, int);
 static void display_warning(struct monst *);
 
 static int check_pos(coordxy, coordxy, int);
-static int get_bk_glyph(coordxy x, coordxy y);
+static void get_bkglyph_and_framecolor(coordxy x, coordxy y, int *, uint32 *);
 static int tether_glyph(coordxy, coordxy);
 static void mimic_light_blocking(struct monst *);
 #ifdef UNBUFFERED_GLYPHINFO
@@ -309,12 +309,22 @@ map_trap(register struct trap *trap, register int show)
  *
  * Map the given object.  This routine assumes that the hero can physically
  * see the location of the object.  Update the screen if directed.
+ * [Note: feel_location() -> map_location() -> map_object() contradicts
+ * the claim here that the hero can see obj's <ox,oy>.]
  */
 void
-map_object(register struct obj *obj, register int show)
+map_object(register struct obj *obj, int show)
 {
     register coordxy x = obj->ox, y = obj->oy;
     register int glyph = obj_to_glyph(obj, newsym_rn2);
+
+    /* if this object is already displayed as a generic object, it might
+       become a specific one now */
+    if (glyph_is_generic_object(glyph) && cansee(x, y) && next2u(x, y)
+        && !Hallucination) {
+        obj->dknown = 1;
+        glyph = obj_to_glyph(obj, newsym_rn2);
+    }
 
     if (gl.level.flags.hero_memory) {
         /* MRKR: While hallucinating, statues are seen as random monsters */
@@ -364,11 +374,11 @@ unmap_invisible(coordxy x, coordxy y)
 /*
  * unmap_object()
  *
- * Remove something from the map when the hero realizes it's not there any
- * more.  Replace it with background or known trap, but not with any other
- * If this is used for detection, a full screen update is imminent anyway;
- * if this is used to get rid of an invisible monster notation, we might have
- * to call newsym().
+ * Remove something from the map when the hero realizes it's not there
+ * anymore.  Replace it with background or known trap, but not with
+ * any other remembered object.  If this is used for detection, a full
+ * screen update is imminent anyway; if this is used to get rid of an
+ * invisible monster notation, we might have to call newsym().
  */
 void
 unmap_object(register coordxy x, register coordxy y)
@@ -1425,6 +1435,29 @@ see_objects(void)
     update_inventory();
 }
 
+/* mark the top object of each adjacent stack as having been seen, and
+   if it was being displayed as generic, redisplay it as specific */
+void
+see_nearby_objects(void)
+{
+    struct obj *obj;
+    int glyph;
+    coordxy ix, iy, x = u.ux, y = u.uy;
+
+    for (iy = y - 1; iy <= y + 1; ++iy)
+        for (ix = x - 1; ix <= x + 1; ++ix) {
+            if (!isok(ix, iy) || !cansee(ix, iy))
+                continue;
+            if ((obj = vobj_at(ix, iy)) != 0) {
+                obj->dknown = 1; /* adjacent, so close enough to see it */
+                /* operate on remembered glyph rather than current one */
+                glyph = levl[ix][iy].glyph;
+                if (glyph_is_generic_object(glyph))
+                    newsym_force(ix, iy);
+            }
+        }
+}
+
 /*
  * Update hallucinated traps.
  */
@@ -1444,7 +1477,7 @@ see_traps(void)
 /*  glyph, ttychar, { glyphflags, { sym.color, sym.symidx },
                       tileidx, u } */
 static glyph_info no_ginfo = {
-    NO_GLYPH, ' ', { MG_BADXY, { NO_COLOR, 0 }, 0
+    NO_GLYPH, ' ', NO_COLOR, { MG_BADXY, { NO_COLOR, 0 }, 0
 #ifdef ENHANCED_SYMBOLS
                                                  , 0
 #endif
@@ -1459,13 +1492,13 @@ static glyph_info ginfo;
 #define Glyphinfo_at(x, y, glyph) glyphinfo_at(x, y, glyph)
 #endif
 
-#ifdef USE_TILES
+#ifdef TILES_IN_GLYPHMAP
 extern const glyph_info nul_glyphinfo; /* tile.c */
 #else
 /* glyph, ttychar, { glyphflags, { sym.color, sym.symidx },
                      tileidx, 0} */
 const glyph_info nul_glyphinfo = {
-    NO_GLYPH, ' ',
+    NO_GLYPH, ' ', NO_COLOR,
         {  /* glyph_map */
             MG_UNEXPL,
             { NO_COLOR, SYM_UNEXPLORED + SYM_OFF_X },
@@ -1477,7 +1510,7 @@ const glyph_info nul_glyphinfo = {
 };
 #endif
 
-#ifdef USE_TILES
+#ifdef TILES_IN_GLYPHMAP
 extern glyph_map glyphmap[MAX_GLYPH]; /* from tile.c */
 #else
 glyph_map glyphmap[MAX_GLYPH] = {
@@ -1590,7 +1623,7 @@ redraw_map(void)
     for (y = 0; y < ROWNO; ++y)
         for (x = 1; x < COLNO; ++x) {
             glyph = glyph_at(x, y); /* not levl[x][y].glyph */
-            bkglyphinfo.glyph = get_bk_glyph(x, y);
+            get_bkglyph_and_framecolor(x, y, &bkglyphinfo.glyph, &bkglyphinfo.framecolor);
             print_glyph(WIN_MAP, x, y,
                         Glyphinfo_at(x, y, glyph), &bkglyphinfo);
         }
@@ -1684,19 +1717,23 @@ show_glyph(coordxy x, coordxy y, int glyph)
          *  This assumes an ordering of the offsets.  See display.h for
          *  the definition.
          */
-
-        if ((offset = (glyph - GLYPH_NOTHING_OFF)) >= 0) {
+        if (glyph < 0 || glyph >= MAX_GLYPH) {
+            /* invalid location and also invalid glyph */
+            text = "invalid";
+        } else if ((offset = (glyph - GLYPH_NOTHING_OFF)) >= 0) {
             text = "nothing";
         } else if ((offset = (glyph - GLYPH_UNEXPLORED_OFF)) >= 0) {
             text = "unexplored";
-        } else if ((offset = (glyph - GLYPH_STATUE_FEM_PILETOP_OFF))) {
+        } else if ((offset = (glyph - GLYPH_STATUE_FEM_PILETOP_OFF)) >= 0) {
             text = "statue of a female monster at top of a pile";
-        } else if ((offset = (glyph - GLYPH_STATUE_MALE_PILETOP_OFF))) {
+        } else if ((offset = (glyph - GLYPH_STATUE_MALE_PILETOP_OFF)) >= 0) {
             text = "statue of a male monster at top of a pile";
-        } else if ((offset = (glyph - GLYPH_BODY_PILETOP_OFF))) {
+        } else if ((offset = (glyph - GLYPH_BODY_PILETOP_OFF)) >= 0) {
             text = "body at top of a pile";
-        } else if ((offset = (glyph - GLYPH_OBJ_PILETOP_OFF))) {
-            text = "object at top of a pile";
+        } else if ((offset = (glyph - GLYPH_OBJ_PILETOP_OFF)) >= 0) {
+            text = (glyph_is_piletop_generic_obj(glyph)
+                    ? "generic object at top of a pile"
+                    : "object at top of a pile");
         } else if ((offset = (glyph - GLYPH_STATUE_FEM_OFF)) >= 0) {
             text = "statue of female monster";
         } else if ((offset = (glyph - GLYPH_STATUE_MALE_OFF)) >= 0) {
@@ -1743,7 +1780,9 @@ show_glyph(coordxy x, coordxy y, int glyph)
         } else if ((offset = (glyph - GLYPH_CMAP_STONE_OFF)) >= 0) {
             text = "stone";
         } else if ((offset = (glyph - GLYPH_OBJ_OFF)) >= 0) {
-            text = "object";
+            text = (glyph_is_normal_generic_obj(glyph)
+                    ? "generic object"
+                    : "object");
         } else if ((offset = (glyph - GLYPH_RIDDEN_FEM_OFF)) >= 0) {
             text = "ridden female monster";
         } else if ((offset = (glyph - GLYPH_RIDDEN_MALE_OFF)) >= 0) {
@@ -1765,14 +1804,13 @@ show_glyph(coordxy x, coordxy y, int glyph)
         } else if ((offset = (glyph - GLYPH_MON_MALE_OFF)) >= 0) {
             text = "male monster";
         }
-        impossible("show_glyph:  bad pos %d %d with glyph %d [%s %d].", x, y,
-                   glyph, text, offset);
+        impossible("show_glyph:  bad pos <%d,%d> with glyph %d [%s %d].",
+                   x, y, glyph, text, offset);
         return;
-    }
-
-    if (glyph >= MAX_GLYPH) {
-        impossible("show_glyph:  bad glyph %d [max %d] at (%d,%d).", glyph,
-                   MAX_GLYPH, x, y);
+    } else if (glyph < 0 || glyph >= MAX_GLYPH) {
+        /* valid location but invalid glyph */
+        impossible("show_glyph:  bad glyph %d [max %d] at <%d,%d>.",
+                   glyph, MAX_GLYPH, x, y);
         return;
     }
 #ifndef UNBUFFERED_GLYPHINFO
@@ -1814,19 +1852,19 @@ show_glyph(coordxy x, coordxy y, int glyph)
  * Reset the changed glyph borders so that none of the 3rd screen has
  * changed.
  */
-#define reset_glyph_bbox()               \
-    {                                    \
-        int i;                           \
-                                         \
-        for (i = 0; i < ROWNO; i++) {    \
+#define reset_glyph_bbox()                \
+    {                                     \
+        int i;                            \
+                                          \
+        for (i = 0; i < ROWNO; i++) {     \
             gg.gbuf_start[i] = COLNO - 1; \
             gg.gbuf_stop[i] = 0;          \
-        }                                \
+        }                                 \
     }
 
 static gbuf_entry nul_gbuf = {
     0,                                 /* gnew */
-    { GLYPH_UNEXPLORED, (unsigned) ' ', /* glyphinfo.glyph */
+    { GLYPH_UNEXPLORED, (unsigned) ' ', NO_COLOR, /* glyphinfo.glyph */
         /* glyphinfo.gm */
         { MG_UNEXPL, { (unsigned) NO_COLOR, 0 }, 0
 #ifdef ENHANCED_SYMBOLS
@@ -1906,8 +1944,10 @@ row_refresh(coordxy start, coordxy stop, coordxy y)
     for (x = start; x <= stop; x++) {
         gptr = &gg.gbuf[y][x];
         glyph = gptr->glyphinfo.glyph;
-        if (force || glyph != GLYPH_UNEXPLORED) {
-            bkglyphinfo.glyph = get_bk_glyph(x, y);
+        get_bkglyph_and_framecolor(x, y, &bkglyphinfo.glyph,
+                                   &bkglyphinfo.framecolor);
+        if (force || glyph != GLYPH_UNEXPLORED
+            || bkglyphinfo.framecolor != NO_COLOR) {
             print_glyph(WIN_MAP, x, y,
                         Glyphinfo_at(x, y, glyph), &bkglyphinfo);
         }
@@ -1943,6 +1983,7 @@ flush_screen(int cursor_on_u)
     static int delay_flushing = 0;
     register coordxy x, y;
     glyph_info bkglyphinfo = nul_glyphinfo;
+    int bkglyph;
 
     /* 3.7: don't update map, status, or perm_invent during save/restore */
     if (suppress_map_output())
@@ -1969,13 +2010,16 @@ flush_screen(int cursor_on_u)
     for (y = 0; y < ROWNO; y++) {
         register gbuf_entry *gptr = &gg.gbuf[y][x = gg.gbuf_start[y]];
 
-        for (; x <= gg.gbuf_stop[y]; gptr++, x++)
-            if (gptr->gnew) {
-                map_glyphinfo(x, y, get_bk_glyph(x, y), 0, &bkglyphinfo);
+        for (; x <= gg.gbuf_stop[y]; gptr++, x++) {
+            get_bkglyph_and_framecolor(x, y, &bkglyph, &bkglyphinfo.framecolor);
+            if (gptr->gnew
+                || (gw.wsettings.map_frame_color != NO_COLOR && bkglyphinfo.framecolor != NO_COLOR)) {
+                map_glyphinfo(x, y, bkglyph, 0, &bkglyphinfo); /* won't touch framecolor */
                 print_glyph(WIN_MAP, x, y,
                             Glyphinfo_at(x, y, gptr->glyph), &bkglyphinfo);
                 gptr->gnew = 0;
             }
+        }
     }
     reset_glyph_bbox();
 
@@ -2204,22 +2248,21 @@ glyphinfo_at(coordxy x, coordxy y, int glyph)
 #endif
 
 /*
- * This will be used to get the glyph for the background so that
- * it can potentially be merged into graphical window ports to
- * improve the appearance of stuff on dark room squares and the
- * plane of air etc.
- *
- * Until that is working correctly in the branch, however, for now
- * we just return NO_GLYPH as an indicator to ignore it.
- *
+ * Get the glyph for the background so that it can potentially
+ * be merged into graphical window ports to improve the appearance
+ * of stuff on dark room squares and the plane of air etc.
  * [This should be using background as recorded for #overview rather
  * than current data from the map.]
+ *
+ * Also get the frame color to use for highlighting the map location
+ * for some purpose.
+ *
  */
 
-static int
-get_bk_glyph(coordxy x, coordxy y)
+static void
+get_bkglyph_and_framecolor(coordxy x, coordxy y, int *bkglyph, uint32 *framecolor)
 {
-    int idx, bkglyph = GLYPH_UNEXPLORED;
+    int idx, tmp_bkglyph = GLYPH_UNEXPLORED;
     struct rm *lev = &levl[x][y];
 
     if (iflags.use_background_glyph && lev->seenv != 0
@@ -2267,14 +2310,24 @@ get_bk_glyph(coordxy x, coordxy y)
                 idx = (flags.dark_room && iflags.use_color)
                          ? DARKROOMSYM : S_stone;
         }
-
         if (idx != S_room)
-            bkglyph = cmap_to_glyph(idx);
+            tmp_bkglyph = cmap_to_glyph(idx);
     }
-    return bkglyph;
+    *bkglyph = tmp_bkglyph;
+#if 0
+    /* this guard should be unnecessary */
+    if (!framecolor) {
+        impossible("null framecolor passed to get_bkglyph_and_framecolor");
+        return;
+    }
+#endif
+    if (gw.wsettings.map_frame_color != NO_COLOR && mapxy_valid(x, y))
+        *framecolor = gw.wsettings.map_frame_color;
+    else
+        *framecolor = NO_COLOR;
 }
 
-#if defined(USE_TILES) && defined(MSDOS)
+#if defined(TILES_IN_GLYPHMAP) && defined(MSDOS)
 #define HAS_ROGUE_IBM_GRAPHICS \
     (gc.currentgraphics == ROGUESET && SYMHANDLING(H_IBM) && !iflags.grmode)
 #else
@@ -2410,7 +2463,7 @@ int wallcolors[sokoban_walls + 1] = {
 #endif
 
 #if 0
-#define is_objpile(x, y)                         \
+#define is_objpile(x, y)                          \
     (!Hallucination && gl.level.objects[(x)][(y)] \
      && gl.level.objects[(x)][(y)]->nexthere)
 #endif
