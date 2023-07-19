@@ -56,6 +56,11 @@ endif  # WANT_WIN_QT
 #
 #-INCLUDE multiw-3.370
 
+ifeq "$(USE_ASAN)" "1"
+CFLAGS+=-fsanitize=address
+LFLAGS+=-fsanitize=address
+endif
+
 ifeq "$(USE_CURSESLIB)" "1"
 # default
 CURSESLIB = -lncurses -ltinfo
@@ -65,10 +70,17 @@ CURSESLIB = -lncurses -ltinfo
 ifdef MAKEFILE_SRC
 comma:=,
 NCURSES_LFLAGS = $(shell pkg-config ncursesw --libs)
-ifneq (,$(findstring ncursesw, $(NCURSES_LFLAGS)))
-HAVE_NCURSESW=1
-else
+ifeq (,$(findstring ncursesw, $(NCURSES_LFLAGS)))
+ifeq (,$(findstring ncurses, $(NCURSES_LFLAGS)))
+#this indicates that pkg-config itself was unavailable
+NCURSES_LFLAGS = -lncursesw -ltinfo
+endif
+endif
+#$(info $(NCURSES_LFLAGS))
+ifeq (,$(findstring ncursesw, $(NCURSES_LFLAGS)))
 HAVE_NCURSESW=0
+else
+HAVE_NCURSESW=1
 endif
 #$(info $(NCURSES_LFLAGS))
 #$(info HAVE_NCURSESW=$(HAVE_NCURSESW))
@@ -113,10 +125,20 @@ endif   #MAKEFILE_SRC
 endif   #HAVE_NCURSESW
 endif   #WANT_WIN_CURSES
 
-CFLAGS+= $(WINCFLAGS)	  #WINCFLAGS set from multiw-2.370
+#
+#-INCLUDE multisnd1-pre.370
+#
+
+# WINCFLAGS set from multiw-2.370
+# SNDCFLAGS set from multisnd-pre.370
+CFLAGS+= $(WINCFLAGS)
+CFLAGS+= $(SNDCFLAGS)
 CFLAGS+= $(NHCFLAGS)
 
-CCXXFLAGS+= $(WINCFLAGS)  #WINCFLAGS set from multiw-2.370
+# WINCFLAGS set from multiw-2.370
+# SNDCFLAGS set from multisnd-pre.370
+CCXXFLAGS+= $(WINCFLAGS)
+CCXXFLAGS+= $(SNDCFLAGS)
 CCXXFLAGS+= $(NHCFLAGS)
 
 VARDATND =
@@ -149,7 +171,7 @@ WINX11LIB += -lXpm
 VARDATND0 += rip.xpm
 endif
 WINLIB += $(WINX11LIB)
-LFLAGS=-L/opt/X11/lib
+LFLAGS+=-L/opt/X11/lib
 endif	# WANT_WIN_X11
 
 ifdef WANT_WIN_QT
@@ -248,7 +270,7 @@ endif  # WANT_LIBNH
 
 #PREFIX=/usr
 PREFIX=$(wildcard ~)/nh/install
-HACKDIR=$(PREFIX)/games/lib/$(GAME)dir
+HACKDIR=$(PREFIX)/games/lib/nethackdir
 SHELLDIR = $(PREFIX)/games
 INSTDIR=$(HACKDIR)
 VARDIR = $(HACKDIR)
@@ -284,7 +306,7 @@ endif   # GITSUBMODULES
 DLLIB = -ldl
 
 # Only needed for GLIBC stack trace:
-LFLAGS=-rdynamic
+LFLAGS+=-rdynamic
 
 # if TTY_TILES_ESCCODES
 #WINSRC += tile.c
@@ -305,15 +327,19 @@ GAMEPERM = 0755
 #-INCLUDE gbdates-pre.370
 #
 
+#
+#-INCLUDE multisnd2-pre.370
+#
+
 #-POST
 
 #
 #-INCLUDE gbdates-post.370
 #
+#
+#-INCLUDE multisnd-post.370
+#
 
-#
-#-INCLUDE cross-post.370
-#
 ifdef WANT_LIBNH
 $(TARGETPFX)libnh.a: $(HOBJ) $(LIBNHSYSOBJ) ../lib/lua/liblua.a
 	$(AR) rcs $@ $(HOBJ) $(LIBNHSYSOBJ) ../lib/lua/liblua.a
@@ -323,4 +349,8 @@ $(TARGETPFX)libnhmain.o : ../sys/libnh/libnhmain.c $(HACK_H)
 $(TARGETPFX)winshim.o : ../win/shim/winshim.c $(HACK_H)
 	$(CC) $(CFLAGS) -c -o$@ $<
 endif  # WANT_LIBNH
+
 #
+#-INCLUDE cross-post.370
+#
+

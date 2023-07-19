@@ -1,4 +1,4 @@
-/* NetHack 3.7	end.c	$NHDT-Date: 1646322468 2022/03/03 15:47:48 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.240 $ */
+/* NetHack 3.7	end.c	$NHDT-Date: 1685863329 2023/06/04 07:22:09 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.274 $ */
 /* Copyright (c) Stichting Mathematisch Centrum, Amsterdam, 1985. */
 /*-Copyright (c) Robert Patrick Rankin, 2012. */
 /* NetHack may be freely redistributed.  See license for details. */
@@ -29,6 +29,7 @@ static void disclose(int, boolean);
 static void get_valuables(struct obj *);
 static void sort_valuables(struct valuable_data *, int);
 static void artifact_score(struct obj *, boolean, winid);
+static boolean fuzzer_savelife(int);
 ATTRNORETURN static void really_done(int) NORETURN;
 static void savelife(int);
 static boolean should_query_disclose_option(int, char *);
@@ -326,7 +327,13 @@ done1(int sig_unused UNUSED)
 int
 done2(void)
 {
-    if (!paranoid_query(ParanoidQuit, "Really quit?")) {
+    boolean abandon_tutorial = FALSE;
+
+    if (In_tutorial(&u.uz)
+        && y_n("Switch from the tutorial back to regular play?") == 'y')
+        abandon_tutorial = TRUE;
+
+    if (abandon_tutorial || !paranoid_query(ParanoidQuit, "Really quit?")) {
 #ifndef NO_SIGNAL
         (void) signal(SIGINT, (SIG_RET_TYPE) done1);
 #endif
@@ -339,8 +346,13 @@ done2(void)
             u.uinvulnerable = FALSE; /* avoid ctrl-C bug -dlc */
             u.usleep = 0;
         }
+
+        if (abandon_tutorial)
+            schedule_goto(&u.ucamefrom, UTOTYPE_ATSTAIRS,
+                          "Resuming regular play", (char *) 0);
         return ECMD_OK;
     }
+
 #if (defined(UNIX) || defined(VMS) || defined(LATTICE))
     if (wizard) {
         int c;
@@ -359,6 +371,9 @@ done2(void)
 #ifndef NO_SIGNAL
             (void) signal(SIGINT, (SIG_RET_TYPE) done1);
 #endif
+            if (soundprocs.sound_exit_nhsound)
+                (*soundprocs.sound_exit_nhsound)("done2");
+
             exit_nhwindows((char *) 0);
             NH_abort();
         } else if (c == 'q')
@@ -378,7 +393,9 @@ done_intr(int sig_unused UNUSED)
     done_stopprint++;
     (void) signal(SIGINT, SIG_IGN);
 #if defined(UNIX) || defined(VMS)
+#ifndef VMSVSI
     (void) signal(SIGQUIT, SIG_IGN);
+#endif
 #endif
     return;
 }
@@ -388,7 +405,9 @@ done_intr(int sig_unused UNUSED)
 static void
 done_hangup(int sig)
 {
+#ifdef HANGUPHANDLING
     gp.program_state.done_hup++;
+#endif
     sethanguphandler((void (*)(int)) SIG_IGN);
     done_intr(sig);
     return;
@@ -404,9 +423,8 @@ done_in_by(struct monst *mtmp, int how)
 {
     char buf[BUFSZ];
     struct permonst *mptr = mtmp->data,
-                    *champtr = ((mtmp->cham >= LOW_PM)
-                                   ? &mons[mtmp->cham]
-                                   : mptr);
+                    *champtr = (mtmp->cham >= LOW_PM) ? &mons[mtmp->cham]
+                                                      : mptr;
     boolean distorted = (boolean) (Hallucination && canspotmon(mtmp)),
             mimicker = (M_AP_TYPE(mtmp) == M_AP_MONSTER),
             imitator = (mptr != champtr || mimicker);
@@ -437,7 +455,7 @@ done_in_by(struct monst *mtmp, int how)
     if (imitator) {
         char shape[BUFSZ];
         const char *realnm = pmname(champtr, Mgender(mtmp)),
-                             *fakenm = pmname(mptr, Mgender(mtmp));
+                   *fakenm = pmname(mptr, Mgender(mtmp));
         boolean alt = is_vampshifter(mtmp);
 
         if (mimicker) {
@@ -493,7 +511,8 @@ done_in_by(struct monst *mtmp, int how)
     /* might need to fix up multi_reason if 'mtmp' caused the reason */
     if (gm.multi_reason
         && gm.multi_reason > gm.multireasonbuf
-        && gm.multi_reason < gm.multireasonbuf + sizeof gm.multireasonbuf - 1) {
+        && gm.multi_reason
+           < gm.multireasonbuf + sizeof gm.multireasonbuf - 1) {
         char reasondummy, *p;
         unsigned reasonmid = 0;
 
@@ -505,13 +524,13 @@ done_in_by(struct monst *mtmp, int how)
          * death reason becomes "Killed by a ghoul, while paralyzed."
          * instead of "Killed by a ghoul, while paralyzed by a ghoul."
          * (3.6.x gave "Killed by a ghoul, while paralyzed by a monster."
-         * which is potenitally misleading when the monster is also
+         * which is potentially misleading when the monster is also
          * the killer.)
          *
          * Note that if the hero is life-saved and then killed again
          * before the helplessness has cleared, the second death will
          * report the truncated helplessness reason even if some other
-         * monster peforms the /coup de grace/.
+         * monster performs the /coup de grace/.
          */
         if (sscanf(gm.multireasonbuf, "%u:%c", &reasonmid, &reasondummy) == 2
             && mtmp->m_id == reasonmid) {
@@ -608,6 +627,8 @@ panic VA_DECL(const char *, str)
     if (iflags.window_inited) {
         raw_print("\r\nOops...");
         wait_synch(); /* make sure all pending output gets flushed */
+        if (soundprocs.sound_exit_nhsound)
+            (*soundprocs.sound_exit_nhsound)("panic");
         exit_nhwindows((char *) 0);
         iflags.window_inited = 0; /* they're gone; force raw_print()ing */
     }
@@ -930,7 +951,7 @@ savelife(int how)
           "killed by <something>, while "
        in high scores entry, if any, and in logfile (but not on tombstone) */
     gm.multi_reason = Role_if(PM_TOURIST) ? "being toyed with by Fate"
-                                         : "attempting to cheat Death";
+                                          : "attempting to cheat Death";
 
     if (u.utrap && u.utraptype == TT_LAVA)
         reset_utrap(FALSE);
@@ -992,8 +1013,9 @@ get_valuables(struct obj *list) /* inventory or container contents */
  *  as easily use qsort, but we don't care about efficiency here.
  */
 static void
-sort_valuables(struct valuable_data list[],
-               int size) /* max value is less than 20 */
+sort_valuables(
+    struct valuable_data list[],
+    int size) /* max value is less than 20 */
 {
     register int i, j;
     struct valuable_data ltmp;
@@ -1003,12 +1025,11 @@ sort_valuables(struct valuable_data list[],
         if (list[i].count == 0)
             continue;   /* empty slot */
         ltmp = list[i]; /* structure copy */
-        for (j = i; j > 0; --j)
+        for (j = i; j > 0; --j) {
             if (list[j - 1].count >= ltmp.count)
                 break;
-            else {
-                list[j] = list[j - 1];
-            }
+            list[j] = list[j - 1];
+        }
         list[j] = ltmp;
     }
     return;
@@ -1135,6 +1156,76 @@ artifact_score(
     }
 }
 
+/* when dying while running the debug fuzzer, [almost] always keep going;
+   True: forced survival; False: doomed unless wearing life-save amulet */
+static boolean
+fuzzer_savelife(int how)
+{
+    /*
+     * Some debugging code pulled out of done() to unclutter it.
+     * 'done_seq' is maintained in done().
+     */
+    if (!gp.program_state.panicking
+        && how != PANICKED && how != TRICKED
+        /* Guard against getting stuck in a loop if we die in one of
+         * the few ways where life-saving isn't effective (cited case
+         * was burning in lava when the level was too full to allow
+         * teleporting to safety).  Skip the life-save attempt if we've
+         * died on the same move more than 100 times; give up instead.
+         * [Note: 100 deaths on the same move may seem excessive but it
+         * has been demonstrated that a limit of 20 was not enough.] */
+        && (gd.done_seq++ < gh.hero_seq + 100L)) {
+        savelife(how);
+
+        /* periodically restore characteristics plus lost experience
+           levels or cure lycanthropy or both; those conditions make the
+           hero vulnerable to repeat deaths (often by becoming surrounded
+           while being too encumbered to do anything) */
+        if (!rn2((gd.done_seq > gh.hero_seq + 2L) ? 2 : 10)) {
+            struct obj *potion;
+            int propidx, proptim, remedies = 0;
+
+            /* get rid of temporary potion with obfree() rather than useup()
+               because it doesn't get entered into inventory */
+            if (u.ulycn >= LOW_PM && !rn2(3)) {
+                potion = mksobj(POT_WATER, TRUE, FALSE);
+                bless(potion);
+                (void) peffects(potion);
+                obfree(potion, (struct obj *) 0);
+                ++remedies;
+            }
+            if (!remedies || rn2(3)) {
+                potion = mksobj(POT_RESTORE_ABILITY, TRUE, FALSE);
+                bless(potion);
+                (void) peffects(potion);
+                obfree(potion, (struct obj *) 0);
+                ++remedies;
+            }
+            if (!rn2(3 + 3 * remedies)) {
+                /* confer temporary resistances for first 8 properities:
+                   fire, cold, sleep, disint, shock, poison, acid, stone */
+                for (propidx = 1; propidx <= 8; ++propidx) {
+                    if (!u.uprops[propidx].intrinsic
+                        && !u.uprops[propidx].extrinsic
+                        && (proptim = rn2(3)) > 0) /* 0..2 */
+                        set_itimeout(&u.uprops[propidx].intrinsic,
+                                     (long) (2 * proptim + 1)); /* 3 or 5 */
+                }
+                ++remedies;
+            }
+            if (!rn2(5 + 5 * remedies)) {
+                ; /* might confer temporary Antimagic (magic resistance)
+                   * or even Invulnerable */
+            }
+        }
+        /* clear stale cause of death info after life-saving */
+        gk.killer.name[0] = '\0';
+        gk.killer.format = 0;
+        return TRUE;
+    }
+    return FALSE; /* panic or too many consecutive deaths */
+}
+
 /* Be careful not to call panic from here! */
 void
 done(int how)
@@ -1166,26 +1257,18 @@ done(int how)
         bot();
     }
 
-    if (iflags.debug_fuzzer) {
-        if (!(gp.program_state.panicking || how == PANICKED)) {
-            savelife(how);
-            /* periodically restore characteristics and lost exp levels
-               or cure lycanthropy */
-            if (!rn2(10)) {
-                struct obj *potion = mksobj((u.ulycn > LOW_PM && !rn2(3))
-                                            ? POT_WATER : POT_RESTORE_ABILITY,
-                                            TRUE, FALSE);
+    /* hero_seq is (moves<<3 + n) where n is number of moves made
+       by the hero on the current turn (since the 'moves' variable
+       actually counts turns); its details shouldn't matter here;
+       used by fuzzer_savelife() and for hangup below */
+    if (gd.done_seq < gh.hero_seq)
+        gd.done_seq = gh.hero_seq;
 
-                bless(potion);
-                (void) peffects(potion); /* always -1 for restore ability */
-                /* not useup(); we haven't put this potion into inventory */
-                obfree(potion, (struct obj *) 0);
-            }
-            gk.killer.name[0] = '\0';
-            gk.killer.format = 0;
+    if (iflags.debug_fuzzer) {
+        if (fuzzer_savelife(how))
             return;
-        }
-    } else
+    }
+
     if (how == ASCENDED || (!gk.killer.name[0] && how == GENOCIDED))
         gk.killer.format = NO_KILLER_PREFIX;
     /* Avoid killed by "a" burning or "a" starvation */
@@ -1208,6 +1291,7 @@ done(int how)
     }
     if (Lifesaved && (how <= GENOCIDED)) {
         pline("But wait...");
+        /* assumes that only one type of item confers LifeSaved property */
         makeknown(AMULET_OF_LIFE_SAVING);
         Your("medallion %s!", !Blind ? "begins to glow" : "feels warm");
         if (how == CHOKING)
@@ -1230,6 +1314,12 @@ done(int how)
     }
     /* explore and wizard modes offer player the option to keep playing */
     if (!survive && (wizard || discover) && how <= GENOCIDED
+#ifdef HANGUPHANDLING
+        /* if hangup has occurred, the only possible answer to a paranoid
+           query is 'no'; we want 'no' as the default for "Die?" but can't
+           accept it more than once if there's no user supplying it */
+        && !(gp.program_state.done_hup && gd.done_seq++ == gh.hero_seq)
+#endif
         && !paranoid_query(ParanoidDie, "Die?")) {
         pline("OK, so you don't %s.", (how == CHOKING) ? "choke" : "die");
         iflags.last_msg = PLNMSG_OK_DONT_DIE;
@@ -1312,7 +1402,9 @@ really_done(int how)
 #ifndef NO_SIGNAL
     (void) signal(SIGINT, (SIG_RET_TYPE) done_intr);
 #if defined(UNIX) || defined(VMS) || defined(__EMX__)
+#ifndef VMSVSI
     (void) signal(SIGQUIT, (SIG_RET_TYPE) done_intr);
+#endif
     sethanguphandler(done_hangup);
 #endif
 #endif /* NO_SIGNAL */
@@ -1424,12 +1516,15 @@ really_done(int how)
         && !(gm.mvitals[u.umonnum].mvflags & G_NOCORPSE)) {
         /* Base corpse on race when not poly'd since original u.umonnum
            is based on role, and all role monsters are human. */
-        int mnum = !Upolyd ? gu.urace.mnum : u.umonnum;
+        int mnum = !Upolyd ? gu.urace.mnum : u.umonnum,
+            was_already_grave = IS_GRAVE(levl[u.ux][u.uy].typ);
 
         corpse = mk_named_object(CORPSE, &mons[mnum], u.ux, u.uy, gp.plname);
         Sprintf(pbuf, "%s, ", gp.plname);
         formatkiller(eos(pbuf), sizeof pbuf - Strlen(pbuf), how, TRUE);
         make_grave(u.ux, u.uy, pbuf);
+        if (IS_GRAVE(levl[u.ux][u.uy].typ) && !was_already_grave)
+            levl[u.ux][u.uy].emptygrave = 1; /* corpse isn't buried */
     }
     pbuf[0] = '\0'; /* clear grave text; also lint suppression */
 
@@ -1668,6 +1763,11 @@ really_done(int how)
         destroy_nhwindow(endwin);
 
     dump_close_log();
+
+    /* shut down soundlib */
+    if (soundprocs.sound_exit_nhsound)
+        (*soundprocs.sound_exit_nhsound)("really_done");
+
     /*
      * "So when I die, the first thing I will see in Heaven is a score list?"
      *

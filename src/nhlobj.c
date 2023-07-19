@@ -106,7 +106,7 @@ l_obj_getcontents(lua_State *L)
 
 /* Puts object inside another object. */
 /* local box = obj.new("large chest");
-   box.addcontent(obj.new("rock"));
+   box:addcontent(obj.new("rock"));
 */
 static int
 l_obj_add_to_container(lua_State *L)
@@ -655,3 +655,8 @@ l_obj_register(lua_State *L)
     return 0;
 }
 
+/* for 'onefile' processing where end of this file isn't necessarily the
+   end of the source code seen by the compiler */
+#undef lobj_is_ok
+
+/*nhlobj.c*/

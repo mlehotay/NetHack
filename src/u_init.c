@@ -679,6 +679,12 @@ u_init(void)
      */
     u.nv_range = 1;
     u.xray_range = -1;
+    /* OPTIONS:blind results in permanent blindness (unless overridden
+       by the Eyes of the Overworld, which will clear 'u.uroleplay.blind'
+       to void the conduct, but will leave the PermaBlind bit set so that
+       blindness resumes when the Eyes are removed). */
+    if (u.uroleplay.blind)
+        HBlinded |= FROMOUTSIDE; /* set PermaBlind */
 
     /*** Role-specific initializations ***/
     switch (Role_switch) {
@@ -732,7 +738,9 @@ u_init(void)
         skill_init(Skill_K);
         break;
     case PM_MONK: {
-        static short M_spell[] = { SPE_HEALING, SPE_PROTECTION, SPE_CONFUSE_MONSTER };
+        static short M_spell[] = {
+            SPE_HEALING, SPE_PROTECTION, SPE_CONFUSE_MONSTER
+        };
 
         Monk[M_BOOK].trotyp = M_spell[rn2(90) / 30]; /* [0..2] */
         ini_inv(Monk);
@@ -746,7 +754,7 @@ u_init(void)
         skill_init(Skill_Mon);
         break;
     }
-    case PM_CLERIC:
+    case PM_CLERIC: /* priest/priestess */
         ini_inv(Priest);
         if (!rn2(10))
             ini_inv(Magicmarker);
@@ -786,6 +794,14 @@ u_init(void)
             ini_inv(Blindfold);
         knows_class(WEAPON_CLASS); /* all weapons */
         knows_class(ARMOR_CLASS);
+        /* in order to assist non-Japanese speakers, pre-discover items
+           that switch to Japanese names when playing as a Samurai */
+        for (i = MAXOCLASSES; i < NUM_OBJECTS; ++i) {
+            if (objects[i].oc_magic) /* skip "magic koto" */
+                continue;
+            if (Japanese_item_name(i, (const char *) 0))
+                knows_object(i);
+        }
         skill_init(Skill_S);
         break;
     case PM_TOURIST:

@@ -39,6 +39,9 @@ ATTRNORETURN static void opt_terminate(void) NORETURN;
 ATTRNORETURN static void opt_usage(const char *) NORETURN;
 static void opt_showpaths(const char *);
 ATTRNORETURN static void scores_only(int, char **, const char *) NORETURN;
+#ifdef SND_LIB_INTEGRATED
+uint32_t soundlibchoice = soundlib_nosound;
+#endif
 
 #ifdef _M_UNIX
 extern void check_sco_console(void);
@@ -102,6 +105,20 @@ main(int argc, char *argv[])
 
     choose_windows(DEFAULT_WINDOW_SYS);
 
+#ifdef SND_LIB_INTEGRATED
+    /* One of the soundlib interfaces was integrated on build.
+     * We can leave a hint here for activate_chosen_soundlib later.
+     * assign_soundlib() just sets an indicator, it doesn't initialize
+     * any soundlib, and the indicator could be overturned before
+     * activate_chosen_soundlib() gets called. Qt will place its own
+     * hint if qt_init_nhwindow() is invoked.
+     */
+#if defined(SND_LIB_MACSOUND)
+    soundlibchoice = soundlib_macsound;
+    assign_soundlib(soundlibchoice);
+#endif
+#endif
+
 #ifdef CHDIR /* otherwise no chdir() */
     /*
      * See if we must change directory to the playground.
@@ -147,9 +164,11 @@ main(int argc, char *argv[])
      * It seems you really want to play.
      */
     u.uhp = 1; /* prevent RIP on early quits */
+#if defined(HANGUPHANDLING)
     gp.program_state.preserve_locks = 1;
 #ifndef NO_SIGNAL
     sethanguphandler((SIG_RET_TYPE) hangup);
+#endif
 #endif
 
     process_options(argc, argv); /* command line options */
@@ -199,7 +218,7 @@ main(int argc, char *argv[])
      */
     vision_init();
 
-    display_gamewindows();
+    init_sound_disp_gamewindows();
 
     /*
      * First, try to find and restore a save file for specified character.
@@ -220,7 +239,9 @@ main(int argc, char *argv[])
      */
     if (*gp.plname) {
         getlock();
+#if defined(HANGUPHANDLING)
         gp.program_state.preserve_locks = 0; /* after getlock() */
+#endif
     }
 
     if (*gp.plname && (nhfp = restore_saved_game()) != 0) {

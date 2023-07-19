@@ -1,4 +1,4 @@
-/* NetHack 3.7	winprocs.h	$NHDT-Date: 1596498572 2020/08/03 23:49:32 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.56 $ */
+/* NetHack 3.7	winprocs.h	$NHDT-Date: 1683748057 2023/05/10 19:47:37 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.74 $ */
 /* Copyright (c) David Cohrs, 1992                                */
 /* NetHack may be freely redistributed.  See license for details. */
 
@@ -6,6 +6,9 @@
 #define WINPROCS_H
 
 #include "botl.h"
+#ifndef CLR_MAX
+#include "color.h"
+#endif
 
 enum wp_ids { wp_tty = 1, wp_X11, wp_Qt, wp_mswin, wp_curses, 
               wp_chainin, wp_chainout, wp_safestartup, wp_shim,
@@ -145,7 +148,7 @@ extern
 #define getlin (*windowprocs.win_getlin)
 #define get_ext_cmd (*windowprocs.win_get_ext_cmd)
 #define number_pad (*windowprocs.win_number_pad)
-#define delay_output (*windowprocs.win_delay_output)
+#define nh_delay_output (*windowprocs.win_delay_output)
 #ifdef CHANGE_COLOR
 #define change_color (*windowprocs.win_change_color)
 #ifdef MAC
@@ -275,16 +278,6 @@ extern
 #define MAP_MODE_ASCII10x18 9
 #define MAP_MODE_ASCII_FIT_TO_SCREEN 10
 #define MAP_MODE_TILES_FIT_TO_SCREEN 11
-
-#if 0
-#define WC_SND_SOUND   0x0001L /* 01 Port has some sound capabilities     */
-#define WC_SND_SPEAKER 0x0002L /* 02 Sound supported via built-in speaker */
-#define WC_SND_STEREO  0x0004L /* 03 Stereo sound supported               */
-#define WC_SND_RAW     0x0008L /* 04 Raw sound supported                  */
-#define WC_SND_WAVE    0x0010L /* 05 Wave support                         */
-#define WC_SND_MIDI    0x0020L /* 06 Midi support                         */
-                               /* 26 free bits */
-#endif
 
 struct wc_Opt {
     const char *wc_name;

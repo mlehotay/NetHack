@@ -213,6 +213,8 @@ mk_artifact(
             otmp = mksobj((int) a->otyp, TRUE, FALSE);
 
         if (otmp) {
+            /* prevent erosion from generating */
+            otmp->oeroded = otmp->oeroded2 = 0;
             otmp = oname(otmp, a->name, ONAME_NO_FLAGS);
             otmp->oartifact = m;
             /* set existence and reason for creation bits */
@@ -1690,6 +1692,14 @@ arti_invoke(struct obj *obj)
                 healamt = (u.mhmax + 1 - u.mh) / 2;
             if (healamt || Sick || Slimed || Blinded > creamed)
                 You_feel("better.");
+            if (healamt || Sick || Slimed || BlindedTimeout > creamed)
+                You_feel("%sbetter.",
+                         (!healamt && !Sick && !Slimed
+                          /* when healing temporary blindness (aside from
+                             goop covering face), might still be blind
+                             due to PermaBlind or eyeless polymorph;
+                             vary the message in that situation */
+                          && (HBlinded & ~TIMEOUT) != 0L) ? "slightly " : "");
             else
                 goto nothing_special;
             if (healamt > 0) {
@@ -1702,7 +1712,7 @@ arti_invoke(struct obj *obj)
                 make_sick(0L, (char *) 0, FALSE, SICK_ALL);
             if (Slimed)
                 make_slimed(0L, (char *) 0);
-            if (Blinded > creamed)
+            if (BlindedTimeout > creamed)
                 make_blinded(creamed, FALSE);
             gc.context.botl = TRUE;
             break;
@@ -1759,6 +1769,8 @@ arti_invoke(struct obj *obj)
             /* use index+1 (cant use 0) as identifier */
             for (i = num_ok_dungeons = 0; i < gn.n_dgns; i++) {
                 if (!gd.dungeons[i].dunlev_ureached)
+                    continue;
+                if (i == tutorial_dnum) /* can't portal into tutorial */
                     continue;
                 any.a_int = i + 1;
                 add_menu(tmpwin, &nul_glyphinfo, &any, 0, 0,
@@ -1819,6 +1831,7 @@ arti_invoke(struct obj *obj)
             otmp->blessed = obj->blessed;
             otmp->cursed = obj->cursed;
             otmp->bknown = obj->bknown;
+            otmp->oeroded = otmp->oeroded2 = 0;
             if (obj->blessed) {
                 if (otmp->spe < 0)
                     otmp->spe = 0;
@@ -1983,23 +1996,24 @@ artifact_light(struct obj *obj)
 }
 
 /* KMH -- Talking artifacts are finally implemented */
-void
+int
 arti_speak(struct obj *obj)
 {
-    register const struct artifact *oart = get_artifact(obj);
+    const struct artifact *oart = get_artifact(obj);
     const char *line;
     char buf[BUFSZ];
 
     /* Is this a speaking artifact? */
     if (!oart || !(oart->spfx & SPFX_SPEAK))
-        return;
+        return ECMD_OK; /* nothing happened */
 
     line = getrumor(bcsign(obj), buf, TRUE);
     if (!*line)
         line = "NetHack rumors file closed for renovation.";
     pline("%s:", Tobjnam(obj, "whisper"));
+    SetVoice((struct monst *) 0, 0, 80, voice_talking_artifact);
     verbalize1(line);
-    return;
+    return ECMD_TIME;
 }
 
 boolean
@@ -2290,22 +2304,27 @@ retouch_object(
     return 0;
 }
 
-/* an item which is worn/wielded or an artifact which conveys
-   something via being carried or which has an #invoke effect
-   currently in operation undergoes a touch test; if it fails,
-   it will be unworn/unwielded and revoked but not dropped */
+/* hero has changed form or alignment; an item which is worn/wielded
+   or an artifact which conveys something via being carried or which
+   has an #invoke effect currently in operation undergoes a touch test;
+   if it fails, it will be unworn/unwielded and maybe dropped */
 static boolean
-untouchable(struct obj *obj, boolean drop_untouchable)
+untouchable(
+    struct obj *obj, /* object to test; in invent or is steed's saddle */
+    boolean drop_untouchable) /* whether to drop it if it can't be touched */
 {
     struct artifact *art;
     boolean beingworn, carryeffect, invoked;
     long wearmask = ~(W_QUIVER | (u.twoweap ? 0L : W_SWAPWEP) | W_BALL);
 
-    beingworn = ((obj->owornmask & wearmask) != 0L
-                 /* some items in use don't have any wornmask setting */
-                 || (obj->oclass == TOOL_CLASS
-                     && (obj->lamplit || (obj->otyp == LEASH && obj->leashmon)
-                         || (Is_container(obj) && Has_contents(obj)))));
+    beingworn = (obj /* never Null; this pacifies static analysis when
+                      * the get_artifact() macro tests 'obj' for Null */
+                 && ((obj->owornmask & wearmask) != 0L
+                     /* some items in use don't have any wornmask setting */
+                     || (obj->oclass == TOOL_CLASS
+                         && (obj->lamplit
+                             || (obj->otyp == LEASH && obj->leashmon)
+                             || (Is_container(obj) && Has_contents(obj))))));
 
     if ((art = get_artifact(obj)) != 0) {
         carryeffect = (art->cary.adtyp || art->cspfx);
@@ -2332,7 +2351,8 @@ untouchable(struct obj *obj, boolean drop_untouchable)
 
 /* check all items currently in use (mostly worn) for touchability */
 void
-retouch_equipment(int dropflag) /* 0==don't drop, 1==drop all, 2==drop weapon */
+retouch_equipment(
+    int dropflag) /* 0==don't drop, 1==drop all, 2==drop weapon */
 {
     static int nesting = 0; /* recursion control */
     struct obj *obj;

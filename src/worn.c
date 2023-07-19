@@ -37,7 +37,9 @@ const struct worn {
     ((o->otyp == MUMMY_WRAPPING && ((m) & W_ARMC) != 0L) ? INVIS        \
      : (o->otyp == CORNUTHAUM && ((m) & W_ARMH) != 0L                   \
         && !Role_if(PM_WIZARD)) ? CLAIRVOYANT                           \
-       : 0)
+       : (is_art(o, ART_EYES_OF_THE_OVERWORLD)                          \
+          && ((m) & W_TOOL) != 0L) ? BLINDED                            \
+         : 0)
 /* note: monsters don't have clairvoyance, so dependency on hero's role here
    has no significant effect on their use of w_blocks() */
 
@@ -159,7 +161,7 @@ allunworn(void)
 }
 
 
-/* return item worn in slot indiciated by wornmask; needed by poly_obj() */
+/* return item worn in slot indicated by wornmask; needed by poly_obj() */
 struct obj *
 wearmask_to_obj(long wornmask)
 {
@@ -333,12 +335,12 @@ mon_adjust_speed(
     }
 }
 
-/* alchemy smock confers two properites, poison and acid resistance
+/* alchemy smock confers two properties, poison and acid resistance
    but objects[ALCHEMY_SMOCK].oc_oprop can only describe one of them;
    if it is poison resistance, alternate property is acid resistance;
-   if someone changes it to acid resistance, alt becomes posion resist;
+   if someone changes it to acid resistance, alt becomes poison resist;
    if someone changes it to hallucination resistance, all bets are off
-   [TODO: handle alternate propertices conferred by dragon scales/mail] */
+   [TODO: handle alternate properties conferred by dragon scales/mail] */
 #define altprop(o) \
     (((o)->otyp == ALCHEMY_SMOCK)                               \
      ? (POISON_RES + ACID_RES - objects[(o)->otyp].oc_oprop)    \
@@ -937,14 +939,17 @@ mon_break_armor(struct monst *mon, boolean polyspot)
     if (breakarm(mdat)) {
         if ((otmp = which_armor(mon, W_ARM)) != 0) {
             if ((Is_dragon_scales(otmp) && mdat == Dragon_scales_to_pm(otmp))
-                || (Is_dragon_mail(otmp) && mdat == Dragon_mail_to_pm(otmp)))
+                || (Is_dragon_mail(otmp) && mdat == Dragon_mail_to_pm(otmp))) {
                 ; /* no message here;
                      "the dragon merges with his scaly armor" is odd
                      and the monster's previous form is already gone */
-            else if (vis)
-                pline("%s breaks out of %s armor!", Monnam(mon), ppronoun);
-            else
-                You_hear("a cracking sound.");
+            } else {
+                Soundeffect(se_cracking_sound, 100);
+                if (vis)
+                    pline("%s breaks out of %s armor!", Monnam(mon), ppronoun);
+                else
+                    You_hear("a cracking sound.");
+            }
             m_useup(mon, otmp);
         }
         if ((otmp = which_armor(mon, W_ARMC)) != 0
@@ -958,6 +963,7 @@ mon_break_armor(struct monst *mon, boolean polyspot)
                     bypass_obj(otmp);
                 m_lose_armor(mon, otmp);
             } else {
+                Soundeffect(se_ripping_sound, 100);
                 if (vis)
                     pline("%s %s tears apart!", s_suffix(Monnam(mon)),
                           cloak_simple_name(otmp));
@@ -978,6 +984,7 @@ mon_break_armor(struct monst *mon, boolean polyspot)
         boolean passes_thru_clothes = !(mdat->msize <= MZ_SMALL);
 
         if ((otmp = which_armor(mon, W_ARM)) != 0) {
+            Soundeffect(se_thud, 50);
             if (vis)
                 pline("%s armor falls around %s!", s_suffix(Monnam(mon)),
                       pronoun);
@@ -1027,6 +1034,7 @@ mon_break_armor(struct monst *mon, boolean polyspot)
             m_lose_armor(mon, otmp);
         }
         if ((otmp = which_armor(mon, W_ARMS)) != 0) {
+            Soundeffect(se_clank, 50);
             if (vis)
                 pline("%s can no longer hold %s shield!", Monnam(mon),
                       ppronoun);
@@ -1172,4 +1180,7 @@ extract_from_minvent(
         mwepgone(mon); /* unwields and sets weapon_check to NEED_WEAPON */
     }
 }
+
+#undef w_blocks
+
 /*worn.c*/

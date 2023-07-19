@@ -92,11 +92,13 @@ mkcavearea(boolean rockit)
     register coordxy i;
     register boolean waslit = rm_waslit();
 
-    if (rockit)
+    if (rockit) {
+        Soundeffect(se_crashing_rock, 100);
         pline("Crash!  The ceiling collapses around you!");
-    else
+    } else {
         pline("A mysterious force %s cave around you!",
               (levl[u.ux][u.uy].typ == CORR) ? "creates a" : "extends the");
+    }
     display_nhwindow(WIN_MESSAGE, TRUE);
 
     for (dist = 1; dist <= 2; dist++) {
@@ -120,7 +122,7 @@ mkcavearea(boolean rockit)
         }
 
         flush_screen(1); /* make sure the new glyphs shows up */
-        delay_output();
+        nh_delay_output();
     }
 
     if (!rockit && levl[u.ux][u.uy].typ == CORR) {
@@ -192,8 +194,8 @@ dig_check(struct monst *madeby, boolean verbose, coordxy x, coordxy y)
             pline_The("throne is too hard to break apart.");
         return FALSE;
     } else if (IS_ALTAR(levl[x][y].typ)
-               && (madeby != BY_OBJECT || Is_astralevel(&u.uz)
-                   || Is_sanctum(&u.uz))) {
+               && (madeby != BY_OBJECT
+                   || (altarmask_at(x, y) & AM_SANCTUM) != 0)) {
         if (verbose)
             pline_The("altar is too hard to break apart.");
         return FALSE;
@@ -277,8 +279,10 @@ dig(void)
             }
             break;
         case 1:
+            Soundeffect(se_bang_weapon_side, 100);
             pline("Bang!  You hit with the broad side of %s!",
                   the(xname(uwep)));
+            wake_nearby();
             break;
         default:
             Your("swing misses its mark.");
@@ -476,6 +480,7 @@ dig(void)
 
         if (!gd.did_dig_msg) {
             You("hit the %s with all your might.", d_target[dig_target]);
+            wake_nearby();
             gd.did_dig_msg = TRUE;
         }
     }
@@ -610,6 +615,7 @@ digactualhole(coordxy x, coordxy y, struct monst *madeby, int ttyp)
                 pay_for_damage("ruin", FALSE);
             else
                 add_damage(x, y, madeby_u ? SHOP_PIT_COST : 0L);
+            wake_nearby();
         } else if (!madeby_obj && canseemon(madeby)) {
             pline("%s digs a pit in the %s.", Monnam(madeby), surface_type);
         } else if (cansee(x, y) && Verbose(0, digactualhole1)) {
@@ -828,7 +834,9 @@ dighole(boolean pit_only, boolean by_magic, coord *cc)
              * digging makes a hole, but the boulder immediately
              * fills it.  Final outcome:  no hole, no boulder.
              */
+            Soundeffect(se_kadoom_boulder_falls_in, 60);
             pline("KADOOM!  The boulder falls in!");
+            wake_nearby();
             (void) delfloortrap(ttmp);
         }
         delobj(boulder_here);
@@ -901,6 +909,7 @@ static void
 dig_up_grave(coord *cc)
 {
     struct obj *otmp;
+    int what_happens;
     coordxy dig_x, dig_y;
 
     if (!cc) {
@@ -921,12 +930,15 @@ dig_up_grave(coord *cc)
     } else if (Role_if(PM_SAMURAI)) {
         adjalign(-sgn(u.ualign.type));
         You("disturb the honorable dead!");
-    } else if ((u.ualign.type == A_LAWFUL) && (u.ualign.record > -10)) {
-        adjalign(-sgn(u.ualign.type));
+    } else if (u.ualign.type == A_LAWFUL) {
+        if (u.ualign.record > -10)
+            adjalign(-1);
         You("have violated the sanctity of this grave!");
     }
 
-    switch (rn2(5)) {
+    /* -1: force default case for empty grave */
+    what_happens = levl[dig_x][dig_y].emptygrave ? -1 : rn2(5);
+    switch (what_happens) {
     case 0:
     case 1:
         You("unearth a corpse.");
@@ -935,22 +947,24 @@ dig_up_grave(coord *cc)
         break;
     case 2:
         if (!Blind)
-            pline(Hallucination ? "Dude!  The living dead!"
-                                : "The grave's owner is very upset!");
+            pline("%s!", Hallucination ? "Dude!  The living dead"
+                                       : "The grave's owner is very upset");
         (void) makemon(mkclass(S_ZOMBIE, 0), dig_x, dig_y, MM_NOMSG);
         break;
     case 3:
         if (!Blind)
-            pline(Hallucination ? "I want my mummy!"
-                                : "You've disturbed a tomb!");
+            pline("%s!", Hallucination ? "I want my mummy"
+                                       : "You've disturbed a tomb");
         (void) makemon(mkclass(S_MUMMY, 0), dig_x, dig_y, MM_NOMSG);
         break;
     default:
         /* No corpse */
-        pline_The("grave seems unused.  Strange....");
+        pline_The("grave is unoccupied.  Strange...");
         break;
     }
-    levl[dig_x][dig_y].typ = ROOM, levl[dig_x][dig_y].flags = 0;
+    levl[dig_x][dig_y].typ = ROOM;
+    levl[dig_x][dig_y].emptygrave = 0; /* clear 'flags' */
+    levl[dig_x][dig_y].disturbed = 0; /* clear 'horizontal' */
     del_engr_at(dig_x, dig_y);
     newsym(dig_x, dig_y);
     return;
@@ -1062,6 +1076,7 @@ use_pick_axe2(struct obj *obj)
         rx = u.ux + u.dx;
         ry = u.uy + u.dy;
         if (!isok(rx, ry)) {
+            Soundeffect(se_clash, 40);
             pline("Clash!");
             return ECMD_TIME;
         }
@@ -1086,6 +1101,11 @@ use_pick_axe2(struct obj *obj)
             } else if (lev->typ == IRONBARS) {
                 pline("Clang!");
                 wake_nearby();
+            } else if (IS_WATERWALL(lev->typ)) {
+                pline("Splash!");
+            } else if (lev->typ == LAVAWALL) {
+                pline("Splash!");
+                (void) fire_damage(uwep, FALSE, rx, ry);
             } else if (IS_TREE(lev->typ)) {
                 You("need an axe to cut down a tree.");
             } else if (IS_ROCK(lev->typ)) {
@@ -1100,6 +1120,7 @@ use_pick_axe2(struct obj *obj)
                 if (vibrate)
                     losehp(Maybe_Half_Phys(2), "axing a hard object",
                            KILLED_BY);
+                wake_nearby();
             } else if (u.utrap && u.utraptype == TT_PIT && trap
                        && (trap_with_u = t_at(u.ux, u.uy))
                        && is_pit(trap->ttyp)
@@ -1111,7 +1132,7 @@ use_pick_axe2(struct obj *obj)
 
                     trap_with_u->conjoined |= (1 << idx);
                     trap->conjoined |= (1 << adjidx);
-                    pline("You clear some debris from between the pits.");
+                    You("clear some debris from between the pits.");
                 }
             } else if (u.utrap && u.utraptype == TT_PIT
                        && (trap_with_u = t_at(u.ux, u.uy)) != 0) {
@@ -1230,6 +1251,7 @@ watch_dig(struct monst *mtmp, coordxy x, coordxy y, boolean zap)
             mtmp = get_iter_mons(watchman_canseeu);
 
         if (mtmp) {
+            SetVoice(mtmp, 0, 80, 0);
             if (zap || gc.context.digging.warned) {
                 verbalize("Halt, vandal!  You're under arrest!");
                 (void) angry_guards(!!Deaf);
@@ -1309,8 +1331,10 @@ mdig_tunnel(struct monst *mtmp)
 
     if (IS_WALL(here->typ)) {
         /* KMH -- Okay on arboreal levels (room walls are still stone) */
-        if (Verbose(0, mdig_tunnel2) && !rn2(5))
+        if (Verbose(0, mdig_tunnel2) && !rn2(5)) {
+            Soundeffect(se_crashing_rock, 75);
             You_hear("crashing rock.");
+        }
         if (*in_rooms(mtmp->mx, mtmp->my, SHOPBASE))
             add_damage(mtmp->mx, mtmp->my, 0L);
         if (gl.level.flags.is_maze_lev) {
@@ -1435,7 +1459,7 @@ zap_dig(void)
                 }
                 You("loosen a rock from the %s.", ceiling(u.ux, u.uy));
                 pline("It falls on your %s!", body_part(HEAD));
-                dmg = rnd((uarmh && is_metallic(uarmh)) ? 2 : 6);
+                dmg = rnd(hard_helmet(uarmh) ? 2 : 6);
                 losehp(Maybe_Half_Phys(dmg), "falling rock", KILLED_BY_AN);
                 otmp = mksobj_at(ROCK, u.ux, u.uy, FALSE, FALSE);
                 if (otmp) {
@@ -1468,7 +1492,7 @@ zap_dig(void)
             break;
         room = &levl[zx][zy];
         tmp_at(zx, zy);
-        delay_output(); /* wait a little bit */
+        nh_delay_output(); /* wait a little bit */
 
         if (pitdig) { /* we are already in a pit if this is true */
             coord cc;
@@ -1902,7 +1926,7 @@ bury_objs(int x, int y)
         debugpline2("bury_objs: at <%d,%d>", x, y);
     }
     for (otmp = gl.level.objects[x][y]; otmp; otmp = otmp2) {
-        if (costly) {
+        if (costly && !gc.context.mon_moving) {
             loss += stolen_value(otmp, x, y, (boolean) shkp->mpeaceful, TRUE);
             if (otmp->oclass != COIN_CLASS)
                 otmp->no_charge = 1;

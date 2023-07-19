@@ -55,7 +55,7 @@ ballfall(void)
 
         pline_The("iron ball falls on your %s.", body_part(HEAD));
         if (uarmh) {
-            if (is_metallic(uarmh)) {
+            if (hard_helmet(uarmh)) {
                 pline("Fortunately, you are wearing a hard helmet.");
                 dmg = 3;
             } else if (Verbose(0, ballfall))
@@ -714,7 +714,7 @@ drag_ball(coordxy x, coordxy y, int *bc_control,
         }
 
         /* ball is two spaces horizontal or vertical from player; move*/
-        /* chain inbetween *unless* current chain position is OK */
+        /* chain in-between *unless* current chain position is OK */
         case 4:
             if (CHAIN_IN_MIDDLE(uchain->ox, uchain->oy))
                 break;
@@ -902,6 +902,7 @@ drop_ball(coordxy x, coordxy y)
                 break;
             case TT_WEB:
                 pline(pullmsg, "web");
+                Soundeffect(se_destroy_web, 30);
                 pline_The("web is destroyed!");
                 deltrap(t_at(u.ux, u.uy));
                 break;
@@ -1015,6 +1016,7 @@ drag_down(void)
         }
     } else {
         if (rn2(2)) {
+            Soundeffect(se_iron_ball_hits_you, 25);
             pline_The("iron ball smacks into you!");
             losehp(Maybe_Half_Phys(rnd(20)), "iron ball collision",
                    KILLED_BY_AN);

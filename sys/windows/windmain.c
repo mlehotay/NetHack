@@ -36,7 +36,7 @@ extern void mswin_destroy_reg(void);
 extern void backsp(void);
 #endif
 #endif
-extern void clear_screen(void);
+extern void term_clear_screen(void);
 
 #ifdef update_file
 #undef update_file
@@ -86,7 +86,7 @@ int windows_startup_state = 0;    /* we flag whether to continue with this */
 extern int redirect_stdout;       /* from sys/share/pcsys.c */
 extern int GUILaunched;
 HANDLE hStdOut;
-char default_window_sys[] =
+char default_window_sys[7] =
 #if defined(MSWIN_GRAPHICS)
             "mswin";
 #elif defined(TTY_GRAPHICS)
@@ -560,9 +560,11 @@ _CrtSetReportFile(_CRT_ASSERT, _CRTDBG_FILE_STDERR);*/
     /*
      * It seems you really want to play.
      */
+#ifndef CURSES_GRAPHICS
     if (argc >= 1 && !strcmpi(default_window_sys, "mswin")
         && (strstri(argv[0], "nethackw.exe") || GUILaunched))
         iflags.windowtype_locked = TRUE;
+#endif
     windowtype = default_window_sys;
 
 #ifdef DLB
@@ -582,7 +584,7 @@ _CrtSetReportFile(_CRT_ASSERT, _CRTDBG_FILE_STDERR);*/
 #if defined(TTY_GRAPHICS)
         Strcpy(default_window_sys, "tty");
 #else
-#if defined(CURSES_GRAPHICS)
+#if defined(CURSES_GRAPHICS) && !defined(MSWIN_GRAPHICS)
         Strcpy(default_window_sys, "curses");
 #endif /* CURSES */
 #endif /* TTY */
@@ -590,6 +592,10 @@ _CrtSetReportFile(_CRT_ASSERT, _CRTDBG_FILE_STDERR);*/
             windowtype = gc.chosen_windowtype;
     }
     choose_windows(windowtype);
+
+#if defined(SND_LIB_WINDSOUND)
+    assign_soundlib(soundlib_windsound);
+#endif
 
     u.uhp = 1; /* prevent RIP on early quits */
     u.ux = 0;  /* prevent flush_screen() */
@@ -674,7 +680,7 @@ _CrtSetReportFile(_CRT_ASSERT, _CRTDBG_FILE_STDERR);*/
      *  new game or before a level restore on a saved game.
      */
     vision_init();
-    display_gamewindows();
+    init_sound_disp_gamewindows();
     /*
      * First, try to find and restore a save file for specified character.
      * We'll return here if new game player_selection() renames the hero.
@@ -1052,10 +1058,12 @@ void freefakeconsole(void)
 }
 #endif
 
+static boolean path_buffer_set = FALSE;
+static char path_buffer[MAX_PATH];
+
 char *
 get_executable_path(void)
 {
-    static char path_buffer[MAX_PATH];
 
 #ifdef UNICODE
     {
@@ -1073,7 +1081,18 @@ get_executable_path(void)
     if (seperator)
         *seperator = '\0';
 
+    path_buffer_set = TRUE;
     return path_buffer;
+}
+
+char *
+windows_exepath(void)
+{
+    char *p = (char *) 0;
+
+    if (path_buffer_set)
+        p = path_buffer;
+    return p;
 }
 
 char *
@@ -1271,14 +1290,14 @@ getlock(void)
                         : "not start a new game");
 #ifdef WIN32CON
     if (istty)
-        clear_screen();
+        term_clear_screen();
 #endif
     raw_printf("%s", oops);
     if (prompt_result == 1) {          /* recover */
         if (recover_savefile()) {
 #if 0
             if (istty)
-                clear_screen(); /* display gets fouled up otherwise */
+                term_clear_screen(); /* display gets fouled up otherwise */
 #endif
             goto gotlock;
         } else {
@@ -1292,7 +1311,7 @@ getlock(void)
         if (eraseoldlocks()) {
 #ifdef WIN32CON
             if (istty)
-                clear_screen(); /* display gets fouled up otherwise */
+                term_clear_screen(); /* display gets fouled up otherwise */
 #endif
             goto gotlock;
         } else {

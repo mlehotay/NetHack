@@ -1,4 +1,4 @@
-/* NetHack 3.7	botl.c	$NHDT-Date: 1646171622 2022/03/01 21:53:42 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.209 $ */
+/* NetHack 3.7	botl.c	$NHDT-Date: 1685863332 2023/06/04 07:22:12 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.233 $ */
 /* Copyright (c) Stichting Mathematisch Centrum, Amsterdam, 1985. */
 /*-Copyright (c) Michael Allison, 2006. */
 /* NetHack may be freely redistributed.  See license for details. */
@@ -252,7 +252,7 @@ do_statusline2(void)
 void
 bot(void)
 {
-    /* dosave() flags completion by setting u.uhp to -1; supprss_map_output()
+    /* dosave() flags completion by setting u.uhp to -1; suppress_map_output()
        covers program_state.restoring and is used for status as well as map */
     if (u.uhp != -1 && gy.youmonst.data
         && iflags.status_updates && !suppress_map_output()) {
@@ -449,7 +449,8 @@ describe_level(
     } else {
         /* ports with more room may expand this one */
         if (!addbranch)
-            Sprintf(buf, "Dlvl:%-2d", depth(&u.uz));
+            Sprintf(buf, "%s:%-2d", /* "Dlvl:n" (grep fodder) */
+                    In_tutorial(&u.uz) ? "Tutorial" : "Dlvl", depth(&u.uz));
         else
             Sprintf(buf, "level %d", depth(&u.uz));
         ret = 0;
@@ -746,7 +747,7 @@ bot_via_windowport(void)
     titl = !Upolyd ? rank() : pmname(&mons[u.umonnum], Ugender);
     i = (int) (strlen(buf) + sizeof " the " + strlen(titl) - sizeof "");
     /* if "Name the Rank/monster" is too long, we truncate the name
-       but always keep at least BOTL_NSIZ characters of it; when hitpintbar is
+       but always keep at least BOTL_NSIZ characters of it; when hitpointbar is
        enabled, anything beyond 30 (long monster name) will be truncated */
     if (i > 30) {
         i = 30 - (int) (sizeof " the " + strlen(titl) - sizeof "");
@@ -1202,7 +1203,7 @@ eval_notify_windowport_field(int fld, boolean *valsetlist, int idx)
     /*
      * TODO:
      *  Dynamically update 'percent_matters' as rules are added or
-     *  removed to track whether any of them are precentage rules.
+     *  removed to track whether any of them are percentage rules.
      *  Then there'll be no need to assume that non-Null 'thresholds'
      *  means that percentages need to be kept up to date.
      *  [Affects exp_percent_changing() too.]
@@ -1925,7 +1926,7 @@ status_eval_next_unhilite(void)
     struct istat_s *curr;
     long next_unhilite, this_unhilite;
 
-    gb.bl_hilite_moves = gm.moves; /* simpllfied; at one point we used to try
+    gb.bl_hilite_moves = gm.moves; /* simplified; at one point we used to try
                                   * to encode fractional amounts for multiple
                                   * moves within same turn */
     /* figure out whether an unhilight needs to be performed now */
@@ -2182,6 +2183,11 @@ get_hilite(int idx, int fldidx, genericptr_t vp, int chg, int pc,
             case BL_TH_ALWAYS_HILITE:
                 rule = hl;
                 break;
+            case BL_TH_CRITICALHP:
+                if (critically_low_hp(FALSE)) {
+                    rule = hl;
+                }
+                break;
             case BL_TH_NONE:
                 break;
             default:
@@ -2437,7 +2443,7 @@ parse_status_hl2(char (*s)[QBUFSZ], boolean from_configfile)
     int coloridx = -1, successes = 0;
     int disp_attrib = 0;
     boolean percent, changed, numeric, down, up,
-            grt, lt, gte, le, eq, txtval, always;
+            grt, lt, gte, le, eq, txtval, always, criticalhp;
     const char *txt;
     enum statusfields fld = BL_FLUSH;
     struct hilite_s hilite;
@@ -2488,6 +2494,7 @@ parse_status_hl2(char (*s)[QBUFSZ], boolean from_configfile)
         txt = (const char *)0;
         percent = numeric = always = FALSE;
         down = up = changed = FALSE;
+        criticalhp = FALSE;
         grt = gte = eq = le = lt = txtval = FALSE;
 #if 0
         /* threshold value - return on empty string */
@@ -2532,6 +2539,8 @@ parse_status_hl2(char (*s)[QBUFSZ], boolean from_configfile)
             txtval = TRUE;
         } else if (!strcmpi(s[sidx], "changed")) {
             changed = TRUE;
+        } else if (fld == BL_HP && !strcmpi(s[sidx], "criticalhp")) {
+            criticalhp = TRUE;
         } else if (is_ltgt_percentnumber(s[sidx])) {
             const char *op;
 
@@ -2695,7 +2704,9 @@ parse_status_hl2(char (*s)[QBUFSZ], boolean from_configfile)
             hilite.behavior = BL_TH_TEXTMATCH;
         else if (hilite.value.a_void)
             hilite.behavior = BL_TH_VAL_ABSOLUTE;
-       else
+        else if (criticalhp)
+            hilite.behavior = BL_TH_CRITICALHP;
+        else
             hilite.behavior = BL_TH_NONE;
 
         hilite.anytype = dt;
@@ -3256,6 +3267,9 @@ status_hilite2str(struct hilite_s *hl)
     case BL_TH_ALWAYS_HILITE:
         Sprintf(behavebuf, "always");
         break;
+    case BL_TH_CRITICALHP:
+        Sprintf(behavebuf, "criticalhp");
+        break;
     case BL_TH_NONE:
         break;
     default:
@@ -3369,6 +3383,15 @@ status_hilite_menu_choose_behavior(int fld)
         any.a_int = onlybeh = BL_TH_VAL_PERCENTAGE;
         add_menu(tmpwin, &nul_glyphinfo, &any, 'p', 0, ATR_NONE,
                  clr, "Percentage threshold", MENU_ITEMFLAGS_NONE);
+        nopts++;
+    }
+
+    if (fld == BL_HP) {
+        any = cg.zeroany;
+        any.a_int = onlybeh = BL_TH_CRITICALHP;
+        Sprintf(buf,  "Highlight critically low %s", initblstats[fld].fldname);
+        add_menu(tmpwin, &nul_glyphinfo, &any, 'C', 0, ATR_NONE,
+                 clr, buf, MENU_ITEMFLAGS_NONE);
         nopts++;
     }
 
