@@ -1798,7 +1798,7 @@ doconsent(query, mask)
 const char *query;
 const unsigned mask;
 {
-    boolean consented = (yn(query) == 'y');
+    boolean consented = (YN(query) == 'y');
     flags.consent_asked |= mask;
 
     if (consented) {
