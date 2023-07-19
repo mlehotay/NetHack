@@ -1276,6 +1276,8 @@ dopet()
     struct monst *mtmp;
     int tx, ty;
     struct obj *otmp;
+    const char *mhair;
+    char buf[BUFSZ];
 
     if (nohands(gy.youmonst.data) || nolimbs(gy.youmonst.data)) {
         pline("Without hands, you can't pet anything!");
@@ -1299,7 +1301,7 @@ dopet()
 
     if (u.dx == 0 && u.dy == 0) {
         You("pat yourself on the %s for doing such a good job.",
-            mbodypart(&gy.youmonst, HEAD));
+            body_part(HEAD));
         return 1;
     }
 
@@ -1349,9 +1351,16 @@ petmon:
     /* if this monster is waiting for something, prod it into action */
     mtmp->mstrategy &= ~STRAT_WAITMASK;
 
-    pline("You run your %s over the %s on %s %s.",
-          makeplural(mbodypart(&gy.youmonst, HAND)), mbodypart(mtmp, HAIR),
-          s_suffix(mon_nam(mtmp)), mbodypart(mtmp, HEAD));
+    mhair = mbodypart(mtmp, HAIR);
+    Snprintf(buf, sizeof(buf), "You run your %s over the %s on %s %s",
+             makeplural(body_part(HAND)), mhair, s_suffix(mon_nam(mtmp)),
+             mbodypart(mtmp, HEAD));
+    if (Glib && !strcmp(mhair, "fur")) {
+        make_glib(0);
+        Strcat(buf, ", discreetly wiping them off");
+    }
+    Strcat(buf, ".");
+    pline("%s", buf);
 
     if (mtmp->mtame)
         pline("%s seems to enjoy it immensely!", Monnam(mtmp));
