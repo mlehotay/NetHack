@@ -4,9 +4,7 @@
 # NetHack may be freely redistributed.  See license for details.
 #
 #-PRE
-# Linux hints file
-# This hints file provides a single-user tty build for Linux, specifically
-# for Linux Mint (Tricia).
+# Linux hints file for turnip WSL (Ubuntu)
 
 PREFIX=$(wildcard ~)/.local/bin
 HACKDIR=$(wildcard ~)/.local/lib/$(GAME)dir
@@ -24,7 +22,7 @@ CFLAGS+=-DCOMPRESS=\"/bin/gzip\" -DCOMPRESS_EXTENSION=\".gz\"
 CFLAGS+=-DSYSCF -DSYSCF_FILE=\"$(HACKDIR)/sysconf\" -DSECURE
 CFLAGS+=-DHACKDIR=\"$(HACKDIR)\"
 CFLAGS+=-DCONFIG_ERROR_SECURE=FALSE
-CFLAGS+=-DTIMED_DELAY -DDUMPLOG -DCURSES_GRAPHICS -DCURSES_GENL_PUTMIXED
+CFLAGS+=-DTIMED_DELAY -DDUMPLOG
 
 # when building liblua.a, avoid warning that use of tmpnam() should be
 # replaced by mkstemp(); the lua code doesn't use nethack's config.h so
@@ -35,9 +33,9 @@ LINK=$(CC)
 # Only needed for GLIBC stack trace:
 LFLAGS=-rdynamic
 
-WINSRC = $(WINTTYSRC) $(WINCURSESSRC)
-WINOBJ = $(WINTTYOBJ) $(WINCURSESOBJ)
-WINLIB = $(WINTTYLIB) $(WINCURSESLIB)
+WINSRC = $(WINTTYSRC)
+WINOBJ = $(WINTTYOBJ)
+WINLIB = $(WINTTYLIB)
 
 WINTTYLIB=-lncurses -ltinfo
 

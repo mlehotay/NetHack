@@ -32,7 +32,7 @@ CFLAGS+=-DSYSCF -DSYSCF_FILE=\"$(HACKDIR)/sysconf\" -DSECURE
 CFLAGS+=-DHACKDIR=\"$(HACKDIR)\"
 CFLAGS+=-DVAR_PLAYGROUND=\"$(HACKDIR)/var\"
 CFLAGS+=-DNOSUSPEND -DNOSHELL -DPANICTRACE_GDB=0
-CFLAGS+=-DTIMED_DELAY -DDUMPLOG -DCURSES_GRAPHICS
+CFLAGS+=-DTIMED_DELAY -DDUMPLOG -DCURSES_GRAPHICS -DCURSES_GENL_PUTMIXED
 
 # TODO: why do I get sprintf format overflow warnings on illithid but not on avocado?
 # maybe related to https://gcc.gnu.org/bugzilla//show_bug.cgi?id=83733
