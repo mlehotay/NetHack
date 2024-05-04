@@ -1,4 +1,4 @@
-/* NetHack 3.7    NetHackW.c    $NHDT-Date: 1596498365 2020/08/03 23:46:05 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.72 $ */
+/* NetHack 3.7    NetHackW.c    $NHDT-Date: 1693359674 2023/08/30 01:41:14 $  $NHDT-Branch: keni-crashweb2 $:$NHDT-Revision: 1.79 $ */
 /* Copyright (C) 2001 by Alex Kompel      */
 /* NetHack may be freely redistributed.  See license for details. */
 
@@ -71,11 +71,16 @@ int GUILaunched = TRUE;     /* We tell shared startup code in windmain.c
 #define _strdup(s1) strdup(s1)
 #endif
 
-// Foward declarations of functions included in this code module:
+// Forward declarations of functions included in this code module:
 extern boolean main(int, char **);
 static void __cdecl mswin_moveloop(void *);
 
 #define MAX_CMDLINE_PARAM 255
+
+#ifdef _MSC_VER
+#pragma warning( push )
+#pragma warning( disable : 28251)
+#endif
 
 int APIENTRY
 WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine,
@@ -123,7 +128,7 @@ WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine,
     windowprocs.win_wait_synch = mswin_wait_synch;
 
     win10_init();
-    early_init();
+    early_init(0, NULL);	/* Change as needed to support CRASHREPORT */
 
     /* init application structure */
     _nethack_app.hApp = hInstance;
@@ -165,7 +170,7 @@ WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine,
 
     _nethack_app.bNoSounds = FALSE;
 
-#if 0  /* GdiTransparentBlt does not render spash bitmap for whatever reason */
+#if 0  /* GdiTransparentBlt does not render splash bitmap for whatever reason */
     /* use system-provided TransparentBlt for Win2k+ */
     ZeroMemory(&osvi, sizeof(OSVERSIONINFO));
     osvi.dwOSVersionInfoSize = sizeof(OSVERSIONINFO);
@@ -201,7 +206,7 @@ WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine,
 
     /* get command line parameters */
     p = _get_cmd_arg(GetCommandLine());
-    p = _get_cmd_arg(NULL); /* skip first paramter - command name */
+    p = _get_cmd_arg(NULL); /* skip first parameter - command name */
     for (argc = 1; p && argc < MAX_CMDLINE_PARAM; argc++) {
         len = _tcslen(p);
         if (len > 0) {
@@ -245,6 +250,10 @@ WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine,
 #endif
     return 0;
 }
+
+#ifdef _MSC_VER
+#pragma warning( pop )
+#endif
 
 PNHWinApp
 GetNHApp(void)
@@ -411,7 +420,7 @@ _nhapply_image_transparent(HDC hDC, int x, int y, int width, int height,
     /* Mask out the transparent colored pixels on the source image. */
     BitBlt(hdcSave, 0, 0, width, height, hdcBack, 0, 0, SRCAND);
 
-    /* XOR the source image with the beckground. */
+    /* XOR the source image with the background. */
     BitBlt(hdcMem, 0, 0, width, height, hdcSave, 0, 0, SRCPAINT);
 
     /* blt resulting image to the screen */

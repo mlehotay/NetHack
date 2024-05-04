@@ -91,6 +91,9 @@ msummon(struct monst *mon)
                                                         : ndemon(atyp);
         cnt = ((dtype != NON_PM)
                && !rn2(4) && is_ndemon(&mons[dtype])) ? 2 : 1;
+    } else if (ptr == &mons[PM_BONE_DEVIL]) {
+        dtype = PM_SKELETON;
+        cnt = 1;
     } else if (is_ndemon(ptr)) {
         dtype = (!rn2(20)) ? dlord(atyp) : (!rn2(6)) ? ndemon(atyp)
                                                      : monsndx(ptr);
@@ -106,7 +109,7 @@ msummon(struct monst *mon)
         if (!rn2(6)) {
             switch (atyp) { /* see summon_minion */
             case A_NEUTRAL:
-                dtype = elementals[rn2(SIZE(elementals))];
+                dtype = ROLL_FROM(elementals);
                 break;
             case A_CHAOTIC:
             case A_NONE:
@@ -193,7 +196,7 @@ msummon(struct monst *mon)
 void
 summon_minion(aligntyp alignment, boolean talk)
 {
-    register struct monst *mon;
+    struct monst *mon;
     int mnum;
 
     switch ((int) alignment) {
@@ -201,7 +204,7 @@ summon_minion(aligntyp alignment, boolean talk)
         mnum = lminion();
         break;
     case A_NEUTRAL:
-        mnum = elementals[rn2(SIZE(elementals))];
+        mnum = ROLL_FROM(elementals);
         break;
     case A_CHAOTIC:
     case A_NONE:
@@ -256,7 +259,7 @@ summon_minion(aligntyp alignment, boolean talk)
 
 /* returns 1 if it won't attack. */
 int
-demon_talk(register struct monst *mtmp)
+demon_talk(struct monst *mtmp)
 {
     long cash, demand, offer;
 
@@ -374,7 +377,7 @@ bribe(struct monst *mtmp)
         You("give %s %ld %s.", mon_nam(mtmp), offer, currency(offer));
     }
     (void) money2mon(mtmp, offer);
-    gc.context.botl = 1;
+    disp.botl = TRUE;
     return offer;
 }
 

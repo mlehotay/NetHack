@@ -7,8 +7,6 @@
 
 /* #define SHELL */    /* nt use of pcsys routines caused a hang */
 
-#define TEXTCOLOR /* Color text */
-
 #define EXEPATH              /* Allow .exe location to be used as HACKDIR */
 #define TRADITIONAL_GLYPHMAP /* Store glyph mappings at level change time */
 
@@ -82,7 +80,7 @@
                      */
 
 #define CONFIG_FILE ".nethackrc"
-#define CONFIG_TEMPLATE ".nethackrc.template"
+#define CONFIG_TEMPLATE "nethackrc.template"
 #define SYSCF_TEMPLATE "sysconf.template"
 #define SYMBOLS_TEMPLATE "symbols.template"
 #define GUIDEBOOK_FILE "Guidebook.txt"
@@ -101,12 +99,7 @@ extern char *windows_exepath(void);
  */
 
 #ifdef __MINGW32__
-#if 0
 #define MD_USE_TMPFILE_S
-#if !defined(__cplusplus)
-extern errno_t tmpfile_s(FILE * restrict * restrict streamptr);
-#endif
-#endif
 #
 #ifdef strncasecmp
 #undef strncasecmp
@@ -263,9 +256,6 @@ int _RTLENTRY _EXPFUNC
 open(const char _FAR *__path, int __access, ... /*unsigned mode*/);
 long _RTLENTRY _EXPFUNC lseek(int __handle, long __offset, int __fromwhere);
 int _RTLENTRY _EXPFUNC read(int __handle, void _FAR *__buf, unsigned __len);
-#endif
-#ifndef CURSES_GRAPHICS
-#include <conio.h>      /* conflicting definitions with curses.h */
 #endif
 #undef kbhit /* Use our special NT kbhit */
 #define kbhit (*nt_kbhit)

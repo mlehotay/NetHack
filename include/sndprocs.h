@@ -1,4 +1,4 @@
-/* NetHack 3.7	sndprocs.h	$NHDT-Date: $  $NHDT-Branch: $:$NHDT-Revision: $ */
+/* NetHack 3.7	sndprocs.h	$NHDT-Date: 1693253118 2023/08/28 20:05:18 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.24 $ */
 /* Copyright (c) Michael Allison, 2022                                */
 /* NetHack may be freely redistributed.  See license for details. */
 
@@ -157,11 +157,12 @@ enum ambiences {
 
 enum voice_moreinfo {
     voice_nothing_special,
-    voice_talking_artifact = 0x0001,
-    voice_deity            = 0x0002,
-    voice_oracle           = 0x0004,
-    voice_throne           = 0x0008,
-    voice_death            = 0x0010
+    voice_audioassistant   = 0x0001,  /* accessibility */
+    voice_talking_artifact = 0x0002,
+    voice_deity            = 0x0004,
+    voice_oracle           = 0x0008,
+    voice_throne           = 0x0010,
+    voice_death            = 0x0020
 };
 
 enum achievements_arg2 {

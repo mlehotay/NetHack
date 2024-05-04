@@ -1,4 +1,4 @@
-/* NetHack 3.7	you.h	$NHDT-Date: 1686726254 2023/06/14 07:04:14 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.72 $ */
+/* NetHack 3.7	you.h	$NHDT-Date: 1702349061 2023/12/12 02:44:21 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.75 $ */
 /* Copyright (c) Stichting Mathematisch Centrum, Amsterdam, 1985. */
 /*-Copyright (c) Robert Patrick Rankin, 2016. */
 /* NetHack may be freely redistributed.  See license for details. */
@@ -43,8 +43,8 @@ struct u_event {
     Bitfield(qcalled, 1);      /* called by Quest leader to do task */
     Bitfield(qexpelled, 1);    /* expelled from the Quest dungeon */
     Bitfield(qcompleted, 1);   /* successfully completed Quest task */
-    Bitfield(uheard_tune, 2);  /* 1=know about, 2=heard passtune */
-
+    Bitfield(uheard_tune, 2);  /* 1=know about, 2=heard passtune, 3=bridge has
+                                * been destroyed so tune has become useless */
     Bitfield(uopened_dbridge, 1);   /* opened the drawbridge */
     Bitfield(invoked, 1);           /* invoked Gate to the Sanctum level */
     Bitfield(gehennom_entered, 1);  /* entered Gehennom via Valley */
@@ -391,6 +391,7 @@ struct you {
     /* These ranges can never be more than MAX_RANGE (vision.h). */
     int nv_range;   /* current night vision range */
     int xray_range; /* current xray vision range */
+    int unblind_telepat_range;
 
 /*
  * These variables are valid globally only when punished and blind.
@@ -423,6 +424,11 @@ struct you {
     Bitfield(uburied, 1);       /* you're buried */
     Bitfield(uedibility, 1);    /* blessed food detect; sense unsafe food */
     Bitfield(usaving_grace, 1); /* prevents death once */
+    Bitfield(uhandedness, 1); /* There is no advantage for either handedness.
+                                 The distinction is only for flavor variation
+                                 and for use in messages. */
+#define RIGHT_HANDED 0x00
+#define LEFT_HANDED  0x01
 
     unsigned udg_cnt;           /* how long you have been demigod */
     struct u_event uevent;      /* certain events have happened */
@@ -505,6 +511,7 @@ struct you {
 struct _hitmon_data {
     int dmg;  /* damage */
     int thrown;
+    int twohits; /* 0: 1 of 1; 1: 1 of 2; 2: 2 of 2 */
     int dieroll;
     struct permonst *mdat;
     boolean use_weapon_skill;
@@ -536,7 +543,14 @@ struct _hitmon_data {
 
 /* point px,py is adjacent to (or same location as) hero */
 #define next2u(px,py) (distu((px),(py)) <= 2)
+/* is monster on top of or next to hero? */
+#define m_next2u(m) (distu((m)->mx,(m)->my) <= 2)
 /* hero at (x,y)? */
 #define u_at(x,y) ((x) == u.ux && (y) == u.uy)
+
+#define URIGHTY (u.uhandedness == RIGHT_HANDED)
+#define ULEFTY (u.uhandedness == LEFT_HANDED)
+#define RING_ON_PRIMARY (ULEFTY ? uleft : uright)
+#define RING_ON_SECONDARY (ULEFTY ? uright : uleft)
 
 #endif /* YOU_H */

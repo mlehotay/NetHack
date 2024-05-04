@@ -1,4 +1,4 @@
-/* NetHack 3.7	polyself.c	$NHDT-Date: 1681429658 2023/04/13 23:47:38 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.197 $ */
+/* NetHack 3.7	polyself.c	$NHDT-Date: 1703845752 2023/12/29 10:29:12 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.207 $ */
 /*      Copyright (C) 1987, 1988, 1989 by Ken Arromdee */
 /* NetHack may be freely redistributed.  See license for details. */
 
@@ -21,14 +21,14 @@
 
 #include "hack.h"
 
-static void check_strangling(boolean);
-static void polyman(const char *, const char *);
-static void dropp(struct obj *);
-static void break_armor(void);
-static void drop_weapon(int);
-static int armor_to_dragon(int);
-static void newman(void);
-static void polysense(void);
+staticfn void check_strangling(boolean);
+staticfn void polyman(const char *, const char *);
+staticfn void dropp(struct obj *);
+staticfn void break_armor(void);
+staticfn void drop_weapon(int);
+staticfn int armor_to_dragon(int);
+staticfn void newman(void);
+staticfn void polysense(void);
 
 static const char no_longer_petrify_resistant[] =
     "No longer petrify-resistant, you";
@@ -105,7 +105,12 @@ set_uasmon(void)
     PROPSET(BLINDED, !haseyes(mdat));
 #undef PROPSET
 
-    float_vs_flight(); /* maybe toggle (BFlying & I_SPECIAL) */
+    /* whether the player is flying/floating depends on their steed,
+       which won't be known during the restore process: but BFlying
+       and BStealth should be set correctly already in that case, so
+       there's nothing to do */
+    if (!gp.program_state.restoring)
+        float_vs_flight(); /* maybe toggle (BFlying & I_SPECIAL) */
     polysense();
 
 #ifdef STATUS_HILITES
@@ -133,11 +138,26 @@ float_vs_flight(void)
         BLevitation |= I_SPECIAL;
     else
         BLevitation &= ~I_SPECIAL;
-    gc.context.botl = TRUE;
+
+    /* riding blocks stealth unless hero+steed fly, so a change in flying
+       might cause a change in stealth */
+    steed_vs_stealth();
+
+    disp.botl = TRUE;
+}
+
+/* riding blocks stealth unless hero+steed fly */
+void
+steed_vs_stealth(void)
+{
+    if (u.usteed && !Flying && !Levitation)
+        BStealth |= FROMOUTSIDE;
+    else
+        BStealth &= ~FROMOUTSIDE;
 }
 
 /* for changing into form that's immune to strangulation */
-static void
+staticfn void
 check_strangling(boolean on)
 {
     /* on -- maybe resume strangling */
@@ -149,7 +169,7 @@ check_strangling(boolean on)
         if (uamul && uamul->otyp == AMULET_OF_STRANGULATION
             && can_be_strangled(&gy.youmonst)) {
             Strangled = 6L;
-            gc.context.botl = TRUE;
+            disp.botl = TRUE;
             Your("%s %s your %s!", simpleonames(uamul),
                  was_strangled ? "still constricts" : "begins constricting",
                  body_part(NECK)); /* "throat" */
@@ -160,7 +180,7 @@ check_strangling(boolean on)
     } else {
         if (Strangled && !can_be_strangled(&gy.youmonst)) {
             Strangled = 0L;
-            gc.context.botl = TRUE;
+            disp.botl = TRUE;
             You("are no longer being strangled.");
         }
     }
@@ -169,7 +189,7 @@ check_strangling(boolean on)
 DISABLE_WARNING_FORMAT_NONLITERAL
 
 /* make a (new) human out of the player */
-static void
+staticfn void
 polyman(const char *fmt, const char *arg)
 {
     boolean sticking = (sticks(gy.youmonst.data) && u.ustuck && !u.uswallow),
@@ -301,7 +321,7 @@ livelog_newform(boolean viapoly, int oldgend, int newgend)
     }
 }
 
-static void
+staticfn void
 newman(void)
 {
     const char *newform;
@@ -425,7 +445,7 @@ newman(void)
         make_slimed(10L, (const char *) 0);
     }
 
-    gc.context.botl = 1;
+    disp.botl = TRUE;
     see_monsters();
     (void) encumber_msg();
 
@@ -444,7 +464,7 @@ polyself(int psflags)
             monsterpoly = ((psflags & POLY_MONSTER) != 0),
             formrevert = ((psflags & POLY_REVERT) != 0),
             draconian = (uarm && Is_dragon_armor(uarm)),
-            iswere = (u.ulycn >= LOW_PM),
+            iswere = (ismnum(u.ulycn)),
             isvamp = (is_vampire(gy.youmonst.data)
                       || is_vampshifter(&gy.youmonst)),
             controllable_poly = Polymorph_control && !(Stunned || Unaware);
@@ -482,6 +502,7 @@ polyself(int psflags)
     if (controllable_poly || forcecontrol) {
         buf[0] = '\0';
         tryct = 5;
+
         do {
             mntmp = NON_PM;
             getlin("Become what kind of monster? [type the name]", buf);
@@ -508,7 +529,28 @@ polyself(int psflags)
                     mntmp = (draconian && class == S_DRAGON)
                             ? armor_to_dragon(uarm->otyp)
                             : mkclass_poly(class);
+
+            /* placeholder monsters are for corpses and all flagged
+               M2_NOPOLY but they are reasonable polymorph targets;
+               pick a suitable substitute (which might be geno'd) */
+            } else if (is_placeholder(&mons[mntmp])
+                       /* when your own race, fall to !polyok() case */
+                       && !your_race(&mons[mntmp])
+                       /* same for generic human, even if hero isn't human */
+                       && mntmp != PM_HUMAN) {
+                /* far less general than mkclass() */
+                if (mntmp == PM_ORC)
+                    mntmp = rn2(3) ? PM_HILL_ORC : PM_MORDOR_ORC;
+                else if (mntmp == PM_ELF)
+                    mntmp = rn2(3) ? PM_GREEN_ELF : PM_GREY_ELF;
+                else if (mntmp == PM_GIANT)
+                    mntmp = rn2(3) ? PM_STONE_GIANT : PM_HILL_GIANT;
+                /* note: PM_DWARF and PM_GNOME are ordinary monsters and
+                   no longer flagged no-poly so have no need for placeholder
+                   handling; PM_HUMAN is a placeholder without a suitable
+                   substitute so gets handled differently below */
             }
+
             if (mntmp < LOW_PM) {
                 if (!class)
                     pline("I've never heard of such monsters.");
@@ -561,6 +603,7 @@ polyself(int psflags)
             } else
                 break;
         } while (--tryct > 0);
+
         if (!tryct)
             pline1(thats_enough_tries);
         /* allow skin merging, even when polymorph is controlled */
@@ -597,7 +640,7 @@ polyself(int psflags)
                        of evaporation due to over enchanting */
                     uarm->otyp += GRAY_DRAGON_SCALES - GRAY_DRAGON_SCALE_MAIL;
                     uarm->dknown = 1;
-                    gc.context.botl = 1; /* AC is changing */
+                    disp.botl = TRUE; /* AC is changing */
                 }
                 uskin = uarm;
                 uarm = (struct obj *) 0;
@@ -620,7 +663,7 @@ polyself(int psflags)
                          && !rn2(10)) ? PM_WOLF
                                       : !rn2(4) ? PM_FOG_CLOUD
                                                 : PM_VAMPIRE_BAT;
-                if (gy.youmonst.cham >= LOW_PM
+                if (ismnum(gy.youmonst.cham)
                     && !is_vampire(gy.youmonst.data) && !rn2(2))
                     mntmp = gy.youmonst.cham;
             }
@@ -959,7 +1002,7 @@ polymon(int mntmp)
     }
     check_strangling(TRUE); /* maybe start strangling */
 
-    gc.context.botl = 1;
+    disp.botl = TRUE;
     gv.vision_full_recalc = 1;
     see_monsters();
     (void) encumber_msg();
@@ -974,7 +1017,7 @@ polymon(int mntmp)
 
     /* the explanation of '#monster' used to be shown sooner, but there are
        possible fatalities above and it isn't useful unless hero survives */
-    if (Verbose(2, polymon)) {
+    if (flags.verbose) {
         static const char use_thec[] = "Use the command #%s to %s.";
         static const char monsterc[] = "monster";
         struct permonst *uptr = gy.youmonst.data;
@@ -1028,7 +1071,7 @@ uasmon_maxStr(void)
     struct permonst *ptr = &mons[mndx];
 
     if (is_orc(ptr)) {
-        if (mndx != PM_URUK_HAI)
+        if (mndx != PM_URUK_HAI && mndx != PM_ORC_CAPTAIN)
             mndx = PM_ORC;
     } else if (is_elf(ptr)) {
         mndx = PM_ELF;
@@ -1052,11 +1095,11 @@ uasmon_maxStr(void)
            hero poly'd into an orc the same; goblins, orc shamans, and orc
            zombies don't have strongmonst() attribute so won't get here;
            hobgoblins and orc mummies do get here and are limited to 18/50
-           like normal orcs; however, Uruk-hai retain 18/100 strength;
-           hero gnomes are also limited to 18/50; hero elves are limited
-           to 18/00 regardless of whether they're strongmonst, but the two
-           strongmonst types (monarchs and nobles) have current strength
-           set to 18 [by polymon()], the others don't */
+           like normal orcs; however, orc captains and Uruk-hai retain 18/100
+           strength; hero gnomes are also limited to 18/50; hero elves are
+           limited to 18/00 regardless of whether they're strongmonst, but
+           the two strongmonst types (monarchs and nobles) have current
+           strength set to 18 [by polymon()], the others don't */
         newMaxStr = R ? R->attrmax[A_STR] : live_H ? STR19(19) : STR18(100);
     } else {
         newMaxStr = R ? R->attrmax[A_STR] : 18; /* 18 is same as STR18(0) */
@@ -1065,7 +1108,7 @@ uasmon_maxStr(void)
 }
 
 /* dropx() jacket for break_armor() */
-static void
+staticfn void
 dropp(struct obj *obj)
 {
     struct obj *otmp;
@@ -1090,10 +1133,10 @@ dropp(struct obj *obj)
     }
 }
 
-static void
+staticfn void
 break_armor(void)
 {
-    register struct obj *otmp;
+    struct obj *otmp;
     struct permonst *uptr = gy.youmonst.data;
 
     if (breakarm(uptr)) {
@@ -1233,7 +1276,7 @@ break_armor(void)
     /* rings stay worn even when no hands */
 }
 
-static void
+staticfn void
 drop_weapon(int alone)
 {
     struct obj *otmp;
@@ -1337,7 +1380,7 @@ rehumanize(void)
     }
     nomul(0);
 
-    gc.context.botl = 1;
+    disp.botl = TRUE;
     gv.vision_full_recalc = 1;
     (void) encumber_msg();
     if (was_flying && !Flying && u.usteed)
@@ -1362,7 +1405,7 @@ dobreathe(void)
         return ECMD_OK;
     }
     u.uen -= 15;
-    gc.context.botl = 1;
+    disp.botl = TRUE;
 
     if (!getdir((char *) 0))
         return ECMD_CANCEL;
@@ -1559,7 +1602,7 @@ dosummon(void)
         return ECMD_OK;
     }
     u.uen -= 10;
-    gc.context.botl = 1;
+    disp.botl = TRUE;
 
     You("call upon your brethren for help!");
     exercise(A_WIS, TRUE);
@@ -1571,7 +1614,7 @@ dosummon(void)
 int
 dogaze(void)
 {
-    register struct monst *mtmp;
+    struct monst *mtmp;
     int looked = 0;
     char qbuf[QBUFSZ];
     int i;
@@ -1600,7 +1643,7 @@ dogaze(void)
         return ECMD_OK;
     }
     u.uen -= 15;
-    gc.context.botl = 1;
+    disp.botl = TRUE;
 
     for (mtmp = fmon; mtmp; mtmp = mtmp->nmon) {
         if (DEADMONSTER(mtmp))
@@ -1642,21 +1685,17 @@ dogaze(void)
                               Monnam(mtmp));
                     mtmp->mconf = 1;
                 } else if (adtyp == AD_FIRE) {
-                    int dmg = d(2, 6), lev = (int) u.ulevel;
+                    int dmg = d(2, 6), orig_dmg = dmg, lev = (int) u.ulevel;
 
                     You("attack %s with a fiery gaze!", mon_nam(mtmp));
                     if (resists_fire(mtmp)) {
                         pline_The("fire doesn't burn %s!", mon_nam(mtmp));
                         dmg = 0;
                     }
-                    if (lev > rn2(20))
-                        (void) destroy_mitem(mtmp, SCROLL_CLASS, AD_FIRE);
-                    if (lev > rn2(20))
-                        (void) destroy_mitem(mtmp, POTION_CLASS, AD_FIRE);
-                    if (lev > rn2(25))
-                        (void) destroy_mitem(mtmp, SPBOOK_CLASS, AD_FIRE);
-                    if (lev > rn2(20))
+                    if (lev > rn2(20)) {
+                        dmg += destroy_items(mtmp, AD_FIRE, orig_dmg);
                         ignite_items(mtmp->minvent);
+                    }
                     if (dmg)
                         mtmp->mhp -= dmg;
                     if (DEADMONSTER(mtmp))
@@ -1835,7 +1874,7 @@ domindblast(void)
         return ECMD_OK;
     }
     u.uen -= 10;
-    gc.context.botl = 1;
+    disp.botl = TRUE;
 
     You("concentrate.");
     pline("A wave of psychic energy pours out.");
@@ -1988,6 +2027,11 @@ mbodypart(struct monst *mon, int part)
     };
     struct permonst *mptr = mon->data;
 
+    if (part <= NO_PART) {
+        impossible("mbodypart: bad part %d", part);
+        return "mystery part";
+    }
+
     /* some special cases */
     if (mptr->mlet == S_DOG || mptr->mlet == S_FELINE
         || mptr->mlet == S_RODENT || mptr == &mons[PM_OWLBEAR]) {
@@ -2110,13 +2154,13 @@ ugolemeffects(int damtype, int dam)
         u.mh += heal;
         if (u.mh > u.mhmax)
             u.mh = u.mhmax;
-        gc.context.botl = 1;
+        disp.botl = TRUE;
         pline("Strangely, you feel better than before.");
         exercise(A_STR, TRUE);
     }
 }
 
-static int
+staticfn int
 armor_to_dragon(int atyp)
 {
     switch (atyp) {
@@ -2161,7 +2205,7 @@ armor_to_dragon(int atyp)
 }
 
 /* some species have awareness of other species */
-static void
+staticfn void
 polysense(void)
 {
     short warnidx = NON_PM;
@@ -2182,7 +2226,7 @@ polysense(void)
         HWarn_of_mon |= FROMRACE;
         return;
     }
-    if (warnidx >= LOW_PM) {
+    if (ismnum(warnidx)) {
         gc.context.warntype.speciesidx = warnidx;
         gc.context.warntype.species = &mons[warnidx];
         HWarn_of_mon |= FROMRACE;

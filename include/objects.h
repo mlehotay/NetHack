@@ -1,4 +1,4 @@
-/* NetHack 3.7	objects.h	$NHDT-Date: 1596498192 2020/08/03 23:43:12 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.66 $ */
+/* NetHack 3.7	objects.h	$NHDT-Date: 1700725879 2023/11/23 07:51:19 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.20 $ */
 /* Copyright (c) Mike Threepoint, 1989.                           */
 /* NetHack may be freely redistributed.  See license for details. */
 
@@ -35,7 +35,6 @@
 #define MARKER(tag,sn) /*empty*/
 
 #elif defined(OBJECTS_INIT)
-#define COLOR_FIELD(X) X,
 /* notes: 'sub' was once a bitfield but got changed to separate schar when
    it was overloaded to hold negative weapon skill indices; the first zero
    is padding for oc_prediscovered which has variable init at run-time;
@@ -44,7 +43,7 @@
     nmkn,mrg,uskn,0,mgc,chrg,uniq,nwsh,big,tuf,0,dir,mtrl,sub /*cpp fodder*/
 #define OBJECT(obj,bits,prp,sym,prob,dly,wt,        \
                cost,sdam,ldam,oc1,oc2,nut,color,sn) \
-  { 0, 0, (char *) 0, bits, prp, sym, dly, COLOR_FIELD(color) prob, wt, \
+  { 0, 0, (char *) 0, bits, prp, sym, dly, color, prob, wt, \
     cost, sdam, ldam, oc1, oc2, nut }
 #define MARKER(tag,sn) /*empty*/
 
@@ -98,6 +97,14 @@ GENERIC("iron ball",  BALL_CLASS,    GENERIC_BALL),    /* [15] */
 GENERIC("iron chain", CHAIN_CLASS,   GENERIC_CHAIN),   /* [16] */
 GENERIC("venom",      VENOM_CLASS,   GENERIC_VENOM),   /* [17] */
 #undef GENERIC
+/* FIRST_OBJECT: it would be simpler just to use MARKER(FIRST_OBJECT,ARROW)
+   below but that is vulnerable to neglecting to update the marker enum
+   after inserting something in front of arrow */
+MARKER(LAST_GENERIC, GENERIC_VENOM)
+MARKER(FIRST_OBJECT, LAST_GENERIC + 1)
+/* this definition of FIRST_OBJECT advances the default value for next enum;
+   backtrack to fix that, otherwise ARROW and the rest would be off by 1 */
+MARKER(OBJCLASS_HACK, FIRST_OBJECT - 1)
 
 /* weapons ... */
 #define WEAPON(name,desc,kn,mg,bi,prob,wt,                          \
@@ -810,9 +817,9 @@ MARKER(FIRST_AMULET, AMULET_OF_ESP)
 AMULET("amulet of life saving",       "spherical", LIFESAVED, 75,
                                                         AMULET_OF_LIFE_SAVING),
 AMULET("amulet of strangulation",          "oval", STRANGLED, 115,
-                                                        AMULET_OF_STRANGULATION),
+                                                      AMULET_OF_STRANGULATION),
 AMULET("amulet of restful sleep",    "triangular", SLEEPY, 115,
-                                                        AMULET_OF_RESTFUL_SLEEP),
+                                                      AMULET_OF_RESTFUL_SLEEP),
 AMULET("amulet versus poison",        "pyramidal", POISON_RES, 115,
                                                         AMULET_VERSUS_POISON),
 AMULET("amulet of change",               "square", 0, 115,
@@ -940,7 +947,7 @@ TOOL("figurine",            NoDes, 1, 0, 1, 0, 25, 50, 80, MINERAL, HI_MINERAL,
 TOOL("magic marker",        NoDes, 1, 0, 1, 1, 15,  2, 50, PLASTIC, CLR_RED,
                                                                 MAGIC_MARKER),
 /* traps */
-TOOL("land mine",           NoDes, 1, 0, 0, 0, 0, 300,180, IRON, CLR_RED,
+TOOL("land mine",           NoDes, 1, 0, 0, 0, 0, 200,180, IRON, CLR_RED,
                                                                 LAND_MINE),
 TOOL("beartrap",            NoDes, 1, 0, 0, 0, 0, 200, 60, IRON, HI_METAL,
                                                                 BEARTRAP),
@@ -1008,7 +1015,7 @@ OBJECT(OBJ("Bell of Opening", "silver bell"),
            FOOD_CLASS, prob, delay, wt, nutrition / 20 + 5, 0, 0, 0, 0, \
            nutrition, color, sn)
 /* All types of food (except tins & corpses) must have a delay of at least 1.
- * Delay on corpses is computed and is weight dependant.
+ * Delay on corpses is computed and is weight dependent.
  * Domestic pets prefer tripe rations above all others.
  * Fortune cookies can be read, using them up without ingesting them.
  * Carrots improve your vision.
@@ -1030,7 +1037,7 @@ FOOD("meat stick",            0,  1,  1, 0, FLESH,   5, CLR_BROWN,
 /* formerly "huge chunk of meat" */
 FOOD("enormous meatball",     0, 20,400, 0, FLESH,2000, CLR_BROWN,
                                                         ENORMOUS_MEATBALL),
-/* special case because it's not mergable */
+/* special case because it's not mergeable */
 OBJECT(OBJ("meat ring", NoDes),
        BITS(1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, FLESH),
        0, FOOD_CLASS, 0, 1, 5, 1, 0, 0, 0, 0, 5, CLR_BROWN, MEAT_RING),
@@ -1091,29 +1098,29 @@ FOOD("tin",                  75,  0, 10, 1, METAL,   0, HI_METAL, TIN),
     OBJECT(OBJ(name, desc),                                             \
            BITS(0, 1, 0, 0, mgc, 0, 0, 0, 0, 0, 0, P_NONE, GLASS),      \
            power, POTION_CLASS, prob, 0, 20, cost, 0, 0, 0, 0, 10, color, sn)
-POTION("gain ability",           "ruby",  1, 0, 42, 300, CLR_RED,
+POTION("gain ability",           "ruby",  1, 0, 40, 300, CLR_RED,
                                                         POT_GAIN_ABILITY),
 POTION("restore ability",        "pink",  1, 0, 40, 100, CLR_BRIGHT_MAGENTA,
                                                         POT_RESTORE_ABILITY),
-POTION("confusion",            "orange",  1, CONFUSION, 42, 100, CLR_ORANGE,
+POTION("confusion",            "orange",  1, CONFUSION, 40, 100, CLR_ORANGE,
                                                         POT_CONFUSION),
-POTION("blindness",            "yellow",  1, BLINDED, 40, 150, CLR_YELLOW,
+POTION("blindness",            "yellow",  1, BLINDED, 30, 150, CLR_YELLOW,
                                                         POT_BLINDNESS),
-POTION("paralysis",           "emerald",  1, 0, 42, 300, CLR_BRIGHT_GREEN,
+POTION("paralysis",           "emerald",  1, 0, 40, 300, CLR_BRIGHT_GREEN,
                                                         POT_PARALYSIS),
-POTION("speed",            "dark green",  1, FAST, 42, 200, CLR_GREEN,
+POTION("speed",            "dark green",  1, FAST, 40, 200, CLR_GREEN,
                                                         POT_SPEED),
-POTION("levitation",             "cyan",  1, LEVITATION, 42, 200, CLR_CYAN,
+POTION("levitation",             "cyan",  1, LEVITATION, 40, 200, CLR_CYAN,
                                                         POT_LEVITATION),
-POTION("hallucination",      "sky blue",  1, HALLUC, 40, 100, CLR_CYAN,
+POTION("hallucination",      "sky blue",  1, HALLUC, 30, 100, CLR_CYAN,
                                                         POT_HALLUCINATION),
 POTION("invisibility", "brilliant blue",  1, INVIS, 40, 150, CLR_BRIGHT_BLUE,
                                                         POT_INVISIBILITY),
-POTION("see invisible",       "magenta",  1, SEE_INVIS, 42, 50, CLR_MAGENTA,
+POTION("see invisible",       "magenta",  1, SEE_INVIS, 40, 50, CLR_MAGENTA,
                                                         POT_SEE_INVISIBLE),
-POTION("healing",          "purple-red",  1, 0, 57, 100, CLR_MAGENTA,
+POTION("healing",          "purple-red",  1, 0, 115, 20, CLR_MAGENTA,
                                                         POT_HEALING),
-POTION("extra healing",          "puce",  1, 0, 47, 100, CLR_RED,
+POTION("extra healing",          "puce",  1, 0, 45, 100, CLR_RED,
                                                         POT_EXTRA_HEALING),
 POTION("gain level",            "milky",  1, 0, 20, 300, CLR_WHITE,
                                                         POT_GAIN_LEVEL),
@@ -1121,21 +1128,21 @@ POTION("enlightenment",        "swirly",  1, 0, 20, 200, CLR_BROWN,
                                                         POT_ENLIGHTENMENT),
 POTION("monster detection",    "bubbly",  1, 0, 40, 150, CLR_WHITE,
                                                         POT_MONSTER_DETECTION),
-POTION("object detection",      "smoky",  1, 0, 42, 150, CLR_GRAY,
+POTION("object detection",      "smoky",  1, 0, 40, 150, CLR_GRAY,
                                                         POT_OBJECT_DETECTION),
-POTION("gain energy",          "cloudy",  1, 0, 42, 150, CLR_WHITE,
+POTION("gain energy",          "cloudy",  1, 0, 40, 150, CLR_WHITE,
                                                         POT_GAIN_ENERGY),
-POTION("sleeping",       "effervescent",  1, 0, 42, 100, CLR_GRAY,
+POTION("sleeping",       "effervescent",  1, 0, 40, 100, CLR_GRAY,
                                                         POT_SLEEPING),
 POTION("full healing",          "black",  1, 0, 10, 200, CLR_BLACK,
                                                         POT_FULL_HEALING),
 POTION("polymorph",            "golden",  1, 0, 10, 200, CLR_YELLOW,
                                                         POT_POLYMORPH),
-POTION("booze",                 "brown",  0, 0, 42,  50, CLR_BROWN,
+POTION("booze",                 "brown",  0, 0, 40,  50, CLR_BROWN,
                                                         POT_BOOZE),
-POTION("sickness",              "fizzy",  0, 0, 42,  50, CLR_CYAN,
+POTION("sickness",              "fizzy",  0, 0, 40,  50, CLR_CYAN,
                                                         POT_SICKNESS),
-POTION("fruit juice",            "dark",  0, 0, 42,  50, CLR_BLACK,
+POTION("fruit juice",            "dark",  0, 0, 40,  50, CLR_BLACK,
                                                         POT_FRUIT_JUICE),
 POTION("acid",                  "white",  0, 0, 10, 250, CLR_WHITE,
                                                         POT_ACID),
@@ -1143,7 +1150,7 @@ POTION("oil",                   "murky",  0, 0, 30, 250, CLR_BROWN,
                                                         POT_OIL),
 /* fixed description
  */
-POTION("water",                 "clear",  0, 0, 92, 100, CLR_CYAN,
+POTION("water",                 "clear",  0, 0, 80, 100, CLR_CYAN,
                                                         POT_WATER),
 #undef POTION
 
@@ -1280,10 +1287,10 @@ SPELL("healing",         "white",
       P_HEALING_SPELL,     40,  2, 1, 1, IMMEDIATE, CLR_WHITE,
                                                         SPE_HEALING),
 SPELL("knock",           "pink",
-      P_MATTER_SPELL,      35,  1, 1, 1, IMMEDIATE, CLR_BRIGHT_MAGENTA,
+      P_MATTER_SPELL,      25,  1, 1, 1, IMMEDIATE, CLR_BRIGHT_MAGENTA,
                                                         SPE_KNOCK),
 SPELL("force bolt",      "red",
-      P_ATTACK_SPELL,      35,  2, 1, 1, IMMEDIATE, CLR_RED,
+      P_ATTACK_SPELL,      30,  2, 1, 1, IMMEDIATE, CLR_RED,
                                                         SPE_FORCE_BOLT),
 SPELL("confuse monster", "orange",
       P_ENCHANTMENT_SPELL, 49,  2, 1, 1, IMMEDIATE, CLR_ORANGE,
@@ -1298,7 +1305,7 @@ SPELL("slow monster",    "light green",
       P_ENCHANTMENT_SPELL, 30,  2, 2, 1, IMMEDIATE, CLR_BRIGHT_GREEN,
                                                         SPE_SLOW_MONSTER),
 SPELL("wizard lock",     "dark green",
-      P_MATTER_SPELL,      30,  3, 2, 1, IMMEDIATE, CLR_GREEN,
+      P_MATTER_SPELL,      25,  3, 2, 1, IMMEDIATE, CLR_GREEN,
                                                         SPE_WIZARD_LOCK),
 SPELL("create monster",  "turquoise",
       P_CLERIC_SPELL,      35,  3, 2, 1, NODIR, CLR_BRIGHT_CYAN,
@@ -1334,7 +1341,7 @@ SPELL("restore ability", "light brown",
       P_HEALING_SPELL,     25,  5, 4, 1, NODIR, CLR_BROWN,
                                                         SPE_RESTORE_ABILITY),
 SPELL("invisibility",    "dark brown",
-      P_ESCAPE_SPELL,      25,  5, 4, 1, NODIR, CLR_BROWN,
+      P_ESCAPE_SPELL,      20,  5, 4, 1, NODIR, CLR_BROWN,
                                                         SPE_INVISIBILITY),
 SPELL("detect treasure", "gray",
       P_DIVINATION_SPELL,  20,  5, 4, 1, NODIR, CLR_GRAY,
@@ -1372,6 +1379,10 @@ SPELL("jumping",         "thin",
 SPELL("stone to flesh",  "thick",
       P_HEALING_SPELL,     15,  1, 3, 1, IMMEDIATE, HI_PAPER,
                                                         SPE_STONE_TO_FLESH),
+SPELL("chain lightning", "checkered",
+      P_ATTACK_SPELL,      25,  4, 2, 1, NODIR, CLR_GRAY,
+                                                        SPE_CHAIN_LIGHTNING),
+
 #if 0 /* DEFERRED */
 /* from slash'em, create a tame critter which explodes when attacking,
    damaging adjacent creatures--friend or foe--and dying in the process */
@@ -1391,15 +1402,15 @@ SPELL("blank paper", "plain", P_NONE, 18, 0, 0, 0, 0, HI_PAPER,
    even if hero learns every spell, spl_book[] will have at least one
    unused slot at end; an unused slot is needed for use as terminator */
 MARKER(LAST_SPELL, SPE_BLANK_PAPER)
-/* tribute book for 3.6 */
+/* tribute book added in 3.6 */
 OBJECT(OBJ("novel", "paperback"),
        BITS(0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, P_NONE, PAPER),
-       0, SPBOOK_CLASS, 1, 0, 0, 20, 0, 0, 0, 1, 20, CLR_BRIGHT_BLUE,
+       0, SPBOOK_CLASS, 1, 0, 10, 20, 0, 0, 0, 1, 20, CLR_BRIGHT_BLUE,
                                                         SPE_NOVEL),
 /* a special, one of a kind, spellbook */
 OBJECT(OBJ("Book of the Dead", "papyrus"),
        BITS(0, 0, 1, 0, 1, 0, 1, 1, 0, 0, 0, P_NONE, PAPER),
-       0, SPBOOK_CLASS, 0, 0, 20, 10000, 0, 0, 0, 7, 20, HI_PAPER,
+       0, SPBOOK_CLASS, 0, 0, 50, 10000, 0, 0, 0, 7, 20, HI_PAPER,
                                                         SPE_BOOK_OF_THE_DEAD),
 #undef SPELL
 
@@ -1608,7 +1619,6 @@ OBJECT(OBJ(NoDes, NoDes),
        BITS(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, P_NONE, 0), 0,
        ILLOBJ_CLASS, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
 #undef BITS
-#undef COLOR_FIELD
 #endif
 
 #undef OBJ

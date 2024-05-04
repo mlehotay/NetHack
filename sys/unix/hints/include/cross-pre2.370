@@ -1,49 +1,8 @@
 #===============-=================================================
-# NetHack 3.7  include/cross-pre $NHDT-Date: 1597332785 2020/08/13 15:33:05 $  $NHDT-Branch: NetHack-3.7 $
+# NetHack 3.7  include/cross-pre2 $NHDT-Date: 1597332785 2020/08/13 15:33:05 $  $NHDT-Branch: NetHack-3.7 $
 #
-# Cross-compiling -PRE section
+# Cross-compiling -PRE section 2
 #
-
-ifdef CROSS_TO_MSDOS
-CROSS=1
-BUILD_TARGET_LUA=1
-BUILD_PDCURSES=1
-CROSS_SHARED=1
-override TARGET = msdos
-override TARGETDIR=../targets/$(TARGET)
-override TARGETPFX = $(TARGETDIR)/
-override TARGET_LIBS=
-endif
-
-ifdef CROSS_TO_WASM
-CROSS=1
-BUILD_TARGET_LUA=1
-HACKDIR=/
-PREFIX=
-override TARGET = wasm
-override TARGETDIR=../targets/$(TARGET)
-override TARGETPFX = $(TARGETDIR)/
-override TARGET_LIBS=
-endif
-
-ifdef CROSS_TO_MIPS
-CROSS=1
-BUILD_TARGET_LUA=1
-BUILD_TARGET_NCURSES=1
-HACKDIR=/
-PREFIX=
-override TARGET = mips
-override TARGETDIR=../targets/$(TARGET)
-override TARGETPFX = $(TARGETDIR)/
-override TARGET_LIBS=
-endif
-
-ifdef CROSS
-override PREGAME=
-override BUILDMORE=
-override CLEANMORE=
-override PACKAGE=
-endif
 
 ifdef BUILD_TARGET_LUA
 #===============-=================================================
@@ -91,7 +50,7 @@ ifdef WANT_DOSVGA
 PDCPORT = $(PDCTOP)/dosvga
 PDCURSESDEF= -I$(PDCTOP) -I$(PDCPORT) \
 		-D"CURSES_GRAPHICS" -D"CURSES_BRIEF_INCLUDE" \
-		-D"PDC_WIDE" -D"CURSES_UNICODE"
+		-D"PDC_WIDE" -D"PDC_RGB" -D"CURSES_UNICODE"
 else
 PDCPORT = $(PDCTOP)/dos
 PDCURSESDEF= -I$(PDCTOP) -I$(PDCPORT) \
@@ -351,7 +310,7 @@ override WINOBJ=
 # don't bother Making regular NetHack executable
 override GAME=
 # the real VARDAT hasn't been defined yet for use in ALLDEP override
-WASM_DAT = bogusmon data engrave epitaph oracles options quest.lua rumors
+WASM_DAT = bogusmon data engrave epitaph oracles quest.lua rumors
 WASMDEP = include/nhlua.h $(WASM_DAT) spec_levs check-dlb
 override ALLDEP = $(WASMDEP) wasm
 override PREGAME += mkdir -p $(TARGETDIR)/wasm-data ;
@@ -400,6 +359,7 @@ MIPS_TARGET_CFLAGS = -c -O -I../include -I../sys/unix -I../win/share \
 	$(LUAINCL) -DDLB \
 	-DCROSSCOMPILE -DCROSSCOMPILE_TARGET \
 	-DCROSS_TO_MIPS \
+	-DCURSES_GENL_PUTMIXED \
         -Wall -Wextra -Wno-missing-field-initializers -Wreturn-type -Wunused \
         -Wformat -Wswitch -Wshadow -Wwrite-strings \
 	-Wimplicit -Wimplicit-function-declaration -Wimplicit-int \

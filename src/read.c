@@ -1,4 +1,4 @@
-/* NetHack 3.7	read.c	$NHDT-Date: 1654931501 2022/06/11 07:11:41 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.257 $ */
+/* NetHack 3.7	read.c	$NHDT-Date: 1708126537 2024/02/16 23:35:37 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.300 $ */
 /* Copyright (c) Stichting Mathematisch Centrum, Amsterdam, 1985. */
 /*-Copyright (c) Robert Patrick Rankin, 2012. */
 /* NetHack may be freely redistributed.  See license for details. */
@@ -8,51 +8,51 @@
 #define Your_Own_Role(mndx)  ((mndx) == gu.urole.mnum)
 #define Your_Own_Race(mndx)  ((mndx) == gu.urace.mnum)
 
-static boolean learnscrolltyp(short);
-static void cap_spe(struct obj *);
-static char *erode_obj_text(struct obj *, char *);
-static char *hawaiian_design(struct obj *, char *);
-static int read_ok(struct obj *);
-static void stripspe(struct obj *);
-static void p_glow1(struct obj *);
-static void p_glow2(struct obj *, const char *);
-static void forget(int);
-static int maybe_tame(struct monst *, struct obj *);
-static boolean can_center_cloud(coordxy, coordxy);
-static void display_stinking_cloud_positions(int);
-static void seffect_enchant_armor(struct obj **);
-static void seffect_destroy_armor(struct obj **);
-static void seffect_confuse_monster(struct obj **);
-static void seffect_scare_monster(struct obj **);
-static void seffect_remove_curse(struct obj **);
-static void seffect_create_monster(struct obj **);
-static void seffect_enchant_weapon(struct obj **);
-static void seffect_taming(struct obj **);
-static void seffect_genocide(struct obj **);
-static void seffect_light(struct obj **);
-static void seffect_charging(struct obj **);
-static void seffect_amnesia(struct obj **);
-static void seffect_fire(struct obj **);
-static void seffect_earth(struct obj **);
-static void seffect_punishment(struct obj **);
-static void seffect_stinking_cloud(struct obj **);
-static void seffect_blank_paper(struct obj **);
-static void seffect_teleportation(struct obj **);
-static void seffect_gold_detection(struct obj **);
-static void seffect_food_detection(struct obj **);
-static void seffect_identify(struct obj **);
-static void seffect_magic_mapping(struct obj **);
+staticfn boolean learnscrolltyp(short);
+staticfn void cap_spe(struct obj *);
+staticfn char *erode_obj_text(struct obj *, char *);
+staticfn char *hawaiian_design(struct obj *, char *);
+staticfn int read_ok(struct obj *);
+staticfn void stripspe(struct obj *);
+staticfn void p_glow1(struct obj *);
+staticfn void p_glow2(struct obj *, const char *);
+staticfn void forget(int);
+staticfn int maybe_tame(struct monst *, struct obj *);
+staticfn boolean can_center_cloud(coordxy, coordxy);
+staticfn void display_stinking_cloud_positions(boolean);
+staticfn void seffect_enchant_armor(struct obj **);
+staticfn void seffect_destroy_armor(struct obj **);
+staticfn void seffect_confuse_monster(struct obj **);
+staticfn void seffect_scare_monster(struct obj **);
+staticfn void seffect_remove_curse(struct obj **);
+staticfn void seffect_create_monster(struct obj **);
+staticfn void seffect_enchant_weapon(struct obj **);
+staticfn void seffect_taming(struct obj **);
+staticfn void seffect_genocide(struct obj **);
+staticfn void seffect_light(struct obj **);
+staticfn void seffect_charging(struct obj **);
+staticfn void seffect_amnesia(struct obj **);
+staticfn void seffect_fire(struct obj **);
+staticfn void seffect_earth(struct obj **);
+staticfn void seffect_punishment(struct obj **);
+staticfn void seffect_stinking_cloud(struct obj **);
+staticfn void seffect_blank_paper(struct obj **);
+staticfn void seffect_teleportation(struct obj **);
+staticfn void seffect_gold_detection(struct obj **);
+staticfn void seffect_food_detection(struct obj **);
+staticfn void seffect_identify(struct obj **);
+staticfn void seffect_magic_mapping(struct obj **);
 #ifdef MAIL_STRUCTURES
-static void seffect_mail(struct obj **);
+staticfn void seffect_mail(struct obj **);
 #endif /* MAIL_STRUCTURES */
-static void set_lit(coordxy, coordxy, genericptr);
-static void do_class_genocide(void);
-static void do_stinking_cloud(struct obj *, boolean);
-static boolean create_particular_parse(char *,
+staticfn void set_lit(coordxy, coordxy, genericptr);
+staticfn void do_class_genocide(void);
+staticfn void do_stinking_cloud(struct obj *, boolean);
+staticfn boolean create_particular_parse(char *,
                                        struct _create_particular_data *);
-static boolean create_particular_creation(struct _create_particular_data *);
+staticfn boolean create_particular_creation(struct _create_particular_data *);
 
-static boolean
+staticfn boolean
 learnscrolltyp(short scrolltyp)
 {
     if (!objects[scrolltyp].oc_name_known) {
@@ -65,7 +65,7 @@ learnscrolltyp(short scrolltyp)
 
 /* also called from teleport.c for scroll of teleportation */
 void
-learnscroll(struct obj* sobj)
+learnscroll(struct obj *sobj)
 {
     /* it's implied that sobj->dknown is set;
        we couldn't be reading this scroll otherwise */
@@ -74,8 +74,8 @@ learnscroll(struct obj* sobj)
 }
 
 /* max spe is +99, min is -99 */
-static void
-cap_spe(struct obj* obj)
+staticfn void
+cap_spe(struct obj *obj)
 {
     if (obj) {
         if (abs(obj->spe) > SPE_LIM)
@@ -83,8 +83,8 @@ cap_spe(struct obj* obj)
     }
 }
 
-static char *
-erode_obj_text(struct obj* otmp, char* buf)
+staticfn char *
+erode_obj_text(struct obj *otmp, char *buf)
 {
     int erosion = greatest_erosion(otmp);
 
@@ -95,7 +95,7 @@ erode_obj_text(struct obj* otmp, char* buf)
 }
 
 char *
-tshirt_text(struct obj* tshirt, char* buf)
+tshirt_text(struct obj *tshirt, char *buf)
 {
     static const char *const shirt_msgs[] = {
         /* Scott Bigham */
@@ -144,7 +144,8 @@ tshirt_text(struct obj* tshirt, char* buf)
         "Minetown Better Business Bureau",
         "Minetown Watch",
         /* Discworld riff; unfortunately long */
- "Ms. Palm's House of Negotiable Affection--A Very Reputable House Of Disrepute",
+        ("Ms. Palm's House of Negotiable Affection--A Very Reputable"
+            " House Of Disrepute"),
         "Protection Racketeer",
         "Real men love Crom",
         "Somebody stole my Mojo!",
@@ -217,7 +218,7 @@ hawaiian_motif(struct obj *shirt, char *buf)
     return buf;
 }
 
-static char *
+staticfn char *
 hawaiian_design(struct obj *shirt, char *buf)
 {
     static const char *const hawaiian_bgs[] = {
@@ -248,7 +249,7 @@ hawaiian_design(struct obj *shirt, char *buf)
 }
 
 char *
-apron_text(struct obj* apron, char* buf)
+apron_text(struct obj *apron, char *buf)
 {
     static const char *const apron_msgs[] = {
         "Kiss the cook",
@@ -290,7 +291,7 @@ static const char *const candy_wrappers[] = {
 
 /* return the text of a candy bar's wrapper */
 const char *
-candy_wrapper_text(struct obj* obj)
+candy_wrapper_text(struct obj *obj)
 {
     /* modulo operation is just bullet proofing; 'spe' is already in range */
     return candy_wrappers[obj->spe % SIZE(candy_wrappers)];
@@ -298,7 +299,7 @@ candy_wrapper_text(struct obj* obj)
 
 /* assign a wrapper to a candy bar stack */
 void
-assign_candy_wrapper(struct obj* obj)
+assign_candy_wrapper(struct obj *obj)
 {
     if (obj->otyp == CANDY_BAR) {
         /* skips candy_wrappers[0] */
@@ -308,8 +309,8 @@ assign_candy_wrapper(struct obj* obj)
 }
 
 /* getobj callback for object to read */
-static int
-read_ok(struct obj* obj)
+staticfn int
+read_ok(struct obj *obj)
 {
     if (!obj)
         return GETOBJ_EXCLUDE;
@@ -327,7 +328,7 @@ int
 doread(void)
 {
     static const char find_any_braille[] = "feel any Braille writing.";
-    register struct obj *scroll;
+    struct obj *scroll;
     boolean confused, nodisappear;
     int otyp;
 
@@ -360,7 +361,7 @@ doread(void)
 
     /* outrumor has its own blindness check */
     if (otyp == FORTUNE_COOKIE) {
-        if (Verbose(3, doread1))
+        if (flags.verbose)
             You("break up the cookie and throw away the pieces.");
         outrumor(bcsign(scroll), BY_COOKIE);
         if (!Blind)
@@ -387,8 +388,7 @@ doread(void)
             return ECMD_OK;
         }
         if (otyp == HAWAIIAN_SHIRT) {
-            pline("%s features %s.",
-                  Verbose(3, doread2) ? "The design" : "It",
+            pline("%s features %s.", flags.verbose ? "The design" : "It",
                   hawaiian_design(scroll, buf));
             return ECMD_TIME;
         }
@@ -401,7 +401,7 @@ doread(void)
         mesg = (otyp == T_SHIRT) ? tshirt_text(scroll, buf)
                                  : apron_text(scroll, buf);
         endpunct = "";
-        if (Verbose(3, doread3)) {
+        if (flags.verbose) {
             int ln = (int) strlen(mesg);
 
             /* we will be displaying a sentence; need ending punctuation */
@@ -465,7 +465,7 @@ doread(void)
         if (Blind) {
             You("feel the embossed numbers:");
         } else {
-            if (Verbose(3, doread4))
+            if (flags.verbose)
                 pline("It reads:");
             pline("\"%s\"",
                   scroll->oartifact
@@ -480,7 +480,7 @@ doread(void)
               ((int) scroll->o_id % 10),
               (!((int) scroll->o_id % 3)),
               (((int) scroll->o_id * 7) % 10),
-              (Verbose(3, doread5) || Blind) ? "." : "");
+              (flags.verbose || Blind) ? "." : "");
         if (!u.uconduct.literate++)
             livelog_printf(LL_CONDUCT,
                            "became literate by reading a credit card");
@@ -501,7 +501,7 @@ doread(void)
             You_cant(find_any_braille);
             return ECMD_OK;
         }
-        if (Verbose(3, doread6))
+        if (flags.verbose)
             pline("It reads:");
         Sprintf(buf, "%s", pmname(pm, NEUTRAL));
         pline("\"Magic Marker(TM) %s Red Ink Marker Pen.  Water Soluble.\"",
@@ -514,7 +514,7 @@ doread(void)
     } else if (scroll->oclass == COIN_CLASS) {
         if (Blind)
             You("feel the embossed words:");
-        else if (Verbose(3, doread7))
+        else if (flags.verbose)
             You("read:");
         pline("\"1 Zorkmid.  857 GUE.  In Frobs We Trust.\"");
         if (!u.uconduct.literate++)
@@ -644,8 +644,8 @@ doread(void)
 
 RESTORE_WARNING_FORMAT_NONLITERAL
 
-static void
-stripspe(register struct obj* obj)
+staticfn void
+stripspe(struct obj *obj)
 {
     if (obj->blessed || obj->spe <= 0) {
         pline1(nothing_happens);
@@ -659,14 +659,14 @@ stripspe(register struct obj* obj)
     }
 }
 
-static void
-p_glow1(register struct obj* otmp)
+staticfn void
+p_glow1(struct obj *otmp)
 {
     pline("%s briefly.", Yobjnam2(otmp, Blind ? "vibrate" : "glow"));
 }
 
-static void
-p_glow2(register struct obj* otmp, register const char* color)
+staticfn void
+p_glow2(struct obj *otmp, const char *color)
 {
     pline("%s%s%s for a moment.", Yobjnam2(otmp, Blind ? "vibrate" : "glow"),
           Blind ? "" : " ", Blind ? "" : hcolor(color));
@@ -674,7 +674,7 @@ p_glow2(register struct obj* otmp, register const char* color)
 
 /* getobj callback for object to charge */
 int
-charge_ok(struct obj* obj)
+charge_ok(struct obj *obj)
 {
     if (!obj)
         return GETOBJ_EXCLUDE;
@@ -714,9 +714,9 @@ charge_ok(struct obj* obj)
 /* recharge an object; curse_bless is -1 if the recharging implement
    was cursed, +1 if blessed, 0 otherwise. */
 void
-recharge(struct obj* obj, int curse_bless)
+recharge(struct obj *obj, int curse_bless)
 {
-    register int n;
+    int n;
     boolean is_cursed, is_blessed;
 
     is_cursed = curse_bless < 0;
@@ -999,7 +999,7 @@ recharge(struct obj* obj, int curse_bless)
  * Other things are subject to flags:
  *      howmuch & ALL_SPELLS    = forget all spells
  */
-static void
+staticfn void
 forget(int howmuch)
 {
     struct monst *mtmp;
@@ -1023,7 +1023,7 @@ forget(int howmuch)
 }
 
 /* monster is hit by scroll of taming's effect */
-static int
+staticfn int
 maybe_tame(struct monst *mtmp, struct obj *sobj)
 {
     int was_tame = mtmp->mtame;
@@ -1037,7 +1037,7 @@ maybe_tame(struct monst *mtmp, struct obj *sobj)
         /* for a shopkeeper, tamedog() will call make_happy_shk() but
            not tame the target, so call it even if taming gets resisted */
         if (!resist(mtmp, sobj->oclass, 0, NOTELL) || mtmp->isshk)
-            (void) tamedog(mtmp, (struct obj *) 0);
+            (void) tamedog(mtmp, (struct obj *) 0, FALSE);
         if ((!was_peaceful && mtmp->mpeaceful) || (!was_tame && mtmp->mtame))
             return 1;
     }
@@ -1058,7 +1058,7 @@ valid_cloud_pos(coordxy x, coordxy y)
 /* Callback for getpos_sethilite, also used in determining whether a scroll
  * should have its regular effects, or not because it was out of range.
  */
-static boolean
+staticfn boolean
 can_center_cloud(coordxy x, coordxy y)
 {
     if (!valid_cloud_pos(x, y))
@@ -1066,32 +1066,38 @@ can_center_cloud(coordxy x, coordxy y)
     return (cansee(x, y) && distu(x, y) < 32);
 }
 
-static void
-display_stinking_cloud_positions(int state)
+staticfn void
+display_stinking_cloud_positions(boolean on_off)
 {
-    if (state == 0) {
-        tmp_at(DISP_BEAM, cmap_to_glyph(S_goodpos));
-    } else if (state == 1) {
-        coordxy x, y, dx, dy;
-        int dist = 6;
+    coordxy x, y, dx, dy;
+    int dist = 6;
 
+    if (on_off) {
+        /* on */
+        tmp_at(DISP_BEAM, cmap_to_glyph(S_goodpos));
         for (dx = -dist; dx <= dist; dx++)
             for (dy = -dist; dy <= dist; dy++) {
                 x = u.ux + dx;
                 y = u.uy + dy;
-                if (can_center_cloud(x,y))
+                /* hero's location is allowed but highlighting the hero's
+                   spot makes map harder to read (if using '$' rather than
+                   by changing background color) */
+                if (u_at(x, y))
+                    continue;
+                if (can_center_cloud(x, y))
                     tmp_at(x, y);
             }
     } else {
+        /* off */
         tmp_at(DISP_END, 0);
     }
 }
 
-static void
+staticfn void
 seffect_enchant_armor(struct obj **sobjp)
 {
     struct obj *sobj = *sobjp;
-    register schar s;
+    schar s;
     boolean special_armor;
     boolean same_color;
     struct obj *otmp = some_armor(&gy.youmonst);
@@ -1237,7 +1243,7 @@ seffect_enchant_armor(struct obj **sobjp)
               Blind ? "again" : "unexpectedly");
 }
 
-static void
+staticfn void
 seffect_destroy_armor(struct obj **sobjp)
 {
     struct obj *sobj = *sobjp;
@@ -1285,7 +1291,7 @@ seffect_destroy_armor(struct obj **sobjp)
     }
 }
 
-static void
+staticfn void
 seffect_confuse_monster(struct obj **sobjp)
 {
     struct obj *sobj = *sobjp;
@@ -1293,6 +1299,7 @@ seffect_confuse_monster(struct obj **sobjp)
             scursed = sobj->cursed,
             confused = (Confusion != 0),
             altfeedback = (Blind || Invisible);
+    const char *const hands = makeplural(body_part(HAND));
 
     if (gy.youmonst.data->mlet != S_HUMAN || scursed) {
         if (!HConfusion)
@@ -1300,7 +1307,7 @@ seffect_confuse_monster(struct obj **sobjp)
         make_confused(HConfusion + rnd(100), FALSE);
     } else if (confused) {
         if (!sblessed) {
-            Your("%s begin to %s%s.", makeplural(body_part(HAND)),
+            Your("%s begin to %s%s.", hands,
                  altfeedback ? "tingle" : "glow ",
                  altfeedback ? "" : hcolor(NH_PURPLE));
             make_confused(HConfusion + rnd(100), FALSE);
@@ -1311,23 +1318,26 @@ seffect_confuse_monster(struct obj **sobjp)
             make_confused(0L, TRUE);
         }
     } else {
-        int incr = 0;
+        /* scroll vs spell */
+        int incr = (sobj->oclass == SCROLL_CLASS) ? 3 : 0;
 
         if (!sblessed) {
-            Your("%s%s %s%s.", makeplural(body_part(HAND)),
-                 altfeedback ? "" : " begin to glow",
-                 altfeedback ? (const char *) "tingle" : hcolor(NH_RED),
-                 u.umconf ? " even more" : "");
-            incr = rnd(2);
+            if (altfeedback)
+                Your("%s tingle%s.", hands, u.umconf ? " even more" : "");
+            else if (!u.umconf)
+                Your("%s begin to glow %s.", hands, hcolor(NH_RED));
+            else
+                pline_The("%s glow of your %s intensifies.", hcolor(NH_RED),
+                          hands);
+            incr += rnd(2);
         } else {
             if (altfeedback)
-                Your("%s tingle %s sharply.", makeplural(body_part(HAND)),
+                Your("%s tingle %s sharply.", hands,
                      u.umconf ? "even more" : "very");
             else
-                Your("%s glow %s brilliant %s.",
-                     makeplural(body_part(HAND)),
+                Your("%s glow %s brilliant %s.", hands,
                      u.umconf ? "an even more" : "a", hcolor(NH_RED));
-            incr = rn1(8, 2);
+            incr += rn1(8, 2);
         }
         /* after a while, repeated uses become less effective */
         if (u.umconf >= 40)
@@ -1336,15 +1346,15 @@ seffect_confuse_monster(struct obj **sobjp)
     }
 }
 
-static void
+staticfn void
 seffect_scare_monster(struct obj **sobjp)
 {
     struct obj *sobj = *sobjp;
     int otyp = sobj->otyp;
     boolean scursed = sobj->cursed;
     boolean confused = (Confusion != 0);
-    register int ct = 0;
-    register struct monst *mtmp;
+    int ct = 0;
+    struct monst *mtmp;
 
     for (mtmp = fmon; mtmp; mtmp = mtmp->nmon) {
         if (DEADMONSTER(mtmp))
@@ -1371,7 +1381,7 @@ seffect_scare_monster(struct obj **sobjp)
     }
 }
 
-static void
+staticfn void
 seffect_remove_curse(struct obj **sobjp)
 {
     struct obj *sobj = *sobjp; /* scroll or fake spellbook */
@@ -1379,7 +1389,7 @@ seffect_remove_curse(struct obj **sobjp)
     boolean sblessed = sobj->blessed;
     boolean scursed = sobj->cursed;
     boolean confused = (Confusion != 0);
-    register struct obj *obj, *nxto;
+    struct obj *obj, *nxto;
     long wornmask;
 
     You_feel(!Hallucination
@@ -1433,6 +1443,8 @@ seffect_remove_curse(struct obj **sobjp)
                 }
             }
             if (sblessed || wornmask || obj->otyp == LOADSTONE
+                /* this treats an in-use leash as a worn item but does not
+                   do the same for lit lamp/candle [seems inconsistent] */
                 || (obj->otyp == LEASH && obj->leashmon)) {
                 /* water price varies by curse/bless status */
                 boolean shop_h2o = (obj->unpaid && obj->otyp == POT_WATER);
@@ -1488,7 +1500,7 @@ seffect_remove_curse(struct obj **sobjp)
     update_inventory();
 }
 
-static void
+staticfn void
 seffect_create_monster(struct obj **sobjp)
 {
     struct obj *sobj = *sobjp;
@@ -1507,7 +1519,7 @@ seffect_create_monster(struct obj **sobjp)
      */
 }
 
-static void
+staticfn void
 seffect_enchant_weapon(struct obj **sobjp)
 {
     struct obj *sobj = *sobjp;
@@ -1557,7 +1569,7 @@ seffect_enchant_weapon(struct obj **sobjp)
         cap_spe(uwep);
 }
 
-static void
+staticfn void
 seffect_taming(struct obj **sobjp)
 {
     struct obj *sobj = *sobjp;
@@ -1600,7 +1612,7 @@ seffect_taming(struct obj **sobjp)
     }
 }
 
-static void
+staticfn void
 seffect_genocide(struct obj **sobjp)
 {
     struct obj *sobj = *sobjp;
@@ -1619,7 +1631,7 @@ seffect_genocide(struct obj **sobjp)
         do_genocide((!scursed) | (2 * !!Confusion));
 }
 
-static void
+staticfn void
 seffect_light(struct obj **sobjp)
 {
     struct obj *sobj = *sobjp;
@@ -1649,12 +1661,14 @@ seffect_light(struct obj **sobjp)
             for (i = 0; i < numlights; ++i) {
                 mon = makemon(&mons[pm], u.ux, u.uy,
                               MM_EDOG | NO_MINVENT | MM_NOMSG);
-                initedog(mon);
-                mon->msleeping = 0;
-                mon->mcan = TRUE;
-                if (canspotmon(mon))
-                    sawlights = TRUE;
-                newsym(mon->mx, mon->my);
+                if (mon) {
+                    initedog(mon);
+                    mon->msleeping = 0;
+                    mon->mcan = TRUE;
+                    if (canspotmon(mon))
+                        sawlights = TRUE;
+                    newsym(mon->mx, mon->my);
+                }
             }
             if (sawlights) {
                 pline("Lights appear all around you!");
@@ -1664,7 +1678,7 @@ seffect_light(struct obj **sobjp)
     }
 }
 
-static void
+staticfn void
 seffect_charging(struct obj **sobjp)
 {
     struct obj *sobj = *sobjp;
@@ -1688,7 +1702,7 @@ seffect_charging(struct obj **sobjp)
             else
                 u.uen = u.uenmax; /* otherwise restore current to max  */
         }
-        gc.context.botl = 1;
+        disp.botl = TRUE;
         return;
     }
     /* known = TRUE; -- handled inline here */
@@ -1706,7 +1720,7 @@ seffect_charging(struct obj **sobjp)
         recharge(otmp, scursed ? -1 : sblessed ? 1 : 0);
 }
 
-static void
+staticfn void
 seffect_amnesia(struct obj **sobjp)
 {
     struct obj *sobj = *sobjp;
@@ -1717,8 +1731,8 @@ seffect_amnesia(struct obj **sobjp)
     if (Hallucination) /* Ommmmmm! */
         Your("mind releases itself from mundane concerns.");
     else if (!strncmpi(gp.plname, "Maud", 4))
-        pline(
-              "As your mind turns inward on itself, you forget everything else.");
+        pline("As your mind turns inward on itself,"
+              " you forget everything else.");
     else if (rn2(2))
         pline("Who was that Maud person anyway?");
     else
@@ -1726,7 +1740,7 @@ seffect_amnesia(struct obj **sobjp)
     exercise(A_WIS, FALSE);
 }
 
-static void
+staticfn void
 seffect_fire(struct obj **sobjp)
 {
     struct obj *sobj = *sobjp;
@@ -1760,6 +1774,7 @@ seffect_fire(struct obj **sobjp)
                 You_feel("a pleasant warmth in your %s.",
                          makeplural(body_part(HAND)));
         } else {
+            monstunseesu(M_SEEN_FIRE);
             pline_The("scroll catches fire and you burn your %s.",
                       makeplural(body_part(HAND)));
             losehp(1, "scroll of fire", KILLED_BY_AN);
@@ -1794,7 +1809,7 @@ seffect_fire(struct obj **sobjp)
 #undef ZT_SPELL_O_FIRE
 }
 
-static void
+staticfn void
 seffect_earth(struct obj **sobjp)
 {
     struct obj *sobj = *sobjp;
@@ -1851,7 +1866,7 @@ seffect_earth(struct obj **sobjp)
     }
 }
 
-static void
+staticfn void
 seffect_punishment(struct obj **sobjp)
 {
     struct obj *sobj = *sobjp;
@@ -1866,7 +1881,7 @@ seffect_punishment(struct obj **sobjp)
     punish(sobj);
 }
 
-static void
+staticfn void
 seffect_stinking_cloud(struct obj **sobjp)
 {
     struct obj *sobj = *sobjp;
@@ -1880,7 +1895,7 @@ seffect_stinking_cloud(struct obj **sobjp)
     do_stinking_cloud(sobj, already_known);
 }
 
-static void
+staticfn void
 seffect_blank_paper(struct obj **sobjp UNUSED)
 {
     if (Blind)
@@ -1890,7 +1905,7 @@ seffect_blank_paper(struct obj **sobjp UNUSED)
     gk.known = TRUE;
 }
 
-static void
+staticfn void
 seffect_teleportation(struct obj **sobjp)
 {
     struct obj *sobj = *sobjp;
@@ -1910,7 +1925,7 @@ seffect_teleportation(struct obj **sobjp)
     }
 }
 
-static void
+staticfn void
 seffect_gold_detection(struct obj **sobjp)
 {
     struct obj *sobj = *sobjp;
@@ -1921,7 +1936,7 @@ seffect_gold_detection(struct obj **sobjp)
         *sobjp = 0; /* failure: strange_feeling() -> useup() */
 }
 
-static void
+staticfn void
 seffect_food_detection(struct obj **sobjp)
 {
     struct obj *sobj = *sobjp;
@@ -1930,7 +1945,7 @@ seffect_food_detection(struct obj **sobjp)
         *sobjp = 0; /* nothing detected: strange_feeling -> useup */
 }
 
-static void
+staticfn void
 seffect_identify(struct obj **sobjp)
 {
     struct obj *sobj = *sobjp;
@@ -1977,7 +1992,7 @@ seffect_identify(struct obj **sobjp)
     }
 }
 
-static void
+staticfn void
 seffect_magic_mapping(struct obj **sobjp)
 {
     struct obj *sobj = *sobjp;
@@ -2019,7 +2034,9 @@ seffect_magic_mapping(struct obj **sobjp)
     cval = (scursed && !confused);
     if (cval)
         HConfusion = 1; /* to screw up map */
+    notice_mon_off();
     do_mapping();
+    notice_mon_on();
     if (cval) {
         HConfusion = 0; /* restore */
         pline("Unfortunately, you can't grasp the details.");
@@ -2027,7 +2044,7 @@ seffect_magic_mapping(struct obj **sobjp)
 }
 
 #ifdef MAIL_STRUCTURES
-static void
+staticfn void
 seffect_mail(struct obj **sobjp)
 {
     struct obj *sobj = *sobjp;
@@ -2193,7 +2210,7 @@ drop_boulder_on_player(
                 pline("Fortunately, you are wearing a hard helmet.");
                 if (dmg > 2)
                     dmg = 2;
-            } else if (Verbose(3, drop_boulder_on_player)) {
+            } else if (flags.verbose) {
                 pline("%s does not protect you.", Yname2(uarmh));
             }
         }
@@ -2213,8 +2230,8 @@ drop_boulder_on_player(
 boolean
 drop_boulder_on_monster(coordxy x, coordxy y, boolean confused, boolean byu)
 {
-    register struct obj *otmp2;
-    register struct monst *mtmp;
+    struct obj *otmp2;
+    struct monst *mtmp;
 
     /* Make the object(s) */
     otmp2 = mksobj(confused ? ROCK : BOULDER, FALSE, FALSE);
@@ -2340,7 +2357,7 @@ static struct litmon *gremlins = 0;
 /*
  * Low-level lit-field update routine.
  */
-static void
+staticfn void
 set_lit(coordxy x, coordxy y, genericptr_t val)
 {
     struct monst *mtmp;
@@ -2496,7 +2513,7 @@ litroom(
     return;
 }
 
-static void
+staticfn void
 do_class_genocide(void)
 {
     int i, j, immunecnt, gonecnt, goodcnt, class, feel_dead = 0;
@@ -2505,15 +2522,18 @@ do_class_genocide(void)
     boolean gameover = FALSE; /* true iff killed self */
 
     buf[0] = '\0'; /* for EDIT_GETLIN */
-    for (j = 0;; j++) {
+    for (j = 0; ; j++) {
         if (j >= 5) {
             pline1(thats_enough_tries);
             return;
         }
         Strcpy(promptbuf, "What class of monsters do you want to genocide?");
-        if (iflags.cmdassist && j > 0)
-            Strcat(promptbuf,
-                   " [enter the symbol or name representing a class]");
+        if (j > 0)
+            Snprintf(eos(promptbuf), sizeof promptbuf - strlen(promptbuf),
+                     " [enter %s]",
+                     iflags.cmdassist
+                       ? "the symbol or name representing a class, or '?'"
+                       : "'?' to see previous genocides");
         getlin(promptbuf, buf);
         (void) mungspaces(buf);
         /* avoid 'that does not represent any monster' for empty input */
@@ -2532,6 +2552,13 @@ do_class_genocide(void)
             livelog_printf(LL_GENOCIDE,
                            "declined to perform class genocide");
             return;
+        }
+        /* "?" runs #genocided to show existing genocides, then re-prompts;
+           accept "'?'" too because the prompt's hint shows it that way */
+        if (!strcmp(buf, "?") || !strcmp(buf, "'?'")) {
+            list_genocided('g', FALSE);
+            --j; /* don't count this iteration as one of the tries */
+            continue;
         }
 
         class = name_to_monclass(buf, (int *) 0);
@@ -2555,7 +2582,7 @@ do_class_genocide(void)
             else if (immunecnt || class == S_invisible)
                 You("aren't permitted to genocide such monsters.");
             else if (wizard && buf[0] == '*') {
-                register struct monst *mtmp, *mtmp2;
+                struct monst *mtmp, *mtmp2;
 
                 gonecnt = 0;
                 for (mtmp = fmon; mtmp; mtmp = mtmp2) {
@@ -2704,8 +2731,12 @@ do_genocide(
                 return;
             }
             Strcpy(promptbuf, "What type of monster do you want to genocide?");
-            if (iflags.cmdassist && i > 0)
-                Strcat(promptbuf, " [enter the name of a type of monster]");
+            if (i > 0)
+                Snprintf(eos(promptbuf), sizeof promptbuf - strlen(promptbuf),
+                         " [enter %s]",
+                         iflags.cmdassist
+                           ? "the name of a type of monster, or '?'"
+                           : "'?' to see previous genocides");
             getlin(promptbuf, buf);
             (void) mungspaces(buf);
             /* avoid 'such creatures do not exist' for empty input */
@@ -2726,6 +2757,12 @@ do_genocide(
 
                 livelog_printf(LL_GENOCIDE, "declined to perform genocide");
                 return;
+            }
+            /* "?" or "'?'" runs #genocided to show existing genocides */
+            if (!strcmp(buf, "?") || !strcmp(buf, "'?'")) {
+                list_genocided('g', FALSE);
+                --i; /* don't count this iteration as one of the tries */
+                continue;
             }
 
             mndx = name_to_mon(buf, (int *) 0);
@@ -2757,7 +2794,7 @@ do_genocide(
                      * circumstances.  Who's speaking?  Divine pronouncements
                      * aren't supposed to be hampered by deafness....
                      */
-                    if (Verbose(3, do_genocide))
+                    if (flags.verbose)
                         pline("A thunderous voice booms through the caverns:");
                     SetVoice((struct monst *) 0, 0, 80, voice_deity);
                     verbalize("No, mortal!  That will not be done.");
@@ -2775,7 +2812,8 @@ do_genocide(
     which = "all ";
     if (Hallucination) {
         if (Upolyd)
-            Strcpy(buf, pmname(gy.youmonst.data, flags.female ? FEMALE : MALE));
+            Strcpy(buf, pmname(gy.youmonst.data,
+                               flags.female ? FEMALE : MALE));
         else {
             Strcpy(buf, (flags.female && gu.urole.name.f) ? gu.urole.name.f
                                                        : gu.urole.name.m);
@@ -2850,17 +2888,21 @@ do_genocide(
 }
 
 void
-punish(struct obj* sobj)
+punish(struct obj *sobj)
 {
+    /* angrygods() calls this with NULL sobj arg */
     struct obj *reuse_ball = (sobj && sobj->otyp == HEAVY_IRON_BALL)
                                 ? sobj : (struct obj *) 0;
+    /* analyzer doesn't know that the one caller that passes a NULL
+     * sobj (angrygods) checks !Punished first, so add a guard */
+    int cursed_levy = (sobj && sobj->cursed) ? 1 : 0;
 
     /* KMH -- Punishment is still okay when you are riding */
     if (!reuse_ball)
         You("are being punished for your misbehavior!");
     if (Punished) {
         Your("iron ball gets heavier.");
-        uball->owt += IRON_BALL_W_INCR * (1 + sobj->cursed);
+        uball->owt += IRON_BALL_W_INCR * (1 + cursed_levy);
         return;
     }
     if (amorphous(gy.youmonst.data) || is_whirly(gy.youmonst.data)
@@ -2906,9 +2948,9 @@ unpunish(void)
     setworn((struct obj *) 0, W_BALL); /* sets 'uball' to Null */
 }
 
-/* Prompt the player to create a stinking cloud and then create it if they give
- * a location. */
-static void
+/* prompt the player to create a stinking cloud and then create it if they
+   give a location */
+staticfn void
 do_stinking_cloud(struct obj *sobj, boolean mention_stinking)
 {
     coord cc;
@@ -2963,7 +3005,7 @@ cant_revive(
     return FALSE;
 }
 
-static boolean
+staticfn boolean
 create_particular_parse(
     char *str,
     struct _create_particular_data *d)
@@ -3056,11 +3098,11 @@ create_particular_parse(
     } else {  /* no explicit gender term was specified */
         d->fem = gender_name_var;
     }
-    if (d->which >= LOW_PM)
+    if (ismnum(d->which))
         return TRUE; /* got one */
     d->monclass = name_to_monclass(bufp, &d->which);
 
-    if (d->which >= LOW_PM) {
+    if (ismnum(d->which)) {
         d->monclass = MAXMCLASSES; /* matters below */
         return TRUE;
     } else if (d->monclass == S_invisible) { /* not an actual monster class */
@@ -3078,7 +3120,7 @@ create_particular_parse(
     return FALSE;
 }
 
-static boolean
+staticfn boolean
 create_particular_creation(
     struct _create_particular_data *d)
 {
@@ -3139,6 +3181,9 @@ create_particular_creation(
             /* whichpm = rndmonst(); */
             /* mmflags |= (d->fem == FEMALE) ? MM_FEMALE : MM_MALE; */
         }
+        if (d->invisible)
+            mmflags |= MM_MINVIS;
+
         mtmp = makemon(whichpm, u.ux, u.uy, mmflags);
         if (!mtmp) {
             /* quit trying if creation failed and is going to repeat */
@@ -3149,7 +3194,7 @@ create_particular_creation(
         }
         mx = mtmp->mx, my = mtmp->my;
         if (d->maketame) {
-            (void) tamedog(mtmp, (struct obj *) 0);
+            (void) tamedog(mtmp, (struct obj *) 0, FALSE);
         } else if (d->makepeaceful || d->makehostile) {
             mtmp->mtame = 0; /* sanity precaution */
             mtmp->mpeaceful = d->makepeaceful ? 1 : 0;
@@ -3160,24 +3205,17 @@ create_particular_creation(
 
             put_saddle_on_mon(otmp, mtmp);
         }
-        if (d->invisible) {
-            mon_set_minvis(mtmp);
-            if (does_block(mx, my, &levl[mx][my]))
-                block_point(mx, my);
-            else
-                unblock_point(mx, my);
-        }
-       if (d->hidden
+        if (d->hidden
            && ((is_hider(mtmp->data) && mtmp->data->mlet != S_MIMIC)
                || (hides_under(mtmp->data) && OBJ_AT(mx, my))
                || (mtmp->data->mlet == S_EEL && is_pool(mx, my))))
             mtmp->mundetected = 1;
         if (d->sleeping)
             mtmp->msleeping = 1;
-        /* iff asking for 'hidden', show location of every created monster
+        /* if asking for 'hidden', show location of every created monster
            that can't be seen--whether that's due to successfully hiding
            or vision issues (line-of-sight, invisibility, blindness) */
-        if (d->hidden && !canspotmon(mtmp)) {
+        if ((d->hidden || d->invisible) && !canspotmon(mtmp)) {
             int count = couldsee(mx, my) ? 8 : 4;
             char saveviz = gv.viz_array[my][mx];
 

@@ -1,4 +1,4 @@
-/* NetHack 3.7	end.c	$NHDT-Date: 1685863329 2023/06/04 07:22:09 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.274 $ */
+/* NetHack 3.7	end.c	$NHDT-Date: 1711735821 2024/03/29 18:10:21 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.313 $ */
 /* Copyright (c) Stichting Mathematisch Centrum, Amsterdam, 1985. */
 /*-Copyright (c) Robert Patrick Rankin, 2012. */
 /* NetHack may be freely redistributed.  See license for details. */
@@ -20,23 +20,26 @@
 #define nowrap_add(a, b) (a = ((a + b) < 0 ? LONG_MAX : (a + b)))
 
 #ifndef NO_SIGNAL
-static void done_intr(int);
-#if defined(UNIX) || defined(VMS) || defined(__EMX__)
-static void done_hangup(int);
+staticfn void done_intr(int);
+# if defined(UNIX) || defined(VMS) || defined(__EMX__)
+staticfn void done_hangup(int);
+# endif
 #endif
-#endif
-static void disclose(int, boolean);
-static void get_valuables(struct obj *);
-static void sort_valuables(struct valuable_data *, int);
-static void artifact_score(struct obj *, boolean, winid);
-static boolean fuzzer_savelife(int);
-ATTRNORETURN static void really_done(int) NORETURN;
-static void savelife(int);
-static boolean should_query_disclose_option(int, char *);
+staticfn void disclose(int, boolean);
+staticfn void get_valuables(struct obj *) NO_NNARGS;
+staticfn void sort_valuables(struct valuable_data *, int);
+staticfn void artifact_score(struct obj *, boolean, winid);
+staticfn boolean fuzzer_savelife(int);
+ATTRNORETURN staticfn void really_done(int) NORETURN;
+staticfn void savelife(int);
+staticfn boolean should_query_disclose_option(int, char *);
 #ifdef DUMPLOG
-static void dump_plines(void);
+staticfn void dump_plines(void);
 #endif
-static void dump_everything(int, time_t);
+staticfn void dump_everything(int, time_t);
+staticfn void fixup_death(int);
+staticfn int wordcount(char *);
+staticfn void bel_copy1(char **, char *);
 
 #if defined(__BEOS__) || defined(MICRO) || defined(OS2) || defined(WIN32)
 ATTRNORETURN extern void nethack_exit(int) NORETURN;
@@ -45,237 +48,6 @@ ATTRNORETURN extern void nethack_exit(int) NORETURN;
 #endif
 
 #define done_stopprint gp.program_state.stopprint
-
-#ifndef PANICTRACE
-#define NH_abort NH_abort_
-#endif
-
-#ifdef AMIGA
-#define NH_abort_() Abort(0)
-#else
-#ifdef SYSV
-#define NH_abort_() (void) abort()
-#else
-#ifdef WIN32
-#define NH_abort_() win32_abort()
-#else
-#define NH_abort_() abort()
-#endif
-#endif /* !SYSV */
-#endif /* !AMIGA */
-
-#ifdef PANICTRACE
-#include <errno.h>
-#ifdef PANICTRACE_LIBC
-#include <execinfo.h>
-#endif
-
-/* What do we try and in what order?  Tradeoffs:
- * libc: +no external programs required
- *        -requires newish libc/glibc
- *        -requires -rdynamic
- * gdb:   +gives more detailed information
- *        +works on more OS versions
- *        -requires -g, which may preclude -O on some compilers
- */
-#ifdef SYSCF
-#define SYSOPT_PANICTRACE_GDB sysopt.panictrace_gdb
-#ifdef PANICTRACE_LIBC
-#define SYSOPT_PANICTRACE_LIBC sysopt.panictrace_libc
-#else
-#define SYSOPT_PANICTRACE_LIBC 0
-#endif
-#else
-#define SYSOPT_PANICTRACE_GDB (nh_getenv("NETHACK_USE_GDB") == 0 ? 0 : 2)
-#ifdef PANICTRACE_LIBC
-#define SYSOPT_PANICTRACE_LIBC 1
-#else
-#define SYSOPT_PANICTRACE_LIBC 0
-#endif
-#endif
-
-static void NH_abort(void);
-#ifndef NO_SIGNAL
-static void panictrace_handler(int);
-#endif
-static boolean NH_panictrace_libc(void);
-static boolean NH_panictrace_gdb(void);
-
-#ifndef NO_SIGNAL
-/* called as signal() handler, so sent at least one arg */
-/*ARGUSED*/
-void
-panictrace_handler(int sig_unused UNUSED)
-{
-#define SIG_MSG "\nSignal received.\n"
-    int f2;
-
-#ifdef CURSES_GRAPHICS
-    if (iflags.window_inited && WINDOWPORT(curses)) {
-        extern void curses_uncurse_terminal(void); /* wincurs.h */
-
-        /* it is risky calling this during a program-terminating signal,
-           but without it the subsequent backtrace is useless because
-           that ends up being scrawled all over the screen; call is
-           here rather than in NH_abort() because panic() calls both
-           exit_nhwindows(), which makes this same call under curses,
-           then NH_abort() and we don't want to call this twice */
-        curses_uncurse_terminal();
-    }
-#endif
-
-    f2 = (int) write(2, SIG_MSG, sizeof SIG_MSG - 1);
-    nhUse(f2);  /* what could we do if write to fd#2 (stderr) fails  */
-    NH_abort(); /* ... and we're already in the process of quitting? */
-}
-
-void
-panictrace_setsignals(boolean set)
-{
-#define SETSIGNAL(sig) \
-    (void) signal(sig, set ? (SIG_RET_TYPE) panictrace_handler : SIG_DFL);
-#ifdef SIGILL
-    SETSIGNAL(SIGILL);
-#endif
-#ifdef SIGTRAP
-    SETSIGNAL(SIGTRAP);
-#endif
-#ifdef SIGIOT
-    SETSIGNAL(SIGIOT);
-#endif
-#ifdef SIGBUS
-    SETSIGNAL(SIGBUS);
-#endif
-#ifdef SIGFPE
-    SETSIGNAL(SIGFPE);
-#endif
-#ifdef SIGSEGV
-    SETSIGNAL(SIGSEGV);
-#endif
-#ifdef SIGSTKFLT
-    SETSIGNAL(SIGSTKFLT);
-#endif
-#ifdef SIGSYS
-    SETSIGNAL(SIGSYS);
-#endif
-#ifdef SIGEMT
-    SETSIGNAL(SIGEMT);
-#endif
-#undef SETSIGNAL
-}
-#endif /* NO_SIGNAL */
-
-static void
-NH_abort(void)
-{
-    int gdb_prio = SYSOPT_PANICTRACE_GDB;
-    int libc_prio = SYSOPT_PANICTRACE_LIBC;
-    static volatile boolean aborting = FALSE;
-
-    /* don't execute this code recursively if a second abort is requested
-       while this routine or the code it calls is executing */
-    if (aborting)
-        return;
-    aborting = TRUE;
-
-#ifndef VMS
-    if (gdb_prio == libc_prio && gdb_prio > 0)
-        gdb_prio++;
-
-    if (gdb_prio > libc_prio) {
-        (void) (NH_panictrace_gdb() || (libc_prio && NH_panictrace_libc()));
-    } else {
-        (void) (NH_panictrace_libc() || (gdb_prio && NH_panictrace_gdb()));
-    }
-
-#else /* VMS */
-    /* overload otherwise unused priority for debug mode: 1 = show
-       traceback and exit; 2 = show traceback and stay in debugger */
-    /* if (wizard && gdb_prio == 1) gdb_prio = 2; */
-    vms_traceback(gdb_prio);
-    nhUse(libc_prio);
-
-#endif /* ?VMS */
-
-#ifndef NO_SIGNAL
-    panictrace_setsignals(FALSE);
-#endif
-    NH_abort_();
-}
-
-static boolean
-NH_panictrace_libc(void)
-{
-#ifdef PANICTRACE_LIBC
-    void *bt[20];
-    int count, x;
-    char **info, buf[BUFSZ];
-
-    raw_print("  Generating more information you may report:\n");
-    count = backtrace(bt, SIZE(bt));
-    info = backtrace_symbols(bt, count);
-    for (x = 0; x < count; x++) {
-        copynchars(buf, info[x], (int) sizeof buf - 1);
-        /* try to remove up to 16 blank spaces by removing 8 twice */
-        (void) strsubst(buf, "        ", "");
-        (void) strsubst(buf, "        ", "");
-        raw_printf("[%02lu] %s", (unsigned long) x, buf);
-    }
-    /* free(info);   -- Don't risk it. */
-    return TRUE;
-#else
-    return FALSE;
-#endif /* !PANICTRACE_LIBC */
-}
-
-/*
- *   fooPATH  file system path for foo
- *   fooVAR   (possibly const) variable containing fooPATH
- */
-#ifdef PANICTRACE_GDB
-#ifdef SYSCF
-#define GDBVAR sysopt.gdbpath
-#define GREPVAR sysopt.greppath
-#else /* SYSCF */
-#define GDBVAR GDBPATH
-#define GREPVAR GREPPATH
-#endif /* SYSCF */
-#endif /* PANICTRACE_GDB */
-
-static boolean
-NH_panictrace_gdb(void)
-{
-#ifdef PANICTRACE_GDB
-    /* A (more) generic method to get a stack trace - invoke
-     * gdb on ourself. */
-    const char *gdbpath = GDBVAR;
-    const char *greppath = GREPVAR;
-    char buf[BUFSZ];
-    FILE *gdb;
-
-    if (gdbpath == NULL || gdbpath[0] == 0)
-        return FALSE;
-    if (greppath == NULL || greppath[0] == 0)
-        return FALSE;
-
-    sprintf(buf, "%s -n -q %s %d 2>&1 | %s '^#'",
-            gdbpath, ARGV0, getpid(), greppath);
-    gdb = popen(buf, "w");
-    if (gdb) {
-        raw_print("  Generating more information you may report:\n");
-        fprintf(gdb, "bt\nquit\ny");
-        fflush(gdb);
-        sleep(4); /* ugly */
-        pclose(gdb);
-        return TRUE;
-    } else {
-        return FALSE;
-    }
-#else
-    return FALSE;
-#endif /* !PANICTRACE_GDB */
-}
-#endif /* PANICTRACE */
 
 /*
  * The order of these needs to match the macros in hack.h.
@@ -309,6 +81,7 @@ done1(int sig_unused UNUSED)
 #ifndef NO_SIGNAL
     (void) signal(SIGINT, SIG_IGN);
 #endif
+    iflags.debug_fuzzer = FALSE;
     if (flags.ignintr) {
 #ifndef NO_SIGNAL
         (void) signal(SIGINT, (SIG_RET_TYPE) done1);
@@ -375,7 +148,7 @@ done2(void)
                 (*soundprocs.sound_exit_nhsound)("done2");
 
             exit_nhwindows((char *) 0);
-            NH_abort();
+            NH_abort(NULL);
         } else if (c == 'q')
             done_stopprint++;
     }
@@ -387,7 +160,7 @@ done2(void)
 #ifndef NO_SIGNAL
 /* called as signal() handler, so sent at least 1 arg */
 /*ARGSUSED*/
-static void
+staticfn void
 done_intr(int sig_unused UNUSED)
 {
     done_stopprint++;
@@ -402,7 +175,7 @@ done_intr(int sig_unused UNUSED)
 
 #if defined(UNIX) || defined(VMS) || defined(__EMX__)
 /* signal() handler */
-static void
+staticfn void
 done_hangup(int sig)
 {
 #ifdef HANGUPHANDLING
@@ -423,8 +196,8 @@ done_in_by(struct monst *mtmp, int how)
 {
     char buf[BUFSZ];
     struct permonst *mptr = mtmp->data,
-                    *champtr = (mtmp->cham >= LOW_PM) ? &mons[mtmp->cham]
-                                                      : mptr;
+                    *champtr = ismnum(mtmp->cham) ? &mons[mtmp->cham]
+                                                  : mptr;
     boolean distorted = (boolean) (Hallucination && canspotmon(mtmp)),
             mimicker = (M_AP_TYPE(mtmp) == M_AP_MONSTER),
             imitator = (mptr != champtr || mimicker);
@@ -552,8 +325,8 @@ done_in_by(struct monst *mtmp, int how)
         u.ugrave_arise = PM_WRAITH;
     else if (mptr->mlet == S_MUMMY && gu.urace.mummynum != NON_PM)
         u.ugrave_arise = gu.urace.mummynum;
-    else if (zombie_maker(mtmp) && zombie_form(gy.youmonst.data) != NON_PM)
-        u.ugrave_arise = zombie_form(gy.youmonst.data);
+    else if (zombie_maker(mtmp) && gu.urace.zombienum != NON_PM)
+        u.ugrave_arise = gu.urace.zombienum;
     else if (mptr->mlet == S_VAMPIRE && Race_if(PM_HUMAN))
         u.ugrave_arise = PM_VAMPIRE;
     else if (mptr == &mons[PM_GHOUL])
@@ -587,7 +360,7 @@ static const struct {
 
 /* clear away while-helpless when the cause of death caused that
    helplessness (ie, "petrified by <foo> while getting stoned") */
-static void
+staticfn void
 fixup_death(int how)
 {
     int i;
@@ -618,19 +391,21 @@ DISABLE_WARNING_FORMAT_NONLITERAL
 ATTRNORETURN void
 panic VA_DECL(const char *, str)
 {
+    char buf[BUFSZ];
     VA_START(str);
     VA_INIT(str, char *);
 
     if (gp.program_state.panicking++)
-        NH_abort(); /* avoid loops - this should never happen*/
+        NH_abort(NULL); /* avoid loops - this should never happen*/
 
+    gb.bot_disabled = TRUE;
     if (iflags.window_inited) {
         raw_print("\r\nOops...");
         wait_synch(); /* make sure all pending output gets flushed */
         if (soundprocs.sound_exit_nhsound)
             (*soundprocs.sound_exit_nhsound)("panic");
         exit_nhwindows((char *) 0);
-        iflags.window_inited = 0; /* they're gone; force raw_print()ing */
+        iflags.window_inited = FALSE; /* they're gone; force raw_print()ing */
     }
 
     raw_print(gp.program_state.gameover
@@ -651,6 +426,7 @@ panic VA_DECL(const char *, str)
                                      ? "."
                                      : "\nand it may be possible to rebuild.";
 
+// XXX this may need an update if defined(CRASHREPORT) TBD
         if (sysopt.support)
             raw_printf("To report this error, %s%s", sysopt.support,
                        maybe_rebuild);
@@ -674,19 +450,19 @@ panic VA_DECL(const char *, str)
         }
     }
 #endif /* !MICRO */
-    {
-        char buf[BUFSZ];
 
-        (void) vsnprintf(buf, sizeof buf, str, VA_ARGS);
-        raw_print(buf);
-        paniclog("panic", buf);
-    }
+    (void) vsnprintf(buf, sizeof buf, str, VA_ARGS);
+    raw_print(buf);
+    paniclog("panic", buf);
+
 #ifdef WIN32
     interject(INTERJECT_PANIC);
 #endif
 #if defined(UNIX) || defined(VMS) || defined(LATTICE) || defined(WIN32)
+# ifndef CRASHREPORT
     if (wizard)
-        NH_abort(); /* generate core dump */
+# endif
+        NH_abort(buf); /* generate core dump */
 #endif
     VA_END();
     really_done(PANICKED);
@@ -694,7 +470,7 @@ panic VA_DECL(const char *, str)
 
 RESTORE_WARNING_FORMAT_NONLITERAL
 
-static boolean
+staticfn boolean
 should_query_disclose_option(int category, char *defquery)
 {
     int idx;
@@ -736,7 +512,7 @@ should_query_disclose_option(int category, char *defquery)
 }
 
 #ifdef DUMPLOG
-static void
+staticfn void
 dump_plines(void)
 {
     int i, j;
@@ -756,10 +532,10 @@ dump_plines(void)
         }
     }
 }
-#endif
+#endif  /* DUMPLOG */
 
 /*ARGSUSED*/
-static void
+staticfn void
 dump_everything(
     int how,     /* ASCENDED, ESCAPED, QUIT, etc */
     time_t when) /* date+time at end of game */
@@ -834,7 +610,7 @@ dump_everything(
 #endif
 }
 
-static void
+staticfn void
 disclose(int how, boolean taken)
 {
     char c = '\0', defquery;
@@ -918,7 +694,7 @@ disclose(int how, boolean taken)
 }
 
 /* try to get the player back in a viable state after being killed */
-static void
+staticfn void
 savelife(int how)
 {
     int uhpmin;
@@ -955,7 +731,7 @@ savelife(int how)
 
     if (u.utrap && u.utraptype == TT_LAVA)
         reset_utrap(FALSE);
-    gc.context.botl = TRUE;
+    disp.botl = TRUE;
     u.ugrave_arise = NON_PM;
     HUnchanging = 0L;
     curs_on_u();
@@ -977,11 +753,11 @@ savelife(int how)
  * Get valuables from the given list.  Revised code: the list always remains
  * intact.
  */
-static void
+staticfn void
 get_valuables(struct obj *list) /* inventory or container contents */
 {
-    register struct obj *obj;
-    register int i;
+    struct obj *obj;
+    int i;
 
     /* find amulets and gems, ignoring all artifacts */
     for (obj = list; obj; obj = obj->nobj)
@@ -1012,12 +788,12 @@ get_valuables(struct obj *list) /* inventory or container contents */
  *  Sort collected valuables, most frequent to least.  We could just
  *  as easily use qsort, but we don't care about efficiency here.
  */
-static void
+staticfn void
 sort_valuables(
     struct valuable_data list[],
     int size) /* max value is less than 20 */
 {
-    register int i, j;
+    int i, j;
     struct valuable_data ltmp;
 
     /* move greater quantities to the front of the list */
@@ -1040,11 +816,11 @@ sort_valuables(
  * odds_and_ends() was used for 3.6.0 and 3.6.1.
  * Schroedinger's Cat is handled differently as of 3.6.2.
  */
-static boolean odds_and_ends(struct obj *, int);
+staticfn boolean odds_and_ends(struct obj *, int);
 
 #define CAT_CHECK 2
 
-static boolean
+staticfn boolean
 odds_and_ends(struct obj *list, int what)
 {
     struct obj *otmp;
@@ -1115,13 +891,13 @@ done_object_cleanup(void)
        a normal popup one; avoids "Bad fruit #n" when saving bones */
     if (iflags.perm_invent) {
         iflags.perm_invent = FALSE;
-        update_inventory(); /* make interface notice the change */
+        perm_invent_toggled(TRUE); /* make interface notice the change */
     }
     return;
 }
 
 /* called twice; first to calculate total, then to list relevant items */
-static void
+staticfn void
 artifact_score(
     struct obj *list,
     boolean counting, /* true => add up points; false => display them */
@@ -1158,7 +934,7 @@ artifact_score(
 
 /* when dying while running the debug fuzzer, [almost] always keep going;
    True: forced survival; False: doomed unless wearing life-save amulet */
-static boolean
+staticfn boolean
 fuzzer_savelife(int how)
 {
     /*
@@ -1166,15 +942,7 @@ fuzzer_savelife(int how)
      * 'done_seq' is maintained in done().
      */
     if (!gp.program_state.panicking
-        && how != PANICKED && how != TRICKED
-        /* Guard against getting stuck in a loop if we die in one of
-         * the few ways where life-saving isn't effective (cited case
-         * was burning in lava when the level was too full to allow
-         * teleporting to safety).  Skip the life-save attempt if we've
-         * died on the same move more than 100 times; give up instead.
-         * [Note: 100 deaths on the same move may seem excessive but it
-         * has been demonstrated that a limit of 20 was not enough.] */
-        && (gd.done_seq++ < gh.hero_seq + 100L)) {
+        && how != PANICKED && how != TRICKED) {
         savelife(how);
 
         /* periodically restore characteristics plus lost experience
@@ -1187,7 +955,7 @@ fuzzer_savelife(int how)
 
             /* get rid of temporary potion with obfree() rather than useup()
                because it doesn't get entered into inventory */
-            if (u.ulycn >= LOW_PM && !rn2(3)) {
+            if (ismnum(u.ulycn) && !rn2(3)) {
                 potion = mksobj(POT_WATER, TRUE, FALSE);
                 bless(potion);
                 (void) peffects(potion);
@@ -1202,7 +970,7 @@ fuzzer_savelife(int how)
                 ++remedies;
             }
             if (!rn2(3 + 3 * remedies)) {
-                /* confer temporary resistances for first 8 properities:
+                /* confer temporary resistances for first 8 properties:
                    fire, cold, sleep, disint, shock, poison, acid, stone */
                 for (propidx = 1; propidx <= 8; ++propidx) {
                     if (!u.uprops[propidx].intrinsic
@@ -1221,6 +989,18 @@ fuzzer_savelife(int how)
         /* clear stale cause of death info after life-saving */
         gk.killer.name[0] = '\0';
         gk.killer.format = 0;
+
+        /* Guard against getting stuck in a loop if we die in one of
+         * the few ways where life-saving isn't effective (cited case
+         * was burning in lava when the level was too full to allow
+         * teleporting to safety).  Deal with it by recreating
+         * the level, if we're in wizmode */
+        if (gd.done_seq++ > gh.hero_seq + 100L) {
+            if (!wizard)
+                return FALSE; /* can't deal with it */
+            cmdq_add_ec(CQ_CANNED, wiz_makemap);
+        }
+
         return TRUE;
     }
     return FALSE; /* panic or too many consecutive deaths */
@@ -1250,10 +1030,10 @@ done(int how)
         || (how == QUIT && done_stopprint)) {
         /* skip status update if panicking or disconnected
            or answer of 'q' to "Really quit?" */
-        gc.context.botl = gc.context.botlx = iflags.time_botl = FALSE;
+        disp.botl = disp.botlx = disp.time_botl = FALSE;
     } else {
         /* otherwise force full status update */
-        gc.context.botlx = TRUE;
+        disp.botlx = TRUE;
         bot();
     }
 
@@ -1286,7 +1066,7 @@ done(int how)
                negative (-1 is used as a flag in some circumstances
                which don't apply when actually dying due to HP loss) */
             u.uhp = u.mh = 0;
-            gc.context.botl = 1;
+            disp.botl = TRUE;
         }
     }
     if (Lifesaved && (how <= GENOCIDED)) {
@@ -1337,7 +1117,7 @@ done(int how)
 }
 
 /* separated from done() in order to specify the __noreturn__ attribute */
-static void
+staticfn void
 really_done(int how)
 {
     boolean taken;
@@ -1360,7 +1140,7 @@ really_done(int how)
         done_stopprint++;
 #endif
     /* render vision subsystem inoperative */
-    iflags.vision_inited = 0;
+    iflags.vision_inited = FALSE;
 
     /* maybe use up active invent item(s), place thrown/kicked missile,
        deal with ball and chain possibly being temporarily off the map */
@@ -1420,7 +1200,7 @@ really_done(int how)
     else if (how == BURNING || how == DISSOLVED) /* corpse burns up too */
         u.ugrave_arise = (NON_PM - 2); /* leave no corpse */
     else if (how == STONING)
-        u.ugrave_arise = (NON_PM - 1); /* statue instead of corpse */
+        u.ugrave_arise = LEAVESTATUE; /* statue instead of corpse */
     else if (how == TURNED_SLIME
              /* it's possible to turn into slime even though green slimes
                 have been genocided:  genocide could occur after hero is
@@ -1557,7 +1337,7 @@ really_done(int how)
         }
     }
 
-    if (u.ugrave_arise >= LOW_PM && !done_stopprint) {
+    if (ismnum(u.ugrave_arise) && !done_stopprint) {
         /* give this feedback even if bones aren't going to be created,
            so that its presence or absence doesn't tip off the player to
            new bones or their lack; it might be a lie if makemon fails */
@@ -1588,7 +1368,7 @@ really_done(int how)
         if (WIN_INVEN != WIN_ERR) {
             destroy_nhwindow(WIN_INVEN),  WIN_INVEN = WIN_ERR;
             /* precaution in case any late update_inventory() calls occur */
-            iflags.perm_invent = 0;
+            iflags.perm_invent = FALSE;
         }
         display_nhwindow(WIN_MESSAGE, TRUE);
         destroy_nhwindow(WIN_MAP),  WIN_MAP = WIN_ERR;
@@ -1636,8 +1416,8 @@ really_done(int how)
     if (how == ESCAPED || how == ASCENDED) {
         struct monst *mtmp;
         struct obj *otmp;
-        register struct val_list *val;
-        register int i;
+        struct val_list *val;
+        int i;
 
         for (val = gv.valuables; val->list; val++)
             for (i = 0; i < val->size; i++) {
@@ -1805,7 +1585,7 @@ container_contents(
     boolean all_containers,
     boolean reportempty)
 {
-    register struct obj *box, *obj;
+    struct obj *box, *obj;
     char buf[BUFSZ];
     boolean cat, dumping = iflags.in_dumplog;
 
@@ -1972,7 +1752,7 @@ save_killers(NHFILE *nhfp)
     if (perform_bwrite(nhfp)) {
         for (kptr = &gk.killer; kptr != (struct kinfo *) 0; kptr = kptr->next) {
             if (nhfp->structlevel)
-                bwrite(nhfp->fd, (genericptr_t)kptr, sizeof(struct kinfo));
+                bwrite(nhfp->fd, (genericptr_t) kptr, sizeof(struct kinfo));
         }
     }
     if (release_data(nhfp)) {
@@ -1991,14 +1771,14 @@ restore_killers(NHFILE *nhfp)
 
     for (kptr = &gk.killer; kptr != (struct kinfo *) 0; kptr = kptr->next) {
         if (nhfp->structlevel)
-            mread(nhfp->fd, (genericptr_t)kptr, sizeof(struct kinfo));
+            mread(nhfp->fd, (genericptr_t) kptr, sizeof(struct kinfo));
         if (kptr->next) {
             kptr->next = (struct kinfo *) alloc(sizeof (struct kinfo));
         }
     }
 }
 
-static int
+staticfn int
 wordcount(char *p)
 {
     int words = 0;
@@ -2014,7 +1794,7 @@ wordcount(char *p)
     return words;
 }
 
-static void
+staticfn void
 bel_copy1(char **inp, char *out)
 {
     char *in = *inp;
@@ -2066,5 +1846,90 @@ build_english_list(char *in)
     }
     return out;
 }
+
+/* What do we try to in what order?  Tradeoffs:
+ * libc: +no external programs required
+ *        -requires newish libc/glibc
+ *        -requires -rdynamic
+ * gdb:   +gives more detailed information
+ *        +works on more OS versions
+ *        -requires -g, which may preclude -O on some compilers
+ *
+ * And the UI: if sysopt.crashreporturl, and defined(CRASHREPORT)
+ * we gather the stacktrace (etc) and launch a browser to submit a bug report
+ * otherwise we just use stdout.  Requires libc for now.
+ */
+# ifdef SYSCF
+# define SYSOPT_PANICTRACE_GDB sysopt.panictrace_gdb
+#  ifdef PANICTRACE_LIBC
+#  define SYSOPT_PANICTRACE_LIBC sysopt.panictrace_libc
+#  else
+#  define SYSOPT_PANICTRACE_LIBC 0
+#  endif
+# else
+# define SYSOPT_PANICTRACE_GDB (nh_getenv("NETHACK_USE_GDB") == 0 ? 0 : 2)
+#  ifdef PANICTRACE_LIBC
+#  define SYSOPT_PANICTRACE_LIBC 1
+#  else
+#  define SYSOPT_PANICTRACE_LIBC 0
+#  endif
+# endif
+
+# ifdef CRASHREPORT
+#define USED_FOR_CRASHREPORT
+# else
+#define USED_FOR_CRASHREPORT UNUSED
+# endif
+
+void
+NH_abort(char *why USED_FOR_CRASHREPORT)
+{
+#ifdef PANICTRACE
+    int gdb_prio = SYSOPT_PANICTRACE_GDB;
+    int libc_prio = SYSOPT_PANICTRACE_LIBC;
+#endif
+    static volatile boolean aborting = FALSE;
+
+    /* don't execute this code recursively if a second abort is requested
+       while this routine or the code it calls is executing */
+    if (aborting)
+        return;
+    aborting = TRUE;
+
+#ifdef PANICTRACE
+#ifdef CRASHREPORT
+    if(!submit_web_report(1, "Panic", why))
+#endif
+    {
+#ifndef VMS
+        if (gdb_prio == libc_prio && gdb_prio > 0)
+            gdb_prio++;
+
+        if (gdb_prio > libc_prio) {
+            (void) (NH_panictrace_gdb() || (libc_prio && NH_panictrace_libc()));
+        } else {
+            (void) (NH_panictrace_libc() || (gdb_prio && NH_panictrace_gdb()));
+        }
+
+#else /* VMS */
+        /* overload otherwise unused priority for debug mode: 1 = show
+           traceback and exit; 2 = show traceback and stay in debugger */
+        /* if (wizard && gdb_prio == 1) gdb_prio = 2; */
+        vms_traceback(gdb_prio);
+        nhUse(libc_prio);
+
+#endif /* ?VMS */
+    }
+#ifndef NO_SIGNAL
+    panictrace_setsignals(FALSE);
+#endif
+#endif /* PANICTRACE */
+#ifdef WIN32
+    win32_abort();
+#else
+    abort();
+#endif
+}
+#undef USED_FOR_CRASHREPORT
 
 /*end.c*/

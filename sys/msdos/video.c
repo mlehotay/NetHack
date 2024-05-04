@@ -111,7 +111,7 @@ typedef long clock_t;
 #include <dos.h> /* needed for delay() */
 #endif
 
-#ifdef SCREEN_DJGPPFAST /* parts of this block may be unecessary now */
+#ifdef SCREEN_DJGPPFAST /* parts of this block may be unnecessary now */
 #define get_cursor(x, y) ScreenGetCursor(y, x)
 #endif
 
@@ -128,16 +128,15 @@ int savevmode;               /* store the original video mode in here */
 int curcol, currow;          /* graphics mode current cursor locations */
 int g_attribute;             /* Current attribute to use */
 int monoflag;                /* 0 = not monochrome, else monochrome */
+int inversed;
 int attrib_text_normal;      /* text mode normal attribute */
 int attrib_gr_normal;        /* graphics mode normal attribute */
 int attrib_text_intense;     /* text mode intense attribute */
 int attrib_gr_intense;       /* graphics mode intense attribute */
 uint32 curframecolor = NO_COLOR;   /* current background text color */
-boolean traditional = FALSE; /* traditonal TTY character mode */
+boolean traditional = FALSE; /* traditional TTY character mode */
 boolean inmap = FALSE;       /* in the map window */
-#ifdef TEXTCOLOR
 char ttycolors[CLR_MAX]; /* also used/set in options.c */
-#endif                   /* TEXTCOLOR */
 
 void
 backsp(void)
@@ -232,11 +231,7 @@ int
 has_color(int color)
 {
     ++color; /* prevents compiler warning (unref. param) */
-#ifdef TEXTCOLOR
     return (monoflag) ? 0 : 1;
-#else
-    return 0;
-#endif
 }
 #endif
 
@@ -296,10 +291,12 @@ void
 term_end_attr(int attr)
 {
     switch (attr) {
+    case ATR_INVERSE:
+        inversed = 0;
+        /*FALLTHRU*/
     case ATR_ULINE:
     case ATR_BOLD:
     case ATR_BLINK:
-    case ATR_INVERSE:
     default:
         g_attribute = iflags.grmode ? attrib_gr_normal : attrib_text_normal;
     }
@@ -343,13 +340,8 @@ term_start_attr(int attr)
         }
         break;
     case ATR_INVERSE:
-        if (monoflag) {
-            g_attribute = ATTRIB_MONO_REVERSE;
-        } else {
-            g_attribute =
-                iflags.grmode ? attrib_gr_intense : attrib_text_intense;
-        }
-        break;
+        inversed = 1;
+        /*FALLTHRU*/
     default:
         g_attribute = iflags.grmode ? attrib_gr_normal : attrib_text_normal;
         break;
@@ -359,31 +351,40 @@ term_start_attr(int attr)
 void
 term_start_color(int color)
 {
-#ifdef TEXTCOLOR
     if (monoflag) {
         g_attribute = attrib_text_normal;
     } else {
-        if (color >= 0 && color < CLR_MAX) {
+        if (color == NO_COLOR) { /* 3.7 behave like term_end_color() */
+            g_attribute = iflags.grmode ? attrib_gr_normal : attrib_text_normal;
+            curframecolor = NO_COLOR;
+        } else if (color >= 0 && color < CLR_MAX) {
             if (iflags.grmode)
                 g_attribute = color;
             else
                 g_attribute = ttycolors[color];
         }
     }
-#endif
 }
 
 void
 term_start_bgcolor(int bgcolor)
 {
     // pline("before bgcolor = %d, curframecolor = %d", bgcolor, curframecolor);
-#ifdef TEXTCOLOR
     if (!monoflag) {
         if (bgcolor >= 0 && bgcolor < CLR_MAX)
-	    curframecolor = bgcolor;
+            curframecolor = bgcolor;
     }
-#endif
     // pline("after  bgcolor = %d, curframecolor = %d", bgcolor, curframecolor);
+}
+
+void
+term_start_extracolor(uint32 nhcolor UNUSED, uint16 color256idx UNUSED)
+{
+}
+
+void
+term_end_extracolor(void)
+{
 }
 
 void
@@ -468,15 +469,15 @@ tty_startup(int *wid, int *hgt)
         setclipped();
 #endif
 
-#ifdef TEXTCOLOR
     init_ttycolor();
-#endif
 
 #ifdef MONO_CHECK
     monoflag = txt_monoadapt_check();
 #else
     monoflag = 0;
 #endif
+
+    inversed = 0;
 }
 
 void
@@ -492,7 +493,7 @@ tty_start_screen(void)
 void
 gr_init(void)
 {
-    windowprocs.wincap2 &= ~WC2_U_24BITCOLOR;
+    windowprocs.wincap2 &= ~WC2_EXTRACOLORS;
 #ifdef SCREEN_VGA
     if (iflags.usevga) {
         vga_Init();
@@ -600,6 +601,9 @@ xputc(int ch) /* write out character (and attribute) */
     }
 
     if (!iflags.grmode) {
+        if (inversed) {
+            attribute = (g_attribute % 8) << 4;
+        }
         txt_xputc(ch, attribute);
 #ifdef SCREEN_VGA
     } else if (iflags.usevga) {
@@ -701,7 +705,6 @@ HideCursor(void)
 
 #endif /* SIMULATE_CURSOR */
 
-#ifdef TEXTCOLOR
 /*
  * CLR_BLACK            0
  * CLR_RED              1
@@ -925,7 +928,6 @@ convert_uchars(char *bufp,  /* current pointer */
 }
 
 #endif /* VIDEOSHADES */
-#endif /* TEXTCOLOR */
 
 /*
  * Process defaults.nh OPTIONS=video:xxxx

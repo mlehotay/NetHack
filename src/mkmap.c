@@ -8,22 +8,22 @@
 #define HEIGHT (ROWNO - 1)
 #define WIDTH (COLNO - 2)
 
-static void init_map(schar);
-static void init_fill(schar, schar);
-static schar get_map(int, int, schar);
-static void pass_one(schar, schar);
-static void pass_two(schar, schar);
-static void pass_three(schar, schar);
-static void join_map_cleanup(void);
-static void join_map(schar, schar);
-static void finish_map(schar, schar, boolean, boolean, boolean);
-static void remove_room(unsigned);
+staticfn void init_map(schar);
+staticfn void init_fill(schar, schar);
+staticfn schar get_map(int, int, schar);
+staticfn void pass_one(schar, schar);
+staticfn void pass_two(schar, schar);
+staticfn void pass_three(schar, schar);
+staticfn void join_map_cleanup(void);
+staticfn void join_map(schar, schar);
+staticfn void finish_map(schar, schar, boolean, boolean, boolean);
+staticfn void remove_room(unsigned);
 void mkmap(lev_init *);
 
-static void
+staticfn void
 init_map(schar bg_typ)
 {
-    register int i, j;
+    int i, j;
 
     for (i = 1; i < COLNO; i++)
         for (j = 0; j < ROWNO; j++) {
@@ -33,10 +33,10 @@ init_map(schar bg_typ)
         }
 }
 
-static void
+staticfn void
 init_fill(schar bg_typ, schar fg_typ)
 {
-    register int i, j;
+    int i, j;
     long limit, count;
 
     limit = (WIDTH * HEIGHT * 2) / 5;
@@ -51,7 +51,7 @@ init_fill(schar bg_typ, schar fg_typ)
     }
 }
 
-static schar
+staticfn schar
 get_map(int col, int row, schar bg_typ)
 {
     if (col <= 0 || row < 0 || col > WIDTH || row >= HEIGHT)
@@ -59,15 +59,15 @@ get_map(int col, int row, schar bg_typ)
     return levl[col][row].typ;
 }
 
-static const int dirs[16] = {
+staticfn const int dirs[16] = {
     -1, -1 /**/, -1,  0 /**/, -1, 1 /**/, 0, -1 /**/,
      0,  1 /**/,  1, -1 /**/,  1, 0 /**/, 1,  1
 };
 
-static void
+staticfn void
 pass_one(schar bg_typ, schar fg_typ)
 {
-    register int i, j;
+    int i, j;
     short count, dr;
 
     for (i = 2; i <= WIDTH; i++)
@@ -97,10 +97,10 @@ pass_one(schar bg_typ, schar fg_typ)
 
 #define new_loc(i, j) *(gn.new_locations + ((j) * (WIDTH + 1)) + (i))
 
-static void
+staticfn void
 pass_two(schar bg_typ, schar fg_typ)
 {
-    register int i, j;
+    int i, j;
     short count, dr;
 
     for (i = 2; i <= WIDTH; i++)
@@ -120,10 +120,10 @@ pass_two(schar bg_typ, schar fg_typ)
             levl[i][j].typ = new_loc(i, j);
 }
 
-static void
+staticfn void
 pass_three(schar bg_typ, schar fg_typ)
 {
-    register int i, j;
+    int i, j;
     short count, dr;
 
     for (i = 2; i <= WIDTH; i++)
@@ -152,12 +152,12 @@ pass_three(schar bg_typ, schar fg_typ)
 void
 flood_fill_rm(
     int sx,
-    register int sy,
-    register int rmno,
+    int sy,
+    int rmno,
     boolean lit,
     boolean anyroom)
 {
-    register int i;
+    int i;
     int nx;
     schar fg_typ = levl[sx][sy].typ;
 
@@ -179,7 +179,7 @@ flood_fill_rm(
         levl[i][sy].lit = lit;
         if (anyroom) {
             /* add walls to room as well */
-            register int ii, jj;
+            int ii, jj;
             for (ii = (i == sx ? i - 1 : i); ii <= i + 1; ii++)
                 for (jj = sy - 1; jj <= sy + 1; jj++)
                     if (isok(ii, jj) && (IS_WALL(levl[ii][jj].typ)
@@ -243,7 +243,7 @@ flood_fill_rm(
 }
 
 /* join_map uses temporary rooms; clean up after it */
-static void
+staticfn void
 join_map_cleanup(void)
 {
     coordxy x, y;
@@ -255,12 +255,12 @@ join_map_cleanup(void)
     gr.rooms[gn.nroom].hx = gs.subrooms[gn.nsubroom].hx = -1;
 }
 
-static void
+staticfn void
 join_map(schar bg_typ, schar fg_typ)
 {
-    register struct mkroom *croom, *croom2;
+    struct mkroom *croom, *croom2;
 
-    register int i, j;
+    int i, j;
     int sx, sy;
     coord sm, em;
 
@@ -329,7 +329,7 @@ join_map(schar bg_typ, schar fg_typ)
     join_map_cleanup();
 }
 
-static void
+staticfn void
 finish_map(
     schar fg_typ,
     schar bg_typ,
@@ -408,7 +408,7 @@ remove_rooms(int lx, int ly, int hx, int hy)
  * level structure contents corresponding to roomno have already been reset.
  * Currently handles only the removal of rooms that have no subrooms.
  */
-static void
+staticfn void
 remove_room(unsigned int roomno)
 {
     struct mkroom *croom = &gr.rooms[roomno];
@@ -449,7 +449,7 @@ litstate_rnd(int litstate)
 }
 
 void
-mkmap(lev_init* init_lev)
+mkmap(lev_init *init_lev)
 {
     schar bg_typ = init_lev->bg, fg_typ = init_lev->fg;
     boolean smooth = init_lev->smoothed, join = init_lev->joined;

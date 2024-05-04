@@ -6,8 +6,8 @@
 #include "hack.h"
 #include "artifact.h"
 
-static void throne_sit_effect(void);
-static int lay_an_egg(void);
+staticfn void throne_sit_effect(void);
+staticfn int lay_an_egg(void);
 
 /* take away the hero's money */
 void
@@ -28,12 +28,12 @@ take_gold(void)
         You_feel("a strange sensation.");
     } else {
         You("notice you have no gold!");
-        gc.context.botl = 1;
+        disp.botl = TRUE;
     }
 }
 
 /* maybe do something when hero sits on a throne */
-static void
+staticfn void
 throne_sit_effect(void)
 {
     if (rnd(6) > 4) {
@@ -69,7 +69,7 @@ throne_sit_effect(void)
             make_blinded(0L, TRUE);
             make_sick(0L, (char *) 0, FALSE, SICK_ALL);
             heal_legs(0);
-            gc.context.botl = 1;
+            disp.botl = TRUE;
             break;
         case 5:
             take_gold();
@@ -194,7 +194,7 @@ throne_sit_effect(void)
 }
 
 /* hero lays an egg */
-static int
+staticfn int
 lay_an_egg(void)
 {
     struct obj *uegg;
@@ -239,8 +239,8 @@ int
 dosit(void)
 {
     static const char sit_message[] = "sit on the %s.";
-    register struct trap *trap = t_at(u.ux, u.uy);
-    register int typ = levl[u.ux][u.uy].typ;
+    struct trap *trap = t_at(u.ux, u.uy);
+    int typ = levl[u.ux][u.uy].typ;
 
     if (u.usteed) {
         You("are already sitting on %s.", mon_nam(u.usteed));
@@ -272,7 +272,7 @@ dosit(void)
     if (OBJ_AT(u.ux, u.uy)
         /* ensure we're not standing on the precipice */
         && !(uteetering_at_seen_pit(trap) || uescaped_shaft(trap))) {
-        register struct obj *obj;
+        struct obj *obj;
 
         obj = gl.level.objects[u.ux][u.uy];
         if (gy.youmonst.data->mlet == S_DRAGON && obj->oclass == COIN_CLASS) {
@@ -285,7 +285,13 @@ dosit(void)
             You("sit on %s.", the(xname(obj)));
             if (obj->otyp == CORPSE && amorphous(&mons[obj->corpsenm]))
                 pline("It's squishy...");
-            else if (!(Is_box(obj) || objects[obj->otyp].oc_material == CLOTH))
+            else if (obj->otyp == CREAM_PIE) {
+                 if (!Deaf) {
+                   Soundeffect(se_squelch, 30);
+                   pline("Squelch!");
+                }
+                useupf(obj, obj->quan);
+            } else if (!(Is_box(obj) || objects[obj->otyp].oc_material == CLOTH))
                 pline("It's not very comfortable...");
         }
     } else if (trap != 0 || (u.utrap && (u.utraptype >= TT_LAVA))) {
@@ -321,7 +327,7 @@ dosit(void)
                 u.utrap++;
             }
         } else {
-            /* when flying, "you land" might need some refinement; it aounds
+            /* when flying, "you land" might need some refinement; it sounds
                as if you're staying on the ground but you will immediately
                take off again unless you become stuck in a holding trap */
             You("%s.", Flying ? "land" : "sit down");

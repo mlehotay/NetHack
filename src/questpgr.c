@@ -1,4 +1,4 @@
-/* NetHack 3.7	questpgr.c	$NHDT-Date: 1687036548 2023/06/17 21:15:48 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.82 $ */
+/* NetHack 3.7	questpgr.c	$NHDT-Date: 1704043695 2023/12/31 17:28:15 $  $NHDT-Branch: keni-luabits2 $:$NHDT-Revision: 1.87 $ */
 /*      Copyright 1991, M. Stephenson                             */
 /* NetHack may be freely redistributed.  See license for details. */
 
@@ -13,18 +13,19 @@
 #include "wintty.h"
 #endif
 
-static const char *intermed(void);
-static struct obj *find_qarti(struct obj *);
-static const char *neminame(void);
-static const char *guardname(void);
-static const char *homebase(void);
-static void qtext_pronoun(char, char);
-static void convert_arg(char);
-static void convert_line(char *,char *);
-static void deliver_by_pline(const char *);
-static void deliver_by_window(const char *, int);
-static boolean skip_pager(boolean);
-static boolean com_pager_core(const char *, const char *, boolean, char **);
+staticfn const char *intermed(void);
+/* sometimes find_qarti(gi.invent), and gi.invent can be null */
+staticfn struct obj *find_qarti(struct obj *) NO_NNARGS;
+staticfn const char *neminame(void);
+staticfn const char *guardname(void);
+staticfn const char *homebase(void);
+staticfn void qtext_pronoun(char, char);
+staticfn void convert_arg(char);
+staticfn void convert_line(char *,char *);
+staticfn void deliver_by_pline(const char *);
+staticfn void deliver_by_window(const char *, int);
+staticfn boolean skip_pager(boolean);
+staticfn boolean com_pager_core(const char *, const char *, boolean, char **);
 
 short
 quest_info(int typ)
@@ -56,7 +57,7 @@ ldrname(void)
 }
 
 /* return your intermediate target string */
-static const char *
+staticfn const char *
 intermed(void)
 {
     return gu.urole.intermed;
@@ -68,7 +69,7 @@ is_quest_artifact(struct obj *otmp)
     return (boolean) (otmp->oartifact == gu.urole.questarti);
 }
 
-static struct obj *
+staticfn struct obj *
 find_qarti(struct obj *ochain)
 {
     struct obj *otmp, *qarti;
@@ -119,7 +120,7 @@ find_quest_artifact(unsigned whichchains)
 }
 
 /* return your role nemesis' name */
-static const char *
+staticfn const char *
 neminame(void)
 {
     int i = gu.urole.neminum;
@@ -129,7 +130,7 @@ neminame(void)
     return gn.nambuf;
 }
 
-static const char *
+staticfn const char *
 guardname(void) /* return your role leader's guard monster name */
 {
     int i = gu.urole.guardnum;
@@ -137,7 +138,7 @@ guardname(void) /* return your role leader's guard monster name */
     return mons[i].pmnames[NEUTRAL];
 }
 
-static const char *
+staticfn const char *
 homebase(void) /* return your role leader's location */
 {
     return gu.urole.homebase;
@@ -194,7 +195,7 @@ stinky_nemesis(struct monst *mon)
 
 /* replace deity, leader, nemesis, or artifact name with pronoun;
    overwrites cvt_buf[] */
-static void
+staticfn void
 qtext_pronoun(
     char who,   /* 'd' => deity, 'l' => leader, 'n' => nemesis, 'o' => arti */
     char which) /* 'h'|'H'|'i'|'I'|'j'|'J' */
@@ -231,10 +232,10 @@ qtext_pronoun(
     return;
 }
 
-static void
+staticfn void
 convert_arg(char c)
 {
-    register const char *str;
+    const char *str;
 
     switch (c) {
     case 'p':
@@ -323,7 +324,7 @@ convert_arg(char c)
     Strcpy(gc.cvt_buf, str);
 }
 
-static void
+staticfn void
 convert_line(char *in_line, char *out_line)
 {
     char *c, *cc;
@@ -415,7 +416,7 @@ convert_line(char *in_line, char *out_line)
     return;
 }
 
-static void
+staticfn void
 deliver_by_pline(const char *str)
 {
     char in_line[BUFSZ], out_line[BUFSZ];
@@ -431,7 +432,7 @@ deliver_by_pline(const char *str)
     }
 }
 
-static void
+staticfn void
 deliver_by_window(const char *msg, int how)
 {
     char in_line[BUFSZ], out_line[BUFSZ];
@@ -451,7 +452,7 @@ deliver_by_window(const char *msg, int how)
     destroy_nhwindow(datawin);
 }
 
-static boolean
+staticfn boolean
 skip_pager(boolean common UNUSED)
 {
     /* WIZKIT: suppress plot feedback if starting with quest artifact */
@@ -460,7 +461,7 @@ skip_pager(boolean common UNUSED)
     return FALSE;
 }
 
-static boolean
+staticfn boolean
 com_pager_core(
     const char *section,
     const char *msgid,
@@ -475,7 +476,7 @@ com_pager_core(
     lua_State *L;
     char *text = NULL, *synopsis = NULL, *fallback_msgid = NULL;
     boolean res = FALSE;
-    nhl_sandbox_info sbi = {NHL_SB_SAFE, 0, 0, 0};
+    nhl_sandbox_info sbi = {NHL_SB_SAFE, 1*1024*1024, 0, 1*1024*1024};
 
     if (skip_pager(TRUE))
         return FALSE;
@@ -658,5 +659,7 @@ deliver_splev_message(void)
         gl.lev_message = NULL;
     }
 }
+
+#undef QTEXT_FILE
 
 /*questpgr.c*/

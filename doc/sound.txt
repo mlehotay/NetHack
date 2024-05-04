@@ -1,4 +1,4 @@
-NetHack 3.7  sound.txt	$NHDT-Date: $  $NHDT-Branch: $:$NHDT-Revision: $
+NetHack 3.7  sound.txt	$NHDT-Date: 1693253363 2023/08/28 20:09:23 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.7 $
 
 Introduction
 
@@ -282,7 +282,7 @@ gc.chosen_soundlib
 ga.active_soundlib
 a usersound mappings reference
 
-iflags.sounds is the master on/off swith to control whether any audio
+iflags.sounds is the master on/off switch to control whether any audio
 is produced by the soundlib interface
 
 iflags.voice is the master on/off switch for voices produced by

@@ -8,11 +8,11 @@
 
 #include "hack.h"
 
-static int bc_order(void);
-static void litter(void);
-static void placebc_core(void);
-static void unplacebc_core(void);
-static boolean check_restriction(int);
+staticfn int bc_order(void);
+staticfn void litter(void);
+staticfn void placebc_core(void);
+staticfn void unplacebc_core(void);
+staticfn boolean check_restriction(int);
 
 static int bcrestriction = 0;
 #ifdef BREADCRUMBS
@@ -44,7 +44,7 @@ ballfall(void)
 {
     boolean gets_hit;
 
-    if (uball && carried(uball) && welded(uball))
+    if (!uball || (uball && carried(uball) && welded(uball)))
         return;
 
     gets_hit = (((uball->ox != u.ux) || (uball->oy != u.uy))
@@ -58,7 +58,7 @@ ballfall(void)
             if (hard_helmet(uarmh)) {
                 pline("Fortunately, you are wearing a hard helmet.");
                 dmg = 3;
-            } else if (Verbose(0, ballfall))
+            } else if (flags.verbose)
                 pline("%s does not protect you.", Yname2(uarmh));
         }
         losehp(Maybe_Half_Phys(dmg), "crunched in the head by an iron ball",
@@ -116,7 +116,7 @@ ballfall(void)
  *
  *  Should not be called while swallowed except on waterlevel.
  */
-static void
+staticfn void
 placebc_core(void)
 {
     if (!uchain || !uball) {
@@ -143,7 +143,7 @@ placebc_core(void)
     bcrestriction = 0;
 }
 
-static void
+staticfn void
 unplacebc_core(void)
 {
     if (u.uswallow) {
@@ -176,7 +176,7 @@ unplacebc_core(void)
     u.bc_felt = 0; /* feel nothing */
 }
 
-static boolean
+staticfn boolean
 check_restriction(int restriction)
 {
     boolean ret = FALSE;
@@ -350,7 +350,7 @@ Lift_covet_and_placebc(int pin, char *funcnm, int linenum)
  *  Return the stacking of the hero's ball & chain.  This assumes that the
  *  hero is being punished.
  */
-static int
+staticfn int
 bc_order(void)
 {
     struct obj *obj;
@@ -634,7 +634,7 @@ drag_ball(coordxy x, coordxy y, int *bc_control,
             already_in_rock = FALSE;
 
         switch (dist2(x, y, uball->ox, uball->oy)) {
-        /* two spaces diagonal from ball, move chain inbetween */
+        /* two spaces diagonal from ball, move chain in-between */
         case 8:
             *chainx = (uball->ox + x) / 2;
             *chainy = (uball->oy + y) / 2;
@@ -964,7 +964,7 @@ drop_ball(coordxy x, coordxy y)
 RESTORE_WARNING_FORMAT_NONLITERAL
 
 /* ball&chain cause hero to randomly lose stuff from inventory */
-static void
+staticfn void
 litter(void)
 {
     struct obj *otmp, *nextobj = 0;

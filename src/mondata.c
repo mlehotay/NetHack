@@ -1,4 +1,4 @@
-/* NetHack 3.7	mondata.c	$NHDT-Date: 1685180674 2023/05/27 09:44:34 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.122 $ */
+/* NetHack 3.7	mondata.c	$NHDT-Date: 1711620615 2024/03/28 10:10:15 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.132 $ */
 /* Copyright (c) Stichting Mathematisch Centrum, Amsterdam, 1985. */
 /*-Copyright (c) Robert Patrick Rankin, 2011. */
 /* NetHack may be freely redistributed.  See license for details. */
@@ -170,14 +170,12 @@ resists_magm(struct monst *mon)
     return FALSE;
 }
 
-/* True iff monster is resistant to light-induced blindness */
+/* True if monster is resistant to light-induced blindness */
 boolean
 resists_blnd(struct monst *mon)
 {
     struct permonst *ptr = mon->data;
     boolean is_you = (mon == &gy.youmonst);
-    long slotmask;
-    struct obj *o;
 
     if (is_you ? (Blind || Unaware)
                : (mon->mblinded || !mon->mcansee || !haseyes(ptr)
@@ -189,21 +187,32 @@ resists_blnd(struct monst *mon)
     if (dmgtype_fromattack(ptr, AD_BLND, AT_EXPL)
         || dmgtype_fromattack(ptr, AD_BLND, AT_GAZE))
         return TRUE;
+    return resists_blnd_by_arti(mon);
+}
+
+/* True iff monster is resistant to light-induced blindness due to worn
+   or wielded magical equipment (used to decide whether to show sparkle
+   animation when resisting) */
+boolean
+resists_blnd_by_arti(struct monst *mon)
+{
+    struct obj *o;
+    boolean is_you = (mon == &gy.youmonst);
+
     o = is_you ? uwep : MON_WEP(mon);
     if (o && o->oartifact && defends(AD_BLND, o))
         return TRUE;
     o = is_you ? gi.invent : mon->minvent;
-    slotmask = W_ARMOR | W_ACCESSORY;
-    if (!is_you /* assumes monsters don't wield non-weapons */
-        || (uwep && (uwep->oclass == WEAPON_CLASS || is_weptool(uwep))))
-        slotmask |= W_WEP;
-    if (is_you && u.twoweap)
-        slotmask |= W_SWAPWEP;
     for (; o; o = o->nobj)
-        if (((o->owornmask & slotmask) != 0L
-             && objects[o->otyp].oc_oprop == BLINDED)
-            || (o->oartifact && defends_when_carried(AD_BLND, o)))
+        if (defends_when_carried(AD_BLND, o))
             return TRUE;
+#if 0   /* omit this; the Eyes of the Overworld have no carry property and
+         * their worn property is magic resistance rather than blindness
+         * resistance; wearing them blocks blindness without actually
+         * preventing it, so don't classify them as providing resistance */
+    if (is_you && is_art(uamul, ART_EYES_OF_THE_OVERWORLD))
+        return TRUE;
+#endif /* 0 */
     return FALSE;
 }
 
@@ -224,6 +233,10 @@ can_blnd(
 
     /* no eyes protect against all attacks for now */
     if (!haseyes(mdef->data))
+        return FALSE;
+
+    /* if monster has been permanently blinded, the deed is already done */
+    if (!is_you && mon_perma_blind(mdef))
         return FALSE;
 
     /* /corvus oculum corvi non eruit/
@@ -397,11 +410,11 @@ mstrength(struct permonst *ptr)
 }
 
 /* returns True if monster can attack at range */
-static boolean
+staticfn boolean
 mstrength_ranged_attk(struct permonst *ptr)
 {
-    register int i, j;
-    register int atk_mask = (1 << AT_BREA) | (1 << AT_SPIT) | (1 << AT_GAZE);
+    int i, j;
+    int atk_mask = (1 << AT_BREA) | (1 << AT_SPIT) | (1 << AT_GAZE);
 
     for (i = 0; i < NATTK; i++) {
         if ((j = ptr->mattk[i].aatyp) >= AT_WEAP
@@ -551,7 +564,7 @@ breakarm(struct permonst *ptr)
 
 /* creature sticks other creatures it hits */
 boolean
-sticks(register struct permonst *ptr)
+sticks(struct permonst *ptr)
 {
     return (boolean) (dmgtype(ptr, AD_STCK)
                       || (dmgtype(ptr, AD_WRAP) && !attacktype(ptr, AT_ENGL))
@@ -562,10 +575,13 @@ sticks(register struct permonst *ptr)
 boolean
 cantvomit(struct permonst *ptr)
 {
-    /* rats and mice are incapable of vomiting;
+    /* rats and mice are incapable of vomiting; likewise with horses;
        which other creatures have the same limitation? */
     if (ptr->mlet == S_RODENT && ptr != &mons[PM_ROCK_MOLE]
         && ptr != &mons[PM_WOODCHUCK])
+        return TRUE;
+    if (ptr == &mons[PM_WARHORSE] || ptr == &mons[PM_HORSE]
+        || ptr == &mons[PM_PONY])
         return TRUE;
     return FALSE;
 }
@@ -614,7 +630,7 @@ dmgtype(struct permonst *ptr, int dtyp)
 /* returns the maximum damage a defender can do to the attacker via
    a passive defense */
 int
-max_passive_dmg(register struct monst *mdef, register struct monst *magr)
+max_passive_dmg(struct monst *mdef, struct monst *magr)
 {
     int i, dmg, multi2 = 0;
     uchar adtyp;
@@ -767,26 +783,6 @@ same_race(struct permonst *pm1, struct permonst *pm2)
     return FALSE;
 }
 
-DISABLE_WARNING_UNREACHABLE_CODE
-
-/* return an index into the mons array */
-int
-monsndx(struct permonst *ptr)
-{
-    register int i;
-
-    i = (int) (ptr - &mons[0]);
-    if (i < LOW_PM || i >= NUMMONS) {
-        panic("monsndx - could not index monster (%s)",
-              fmt_ptr((genericptr_t) ptr));
-        /*NOTREACHED*/
-        return NON_PM; /* will not get here */
-    }
-    return i;
-}
-
-RESTORE_WARNING_UNREACHABLE_CODE
-
 /* for handling alternate spellings */
 struct alt_spl {
     const char *name;
@@ -824,9 +820,9 @@ name_to_monplus(
      * This also permits plurals created by adding suffixes such as 's'
      * or 'es'.  Other plurals must still be handled explicitly.
      */
-    register int i;
-    register int mntmp = NON_PM;
-    register char *s, *str, *term;
+    int i;
+    int mntmp = NON_PM;
+    char *s, *str, *term;
     char buf[BUFSZ];
     int len, mgend, matchgend = -1;
     size_t slen;
@@ -881,6 +877,8 @@ name_to_monplus(
                to the rank title prefix (input has been singularized) */
             { "master thief", PM_MASTER_OF_THIEVES, NEUTRAL },
             { "master of assassin", PM_MASTER_ASSASSIN, NEUTRAL },
+            { "master-lich", PM_MASTER_LICH, NEUTRAL }, /* cf arch-lich */
+            { "masterlich", PM_MASTER_LICH, NEUTRAL }, /* cf demilich */
             /* Outdated names */
             { "invisible stalker", PM_STALKER, NEUTRAL },
             { "high-elf", PM_ELVEN_MONARCH, NEUTRAL }, /* PM_HIGH_ELF is
@@ -934,7 +932,7 @@ name_to_monplus(
             /* end of list */
             { 0, NON_PM, NEUTRAL }
         };
-        register const struct alt_spl *namep;
+        const struct alt_spl *namep;
 
         for (namep = names; namep->name; namep++) {
             len = (int) strlen(namep->name);
@@ -1092,7 +1090,7 @@ name_to_monclass(const char *in_str, int * mndx_p)
 
 /* returns 3 values (0=male, 1=female, 2=none) */
 int
-gender(register struct monst *mtmp)
+gender(struct monst *mtmp)
 {
     if (is_neuter(mtmp->data))
         return 2;
@@ -1104,7 +1102,7 @@ gender(register struct monst *mtmp)
    yield "they".  This is the one we want to use when printing messages. */
 int
 pronoun_gender(
-    register struct monst *mtmp,
+    struct monst *mtmp,
     unsigned pg_flags) /* flags&1: 'no it' unless neuter,
                         * flags&2: random if hallucinating */
 {
@@ -1217,7 +1215,7 @@ static const short grownups[][2] = {
 int
 little_to_big(int montype)
 {
-    register int i;
+    int i;
 
     for (i = 0; grownups[i][0] >= LOW_PM; i++)
         if (montype == grownups[i][0]) {
@@ -1230,7 +1228,7 @@ little_to_big(int montype)
 int
 big_to_little(int montype)
 {
-    register int i;
+    int i;
 
     for (i = 0; grownups[i][0] >= LOW_PM; i++)
         if (montype == grownups[i][1]) {
@@ -1283,6 +1281,10 @@ static locoverbs levitate = { "float", "Float", "wobble", "Wobble" },
                  flys = { "fly", "Fly", "flutter", "Flutter" },
                  flyl = { "fly", "Fly", "stagger", "Stagger" },
                  slither = { "slither", "Slither", "falter", "Falter" },
+                 /* it would be useful to incorporate "swim" but we lack
+                  * sufficient information to know whether water is involved
+                 swim = { "swim", "Swim", "flop", "Flop" },
+                  */
                  ooze = { "ooze", "Ooze", "tremble", "Tremble" },
                  immobile = { "wiggle", "Wiggle", "pulsate", "Pulsate" },
                  crawl = { "crawl", "Crawl", "falter", "Falter" };
@@ -1446,7 +1448,25 @@ cvt_adtyp_to_mseenres(uchar adtyp)
     }
 }
 
-/* Monsters remember hero resisting effect M_SEEN_foo */
+/* Convert property resistance to M_SEEN_bar */
+unsigned long
+cvt_prop_to_mseenres(uchar prop)
+{
+    switch (prop) {
+    case ANTIMAGIC: return M_SEEN_MAGR;
+    case FIRE_RES: return M_SEEN_FIRE;
+    case COLD_RES: return M_SEEN_COLD;
+    case SLEEP_RES: return M_SEEN_SLEEP;
+    case DISINT_RES: return M_SEEN_DISINT;
+    case POISON_RES: return M_SEEN_POISON;
+    case SHOCK_RES: return M_SEEN_ELEC;
+    case ACID_RES: return M_SEEN_ACID;
+    case REFLECTING: return M_SEEN_REFL;
+    default: return M_SEEN_NOTHING;
+    }
+}
+
+/* Monsters in line of sight remember hero resisting effect M_SEEN_foo */
 void
 monstseesu(unsigned long seenres)
 {
@@ -1458,6 +1478,33 @@ monstseesu(unsigned long seenres)
     for (mtmp = fmon; mtmp; mtmp = mtmp->nmon)
         if (!DEADMONSTER(mtmp) && m_canseeu(mtmp))
             m_setseenres(mtmp, seenres);
+}
+
+/* Monsters in line of sight forget hero resistance to M_SEEN_foo */
+void
+monstunseesu(unsigned long seenres)
+{
+    struct monst *mtmp;
+
+    if (seenres == M_SEEN_NOTHING || u.uswallow)
+        return;
+
+    for (mtmp = fmon; mtmp; mtmp = mtmp->nmon)
+        if (!DEADMONSTER(mtmp) && m_canseeu(mtmp))
+            m_clearseenres(mtmp, seenres);
+}
+
+/* give monster mtmp the same intrinsics hero has */
+void
+give_u_to_m_resistances(struct monst *mtmp)
+{
+    const int u_intrins[] = { FIRE_RES, COLD_RES, SLEEP_RES, DISINT_RES, SHOCK_RES, POISON_RES, ACID_RES, STONE_RES };
+    const int m_intrins[] = { MR_FIRE,  MR_COLD,  MR_SLEEP,  MR_DISINT,  MR_ELEC,   MR_POISON,  MR_ACID,  MR_STONE };
+    int i;
+
+    for (i = 0; i < SIZE(u_intrins); i++)
+        if (u.uprops[u_intrins[i]].intrinsic & INTRINSIC)
+            mtmp->mintrinsics |= m_intrins[i];
 }
 
 /* Can monster resist conflict caused by hero?
@@ -1526,7 +1573,7 @@ get_atkdam_type(int adtyp)
         static const int rnd_breath_typ[] = {
             AD_MAGM, AD_FIRE, AD_COLD, AD_SLEE,
             AD_DISN, AD_ELEC, AD_DRST, AD_ACID };
-        return rnd_breath_typ[rn2(SIZE(rnd_breath_typ))];
+        return ROLL_FROM(rnd_breath_typ);
     }
     return adtyp;
 }

@@ -1,9 +1,8 @@
-/* NetHack 3.7	alloc.c	$NHDT-Date: 1687343500 2023/06/21 10:31:40 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.31 $ */
+/* NetHack 3.7	alloc.c	$NHDT-Date: 1706213795 2024/01/25 20:16:35 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.34 $ */
 /* Copyright (c) Stichting Mathematisch Centrum, Amsterdam, 1985. */
 /*-Copyright (c) Robert Patrick Rankin, 2012. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-/* to get the malloc() prototype from system.h */
 #define ALLOC_C /* comment line for pre-compiled headers */
 /* since this file is also used in auxiliary programs, don't include all the
    function declarations for all of nethack */
@@ -14,10 +13,11 @@
 #include "nhlua.h"
 #endif
 
-/*#define FITSint(x) FITSint_(x, __func__, (int) __LINE__)*/
-extern int FITSint_(LUA_INTEGER, const char *, int);
-/*#define FITSuint(x) FITSuint_(x, __func__, (int) __LINE__)*/
-extern unsigned FITSuint_(unsigned long long, const char *, int);
+
+/*#define FITSint(x) FITSint_(x, __func__, __LINE__)*/
+extern int FITSint_(LUA_INTEGER, const char *, int) NONNULLARG2;
+/*#define FITSuint(x) FITSuint_(x, __func__, __LINE__)*/
+extern unsigned FITSuint_(unsigned long long, const char *, int) NONNULLARG2;
 
 char *fmt_ptr(const genericptr) NONNULL;
 
@@ -26,7 +26,7 @@ char *fmt_ptr(const genericptr) NONNULL;
 #undef re_alloc
 #undef free
 extern void free(genericptr_t);
-static void heapmon_init(void);
+staticfn void heapmon_init(void);
 
 static FILE *heaplog = 0;
 static boolean tried_heaplog = FALSE;
@@ -41,11 +41,13 @@ static boolean tried_heaplog = FALSE;
  * recognizes that the following manipulation overcomes that via
  * rounding the requested length up to the next long.  NetHack doesn't
  * make a lot of tiny allocations, so this shouldn't waste much memory
- * regardless of whether malloc() does something similar.
+ * regardless of whether malloc() does something similar.  NetHack
+ * isn't expected to call alloc(0), but if that happens treat it as
+ * alloc(sizeof (long)) instead.
  */
 #define ForceAlignedLength(LTH) \
     do {                                                        \
-        if ((LTH) % sizeof (long) != 0)                         \
+        if (!(LTH) || (LTH) % sizeof (long) != 0)               \
             (LTH) += sizeof (long) - (LTH) % sizeof (long);     \
     } while (0)
 
@@ -65,7 +67,7 @@ ATTRNORETURN extern void panic(const char *, ...) PRINTF_F(1, 2) NORETURN;
 long *
 alloc(unsigned int lth)
 {
-    register genericptr_t ptr;
+    genericptr_t ptr;
 
     ForceAlignedLength(lth);
     ptr = malloc(lth);
@@ -136,7 +138,7 @@ fmt_ptr(const genericptr ptr)
 
 /* If ${NH_HEAPLOG} is defined and we can create a file by that name,
    then we'll log the allocation and release information to that file. */
-static void
+staticfn void
 heapmon_init(void)
 {
     char *logname = getenv("NH_HEAPLOG");
@@ -247,6 +249,7 @@ dupstr_n(const char *string, unsigned int *lenout)
     *lenout = (unsigned int) len;
     return strcpy((char *) alloc(len + 1), string);
 }
+
 
 /* cast to int or panic on overflow; use via macro */
 int

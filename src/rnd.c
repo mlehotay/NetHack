@@ -7,7 +7,9 @@
 #ifdef USE_ISAAC64
 #include "isaac64.h"
 
-static int whichrng(int (*fn)(int));
+staticfn int whichrng(int (*fn)(int));
+staticfn int RND(int);
+staticfn void set_random(unsigned long, int (*)(int));
 
 #if 0
 static isaac64_ctx rng_state;
@@ -26,7 +28,7 @@ static struct rnglist_t rnglist[] = {
     { rn2_on_display_rng, FALSE, { 0 } },       /* DISP */
 };
 
-static int
+staticfn int
 whichrng(int (*fn)(int))
 {
     int i;
@@ -55,7 +57,7 @@ init_isaac64(unsigned long seed, int (*fn)(int))
                  (int) sizeof seed);
 }
 
-static int
+staticfn int
 RND(int x)
 {
     return (isaac64_next_uint64(&rnglist[CORE].rng_state) % x);
@@ -65,7 +67,7 @@ RND(int x)
    used in cases where the answer doesn't affect gameplay and we don't
    want to give users easy control over the main RNG sequence. */
 int
-rn2_on_display_rng(register int x)
+rn2_on_display_rng(int x)
 {
     return (isaac64_next_uint64(&rnglist[DISP].rng_state) % x);
 }
@@ -80,17 +82,17 @@ rn2_on_display_rng(register int x)
 #define RND(x) ((int) ((Rand() >> 3) % (x)))
 #endif
 int
-rn2_on_display_rng(register int x)
+rn2_on_display_rng(int x)
 {
     static unsigned seed = 1;
     seed *= 2739110765;
-    return (int)((seed >> 16) % (unsigned)x);
+    return (int) ((seed >> 16) % (unsigned) x);
 }
 #endif  /* USE_ISAAC64 */
 
 /* 0 <= rn2(x) < x */
 int
-rn2(register int x)
+rn2(int x)
 {
 #if (NH_DEVEL_STATUS != NH_STATUS_RELEASED)
     if (x <= 0) {
@@ -107,9 +109,9 @@ rn2(register int x)
 /* 0 <= rnl(x) < x; sometimes subtracting Luck;
    good luck approaches 0, bad luck approaches (x-1) */
 int
-rnl(register int x)
+rnl(int x)
 {
-    register int i, adjustment;
+    int i, adjustment;
 
 #if (NH_DEVEL_STATUS != NH_STATUS_RELEASED)
     if (x <= 0) {
@@ -150,7 +152,7 @@ rnl(register int x)
 
 /* 1 <= rnd(x) <= x */
 int
-rnd(register int x)
+rnd(int x)
 {
 #if (NH_DEVEL_STATUS != NH_STATUS_RELEASED)
     if (x <= 0) {
@@ -163,16 +165,16 @@ rnd(register int x)
 }
 
 int
-rnd_on_display_rng(register int x)
+rnd_on_display_rng(int x)
 {
     return rn2_on_display_rng(x) + 1;
 }
 
 /* d(N,X) == NdX == dX+dX+...+dX N times; n <= d(n,x) <= (n*x) */
 int
-d(register int n, register int x)
+d(int n, int x)
 {
-    register int tmp = n;
+    int tmp = n;
 
 #if (NH_DEVEL_STATUS != NH_STATUS_RELEASED)
     if (x < 0 || n < 0 || (x == 0 && n != 0)) {
@@ -187,9 +189,9 @@ d(register int n, register int x)
 
 /* 1 <= rne(x) <= max(u.ulevel/3,5) */
 int
-rne(register int x)
+rne(int x)
 {
-    register int tmp, utmp;
+    int tmp, utmp;
 
     utmp = (u.ulevel < 15) ? 5 : u.ulevel / 3;
     tmp = 1;
@@ -211,8 +213,8 @@ rne(register int x)
 int
 rnz(int i)
 {
-    register long x = (long) i;
-    register long tmp = 1000L;
+    long x = (long) i;
+    long tmp = 1000L;
 
     tmp += rn2(1000);
     tmp *= rne(4);
@@ -224,6 +226,87 @@ rnz(int i)
         x /= tmp;
     }
     return (int) x;
+}
+
+/* Sets the seed for the random number generator */
+#ifdef USE_ISAAC64
+
+staticfn void
+set_random(unsigned long seed,
+           int (*fn)(int))
+{
+    init_isaac64(seed, fn);
+}
+
+#else /* USE_ISAAC64 */
+
+/*ARGSUSED*/
+staticfn void
+set_random(unsigned long seed,
+           int (*fn)(int) UNUSED)
+{
+    /*
+     * The types are different enough here that sweeping the different
+     * routine names into one via #defines is even more confusing.
+     */
+# ifdef RANDOM /* srandom() from sys/share/random.c */
+    srandom((unsigned int) seed);
+# else
+#  if defined(__APPLE__) || defined(BSD) || defined(LINUX) \
+    || defined(ULTRIX) || defined(CYGWIN32) /* system srandom() */
+#   if defined(BSD) && !defined(POSIX_TYPES) && defined(SUNOS4)
+    (void)
+#   endif
+        srandom((int) seed);
+#  else
+#   ifdef UNIX /* system srand48() */
+    srand48((long) seed);
+#   else       /* poor quality system routine */
+    srand((int) seed);
+#   endif
+#  endif
+# endif
+}
+#endif /* USE_ISAAC64 */
+
+/* An appropriate version of this must always be provided in
+   port-specific code somewhere. It returns a number suitable
+   as seed for the random number generator */
+extern unsigned long sys_random_seed(void);
+
+/*
+ * Initializes the random number generator.
+ * Only call once.
+ */
+void
+init_random(int (*fn)(int))
+{
+    set_random(sys_random_seed(), fn);
+}
+
+/* Reshuffles the random number generator. */
+void
+reseed_random(int (*fn)(int))
+{
+   /* only reseed if we are certain that the seed generation is unguessable
+    * by the players. */
+    if (has_strong_rngseed)
+        init_random(fn);
+}
+
+/* randomize the given list of numbers  0 <= i < count */
+void
+shuffle_int_array(int *indices, int count)
+{
+    int i, iswap, temp;
+
+    for (i = count - 1; i > 0; i--) {
+        if ((iswap = rn2(i + 1)) == i)
+            continue;
+        temp = indices[i];
+        indices[i] = indices[iswap];
+        indices[iswap] = temp;
+    }
 }
 
 /*rnd.c*/

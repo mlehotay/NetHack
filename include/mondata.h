@@ -1,39 +1,21 @@
-/* NetHack 3.7	mondata.h	$NHDT-Date: 1606473485 2020/11/27 10:38:05 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.45 $ */
+/* NetHack 3.7	mondata.h	$NHDT-Date: 1703845738 2023/12/29 10:28:58 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.63 $ */
 /* Copyright (c) 1989 Mike Threepoint                             */
 /* NetHack may be freely redistributed.  See license for details. */
 
 #ifndef MONDATA_H
 #define MONDATA_H
 
+/* The macros in here take a permonst * as an argument */
+
+#define monsndx(ptr) ((ptr)->pmidx)
 #define verysmall(ptr) ((ptr)->msize < MZ_SMALL)
 #define bigmonst(ptr) ((ptr)->msize >= MZ_LARGE)
 
 #define pm_resistance(ptr, typ) (((ptr)->mresists & (typ)) != 0)
 
-#define mon_resistancebits(mon) \
-    ((mon)->data->mresists | (mon)->mextrinsics | (mon)->mintrinsics)
-#define resists_fire(mon) \
-    ((mon_resistancebits(mon) & MR_FIRE) != 0)
-#define resists_cold(mon) \
-    ((mon_resistancebits(mon) & MR_COLD) != 0)
-#define resists_sleep(mon) \
-    ((mon_resistancebits(mon) & MR_SLEEP) != 0)
-#define resists_disint(mon) \
-    ((mon_resistancebits(mon) & MR_DISINT) != 0)
-#define resists_elec(mon) \
-    ((mon_resistancebits(mon) & MR_ELEC) != 0)
-#define resists_poison(mon) \
-    ((mon_resistancebits(mon) & MR_POISON) != 0)
-#define resists_acid(mon) \
-    ((mon_resistancebits(mon) & MR_ACID) != 0)
-#define resists_ston(mon) \
-    ((mon_resistancebits(mon) & MR_STONE) != 0)
-
 #define immune_poisongas(ptr) ((ptr) == &mons[PM_HEZROU]        \
                                || (ptr) == &mons[PM_VROCK])
 
-#define is_lminion(mon) \
-    (is_minion((mon)->data) && mon_aligntyp(mon) == A_LAWFUL)
 #define is_flyer(ptr) (((ptr)->mflags1 & M1_FLY) != 0L)
 #define is_floater(ptr) ((ptr)->mlet == S_EYE || (ptr)->mlet == S_LIGHT)
 /* clinger: piercers, mimics, wumpus -- generally don't fall down holes */
@@ -179,6 +161,8 @@
 #define is_rider(ptr)                                      \
     ((ptr) == &mons[PM_DEATH] || (ptr) == &mons[PM_FAMINE] \
      || (ptr) == &mons[PM_PESTILENCE])
+/* note: placeholder monsters are used for corpses of zombies and mummies;
+   PM_DWARF and PM_GNOME are normal monsters, not placeholders */
 #define is_placeholder(ptr)                             \
     ((ptr) == &mons[PM_ORC] || (ptr) == &mons[PM_GIANT] \
      || (ptr) == &mons[PM_ELF] || (ptr) == &mons[PM_HUMAN])
@@ -215,6 +199,8 @@
 
 #define touch_petrifies(ptr) \
     ((ptr) == &mons[PM_COCKATRICE] || (ptr) == &mons[PM_CHICKATRICE])
+/* Medusa doesn't pass touch_petrifies() but does petrify if eaten */
+#define flesh_petrifies(pm) (touch_petrifies(pm) || (pm) == &mons[PM_MEDUSA])
 
 /* missiles made of rocks don't harm these: xorns and earth elementals
    (but not ghosts and shades because that would impact all missile use
@@ -273,5 +259,11 @@
         && ((ptr)->mlet != S_UNICORN                                     \
             || objects[(obj)->otyp].oc_material == VEGGY                 \
             || ((obj)->otyp == CORPSE && (obj)->corpsenm == PM_LICHEN))))
+
+#ifdef PMNAME_MACROS
+#define pmname(ptr,g) ((((g) == MALE || (g) == FEMALE) && (ptr)->pmnames[g]) \
+                        ? (ptr)->pmnames[g] : (ptr)->pmnames[NEUTRAL])
+#endif
+#define monsym(ptr) (def_monsyms[(int) (ptr)->mlet].sym)
 
 #endif /* MONDATA_H */

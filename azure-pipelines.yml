@@ -4,28 +4,24 @@ strategy:
       imageName: 'ubuntu-latest'
       toolchainName: gcc9
       buildTargetName: minimal
-    linux_focal_clang_all:
-      imageName: 'ubuntu-20.04'
+    linux_jammy_clang_all:
+      imageName: 'ubuntu-22.04'
       toolchainName: clang
       buildTargetName: all
-    linux_focal_gcc9_all:
-      imageName: 'ubuntu-20.04'
+    linux_jammy_gcc9_all:
+      imageName: 'ubuntu-22.04'
       toolchainName: gcc9
       buildTargetName: all
-    linux_focal_gcc10_all:
-      imageName: 'ubuntu-20.04'
-      toolchainName: gcc10
-      buildTargetName: all
-    linux_jammy_gcc11_all:
+    linux_jammy_gcc12_all:
       imageName: 'ubuntu-22.04'
-      toolchainName: gcc11
+      toolchainName: gcc12
       buildTargetName: all
     macOS_latest_clang_all:
       imageName: 'macOS-latest'
       toolchainName: clang
       buildTargetName: all
-    macOS_monterey_clang13_all:
-      imageName: 'macOS-12'
+    macOS_Ventura_clang13_all:
+      imageName: 'macOS-13'
       toolchainName: clang
       buildTargetName: all
     windows-visualstudio:
@@ -83,6 +79,11 @@ steps:
     then
       echo "##vso[task.setvariable variable=CC]gcc-11"
       echo "##vso[task.setvariable variable=CXX]g++-11"
+    fi
+    if [ "$(toolchain)" == "gcc12" ]
+    then
+      echo "##vso[task.setvariable variable=CC]gcc-12"
+      echo "##vso[task.setvariable variable=CXX]g++-12"
     fi
     if [ "$(toolchain)" == "clang" ]
     then
@@ -173,9 +174,9 @@ steps:
 
 - bash: |
     sudo apt-get -qq -y update
-    sudo apt-get -qq -y install libncurses5-dev
+    sudo apt-get -qq -y install libncurses-dev
     sudo apt-get -qq -y install libx11-dev libxaw7-dev xfonts-utils qtbase5-dev qtmultimedia5-dev qtbase5-dev-tools
-  condition: eq( variables['Agent.OS'], 'Linux' )
+  condition: and(eq( variables['Agent.OS'], 'Linux' ), eq( variables.buildTarget, 'all'))
   workingDirectory: $(Agent.BuildDirectory)/$(netHackPath)
   displayName: 'Getting linux build dependencies'
 
@@ -193,28 +194,29 @@ steps:
     cd sys/unix
     sh setup.sh hints/linux-minimal
     cd ../..
-    sed -i '/^#define CLIPPING/d'       include/config.h
-    sed -i '/^#define COMPRESS/d'       include/config.h
-    #sed -i '/^#define DOAGAIN/d'        include/config.h
-    sed -i '/^#define DUMPLOG/d'        include/config.h
-    #sed -i '/^#define GDBPATH/d'        include/config.h
-    #sed -i '/^#define GREPPATH/d'       include/config.h
-    sed -i '/^#define INSURANCE/d'      include/config.h
-    sed -i '/^#define ENHANCED_SYMBOLS/d' include/config.h
-    sed -i '/^#define LOGFILE/d'        include/config.h
-    sed -i '/^#define NEWS/d'           include/config.h
-    sed -i '/^#define PANICLOG/d'       include/config.h
-    #sed -i '/^#define STATUS_HILITES/d' include/config.h
-    sed -i '/^#define SYSCF/d'          include/config.h
-    sed -i '/^#define USER_SOUNDS/d'    include/config.h
-    sed -i '/^#define XLOGFILE/d'       include/config.h
-    sed -i '/^#define HANGUPHANDLING/d' include/global.h
-    sed -i '/^#define MAIL/d'           include/unixconf.h
-    sed -i '/^#define SHELL/d'          include/unixconf.h
-    sed -i '/^#define SUSPEND/d'        include/unixconf.h
-    sed -i 's/^#define TEXTCOLOR//'     include/unixconf.h
+    sed -i '/^#[ 	]*define CLIPPING/d'       include/config.h
+    sed -i '/^#[ 	]*define COMPRESS/d'       include/config.h
+    sed -i '/^#[ 	]*define CRASHREPORT/d'    include/config.h
+    #sed -i '/^#[ 	]*define DOAGAIN/d'        include/config.h
+    sed -i '/^#[ 	]*define DUMPLOG/d'        include/config.h
+    sed -i '/^#[ 	]*define DUMPLOG_CORE/d'   include/config.h
+    #sed -i '/^#[ 	]*define GDBPATH/d'        include/config.h
+    #sed -i '/^#[ 	]*define GREPPATH/d'       include/config.h
+    sed -i '/^#[ 	]*define INSURANCE/d'      include/config.h
+    sed -i '/^#[ 	]*define ENHANCED_SYMBOLS/d' include/config.h
+    sed -i '/^#[ 	]*define LOGFILE/d'        include/config.h
+    sed -i '/^#[ 	]*define NEWS/d'           include/config.h
+    sed -i '/^#[ 	]*define PANICLOG/d'       include/config.h
+    #sed -i '/^#[ 	]*define STATUS_HILITES/d' include/config.h
+    sed -i '/^#[ 	]*define SYSCF/d'          include/config.h
+    sed -i '/^#[ 	]*define USER_SOUNDS/d'    include/config.h
+    sed -i '/^#[ 	]*define XLOGFILE/d'       include/config.h
+    sed -i '/^#[ 	]*define HANGUPHANDLING/d' include/global.h
+    sed -i '/^#[ 	]*define MAIL/d'           include/unixconf.h
+    sed -i '/^#[ 	]*define SHELL/d'          include/unixconf.h
+    sed -i '/^#[ 	]*define SUSPEND/d'        include/unixconf.h
     make fetch-lua
-    make WANT_WIN_ALL=1 all
+    make WANT_WIN_ALL=1 NOCRASHREPORT=1 all
   condition: and(eq( variables['Agent.OS'], 'Linux' ), eq( variables.buildTarget, 'minimal'))
   displayName: 'Building linux minimal build'
   workingDirectory: $(Agent.BuildDirectory)/$(netHackPath)

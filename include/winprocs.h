@@ -14,8 +14,9 @@ enum wp_ids { wp_tty = 1, wp_X11, wp_Qt, wp_mswin, wp_curses,
               wp_chainin, wp_chainout, wp_safestartup, wp_shim,
               wp_hup, wp_guistubs, wp_ttystubs,
 #ifdef OUTDATED_STUFF
-              , wp_mac, wp_Gem, wp_Gnome, wp_amii, wp_amiv
+              wp_mac, wp_Gem, wp_Gnome, wp_amii, wp_amiv,
 #endif
+	      wp_trace	// XXX do we need this?  should chainin/out get an id? TBD
 };
 
 /* NB: this MUST match chain_procs below */
@@ -107,6 +108,7 @@ extern
 /*
  * If you wish to only support one window system and not use procedure
  * pointers, add the appropriate #ifdef below.
+ * XXX which is what?
  */
 
 #define init_nhwindows (*windowprocs.win_init_nhwindows)
@@ -125,9 +127,15 @@ extern
 #define putmixed (*windowprocs.win_putmixed)
 #define display_file (*windowprocs.win_display_file)
 #define start_menu (*windowprocs.win_start_menu)
-#define add_menu (*windowprocs.win_add_menu)
 #define end_menu (*windowprocs.win_end_menu)
-#define select_menu (*windowprocs.win_select_menu)
+/* 3.7: There are real add_menu() and select_menu
+ *      in the core now.
+ *      add_menu does some common activities, such as menu_colors.
+ *      select_menu does some before and after activities. 
+ *      add_menu() and select_menu() are in windows.c
+ */
+/* #define add_menu (*windowprocs.win_add_menu) */
+/* #define select_menu (*windowprocs.win_select_menu) */
 #define message_menu (*windowprocs.win_message_menu)
 
 #define mark_synch (*windowprocs.win_mark_synch)
@@ -145,7 +153,12 @@ extern
 #define nh_poskey (*windowprocs.win_nh_poskey)
 #define nhbell (*windowprocs.win_nhbell)
 #define nh_doprev_message (*windowprocs.win_doprev_message)
-#define getlin (*windowprocs.win_getlin)
+/* 3.7: There is a real getlin() in the core now, which does
+ *      some before and after activities.
+ *      [alternative fix for menu search via ':'.]
+ *      getlin() is in windows.c
+ */
+/* #define getlin (*windowprocs.win_getlin) */
 #define get_ext_cmd (*windowprocs.win_get_ext_cmd)
 #define number_pad (*windowprocs.win_number_pad)
 #define nh_delay_output (*windowprocs.win_delay_output)
@@ -247,13 +260,13 @@ extern
 #define WC2_GUICOLOR      0x2000L /* 14 display colours outside map win */
 /* pline() can overload the display attributes argument passed to putstr()
    with one or more flags and at most one of bold/blink/inverse/&c */
-#define WC2_URGENT_MESG   0x4000L /* 15 putstr(WIN_MESSAGE) supports urgency
-                                   *    via non-display attribute flag  */
-#define WC2_SUPPRESS_HIST 0x8000L /* 16 putstr(WIN_MESSAGE) supports history
-                                   *    suppression via non-disp attr   */
+#define WC2_URGENT_MESG   0x4000L  /* 15 putstr(WIN_MESSAGE) supports urgency
+                                    *    via non-display attribute flag  */
+#define WC2_SUPPRESS_HIST 0x8000L  /* 16 putstr(WIN_MESSAGE) supports history
+                                    *    suppression via non-disp attr   */
 #define WC2_MENU_SHIFT   0x010000L /* 17 horizontal menu scrolling */
 #define WC2_U_UTF8STR    0x020000L /* 18 utf8str support */
-#define WC2_U_24BITCOLOR 0x040000L /* 19 24-bit color support available */
+#define WC2_EXTRACOLORS  0x040000L /* 19 color support beyond NH_BASIC_COLOR */
                                    /* 13 free bits */
 
 #define ALIGN_LEFT   1
@@ -359,7 +372,6 @@ struct chain_procs {
     void (*win_end_menu)(CARGS, winid, const char *);
     int (*win_select_menu)(CARGS, winid, int, MENU_ITEM_P **);
     char (*win_message_menu)(CARGS, char, int, const char *);
-    void (*win_update_inventory)(CARGS, int);
     void (*win_mark_synch)(CARGS);
     void (*win_wait_synch)(CARGS);
 #ifdef CLIPPING
@@ -407,6 +419,8 @@ struct chain_procs {
     void (*win_status_update)(CARGS, int, genericptr_t, int, int, int,
                               unsigned long *);
     boolean (*win_can_suspend)(CARGS);
+    void (*win_update_inventory)(CARGS, int);
+    win_request_info *(*win_ctrl_nhwindow)(CARGS, winid, int, win_request_info *);
 };
 #endif /* WINCHAIN */
 

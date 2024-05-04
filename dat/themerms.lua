@@ -19,11 +19,13 @@
 -- for each level, the core first calls pre_themerooms_generate(),
 -- then it calls themerooms_generate() multiple times until it decides
 -- enough rooms have been generated, and then it calls
--- post_themerooms_generate().  The lua state is persistent through
--- the gameplay, but not across saves, so remember to reset any variables.
+-- post_themerooms_generate(). When the level has been generated, with
+-- joining corridors and rooms filled, the core calls post_level_generate().
+-- The lua state is persistent through the gameplay, but not across saves,
+-- so remember to reset any variables.
 
 
-local buried_treasure = { };
+local postprocess = { };
 
 themeroom_fills = {
 
@@ -38,6 +40,15 @@ themeroom_fills = {
          end;
          ice:iterate(ice_melter);
       end
+   end,
+
+   -- Cloud room
+   function(rm)
+      local fog = selection.room();
+      for i = 1, (fog:numpoints() / 4) do
+         des.monster({ id = "fog cloud", asleep = true });
+      end
+      des.gas_cloud({ selection = fog });
    end,
 
    -- Boulder room
@@ -80,13 +91,29 @@ themeroom_fills = {
       locs:iterate(func);
    end,
 
+   -- Garden
+   {
+      eligible = function(rm) return rm.lit == true; end,
+      contents = function(rm)
+         local s = selection.room();
+         local npts = (s:numpoints() / 6);
+         for i = 1, npts do
+            des.monster({ id = "wood nymph", asleep = true });
+            if (percent(30)) then
+               des.feature("fountain");
+            end
+         end
+         table.insert(postprocess, { handler = make_garden_walls, data = { sel = selection.room() } });
+      end
+   },
+
    -- Buried treasure
    function(rm)
       des.object({ id = "chest", buried = true, contents = function(otmp)
                       local xobj = otmp:totable();
                       -- keep track of the last buried treasure
                       if (xobj.NO_OBJ == nil) then
-                         buried_treasure = { x = xobj.ox, y = xobj.oy };
+                         table.insert(postprocess, { handler = make_dig_engraving, data = { x = xobj.ox, y = xobj.oy }});
                       end
                       for i = 1, d(3,4) do
                          des.object();
@@ -339,7 +366,7 @@ themerooms = {
       });
    end,
 
-   -- Random dungeon feature in the middle of a odd-sized room
+   -- Random dungeon feature in the middle of an odd-sized room
    function()
       local wid = 3 + (nh.rn2(3) * 2);
       local hei = 3 + (nh.rn2(3) * 2);
@@ -634,14 +661,27 @@ xx|.....|xx
      -- Guarantee an escape item inside one of the chests, to prevent the hero
      -- falling in from above and becoming permanently stuck
      -- [cf. generate_way_out_method(sp_lev.c)].
+     -- If the escape item is made of glass or crystal, make sure that the
+     -- chest isn't locked so that kicking it to gain access to its contents
+     -- won't be necessary; otherwise retain lock state from random creation.
      -- "pick-axe", "dwarvish mattock" could be included in the list of escape
      -- items but don't normally generate in containers.
      local escape_items = {
         "scroll of teleportation", "ring of teleportation",
         "wand of teleportation", "wand of digging"
      };
-     local box = des.object({ id = "chest", coord = chest_spots[1] })
-     box:addcontent(obj.new(escape_items[math.random(#escape_items)]));
+     local itm = obj.new(escape_items[math.random(#escape_items)]);
+     local itmcls = itm:class()
+     local box
+     if itmcls[ "material" ] == 19 then                         -- GLASS==19
+         -- item is made of glass so explicitly force chest to be unlocked
+	 box = des.object({ id = "chest", coord = chest_spots[1],
+                            olocked = "no" });
+     else
+         -- item isn't made of glass; accept random locked/unlocked state
+	 box = des.object({ id = "chest", coord = chest_spots[1] });
+     end;
+     box:addcontent(itm);
 
      for i = 2, #chest_spots do
          des.object({ id = "chest", coord = chest_spots[i] });
@@ -649,6 +689,7 @@ xx|.....|xx
 
      shuffle(nasty_undead);
      des.monster(nasty_undead[1], 2, 2);
+     des.exclusion({ type = "teleport", region = { 2,2, 3,3 } });
 end });
    end,
 
@@ -768,30 +809,11 @@ end
 
 -- called before any rooms are generated
 function pre_themerooms_generate()
-   -- reset the buried treasure location
-   buried_treasure = { };
 end
 
 -- called after all rooms have been generated
+-- but before creating connecting corridors/doors, or filling rooms
 function post_themerooms_generate()
-   if (buried_treasure.x ~= nil) then
-      local floors = selection.negate():filter_mapchar(".");
-      local pos = floors:rndcoord(0);
-      local tx = buried_treasure.x - pos.x - 1;
-      local ty = buried_treasure.y - pos.y;
-      local dig = "";
-      if (tx == 0 and ty == 0) then
-         dig = " here";
-      else
-         if (tx < 0 or tx > 0) then
-            dig = string.format(" %i %s", math.abs(tx), (tx > 0) and "east" or "west");
-         end
-         if (ty < 0 or ty > 0) then
-            dig = dig .. string.format(" %i %s", math.abs(ty), (ty > 0) and "south" or "north");
-         end
-      end
-      des.engraving({ coord = pos, type = "burn", text = "Dig" .. dig });
-   end
 end
 
 function themeroom_fill(rm)
@@ -823,3 +845,36 @@ function themeroom_fill(rm)
    end
 end
 
+-- postprocess callback: create an engraving pointing at a location
+function make_dig_engraving(data)
+   local floors = selection.negate():filter_mapchar(".");
+   local pos = floors:rndcoord(0);
+   local tx = data.x - pos.x - 1;
+   local ty = data.y - pos.y;
+   local dig = "";
+   if (tx == 0 and ty == 0) then
+      dig = " here";
+   else
+      if (tx < 0 or tx > 0) then
+         dig = string.format(" %i %s", math.abs(tx), (tx > 0) and "east" or "west");
+      end
+      if (ty < 0 or ty > 0) then
+         dig = dig .. string.format(" %i %s", math.abs(ty), (ty > 0) and "south" or "north");
+      end
+   end
+   des.engraving({ coord = pos, type = "burn", text = "Dig" .. dig });
+end
+
+-- postprocess callback: turn room walls into trees
+function make_garden_walls(data)
+   local sel = data.sel:grow();
+   des.replace_terrain({ selection = sel, fromterrain="w", toterrain = "T" });
+end
+
+-- called once after the whole level has been generated
+function post_level_generate()
+   for i, v in ipairs(postprocess) do
+      v.handler(v.data);
+   end
+   postprocess = { };
+end

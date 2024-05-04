@@ -1,5 +1,5 @@
 #      NetHack Top-level Makefile.
-# NetHack 3.7  Makefile.top    $NHDT-Date: 1642630921 2022/01/19 22:22:01 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.72 $
+# NetHack 3.7  Makefile.top    $NHDT-Date: 1693519381 2023/08/31 22:03:01 $  $NHDT-Branch: keni-crashweb2 $:$NHDT-Revision: 1.91 $
 # Copyright (c) 2015 by Kenneth Lorber, Kensington, Maryland
 # NetHack may be freely redistributed.  See license for details.
 
@@ -54,7 +54,7 @@ DIRPERM  = 0755
 # per discussion in Install.X11 and Install.Qt
 # Qt prefers nhtiles.bmp but can use x11tiles, and it ignores NetHack.ad.
 # X11 uses those last two.
-# Both can display a convential text map instead of tiles.
+# Both can display a conventional text map instead of tiles.
 #	tty and/or curses (no extra data files outside of the dlb container):
 #VARDATND =
 #	All X11 and/or Qt variations may also include tty or curses or both):
@@ -104,6 +104,21 @@ DATNODLB = $(VARDATND) license symbols
 DATDLB = $(DATHELP) dungeon.lua tribute $(SPEC_LEVS) $(QUEST_LEVS) $(VARDATD)
 DAT = $(DATNODLB) $(DATDLB)
 
+# These get set only if they weren't already set above or in a hints file
+#CHOWN ?= true
+#CHGRP ?= true
+#SYSCONFCREATE ?= cp sys/unix/sysconf $(INSTDIR)/sysconf
+#SYSCONFINSTALL ?= $(SYSCONFCREATE) && \
+#	 $(CHOWN) $(GAMEUID) $(INSTDIR)/sysconf && \
+#	 $(CHGRP) $(GAMEGRP) $(INSTDIR)/sysconf && \
+#	 chmod $(VARFILEPERM) $(INSTDIR)/sysconf;
+#SYSCONFENSURE ?= (if ! test -f $(INSTDIR)/sysconf ; then \
+#	 $(SYSCONFCREATE) && \
+#	 $(CHOWN) $(GAMEUID) $(INSTDIR)/sysconf && \
+#	 $(CHGRP) $(GAMEGRP) $(INSTDIR)/sysconf && \
+#	 chmod $(VARFILEPERM) $(INSTDIR)/sysconf; fi );
+
+# Lua
 LUAHEADERS = lib/lua-$(LUA_VERSION)/src
 LUATESTTARGET = $(LUAHEADERS)/lua.h
 LUATOP = $(LUAHEADERS)
@@ -112,7 +127,7 @@ LUA2NHTOP = ../../..
 LUABASELIB = liblua-$(LUA_VERSION).a
 TOPLUALIB = lib/lua/$(LUABASELIB)
 
-ALLDEP = $(GAME) recover Guidebook $(VARDAT) spec_levs check-dlb
+ALLDEP = $(PRECHECK) $(GAME) recover Guidebook $(VARDAT) spec_levs check-dlb
 
 # first target is also the default target for 'make' without any arguments
 all:    $(ALLDEP)
@@ -125,8 +140,7 @@ $(GAME): lua_support
 lua_support: include/nhlua.h
 	@true
 $(LUATOP)/liblua.a: $(LUAHEADERS)/lua.h
-	( cd $(LUATOP) \
-	  && make $(LUAMAKEFLAGS) a && cd $(LUA2NHTOP) )
+	( cd $(LUATOP) && make $(LUAMAKEFLAGS) a )
 $(TOPLUALIB): $(LUATOP)/liblua.a
 	@( if test -d lib/lua ; then true ; else mkdir -p lib/lua ; fi )
 	cp $(LUATOP)/liblua.a $@
@@ -141,7 +155,7 @@ include/nhlua.h: $(TOPLUALIB)
 	@echo '/*nhlua.h*/' >> $@
 # LUATESTTARGET is this by default
 lib/lua-$(LUA_VERSION)/src/lua.h:
-	@echo "Please do 'make fetch-lua' to obtain lua-$(LUA_VERSION)"
+	@echo "Please do 'make fetch-lua' in the top directory to obtain lua-$(LUA_VERSION)"
 	@false
 luabin:
 	( cd $(LUATOP) \
@@ -167,6 +181,9 @@ Guidebook.pdf:
 
 manpages:
 	( cd doc ; $(MAKE) manpages )
+
+distrib:
+	( cd doc ; $(MAKE) distrib )
 
 data: $(GAME)
 	( cd dat ; $(MAKE) data )
@@ -302,28 +319,65 @@ dofiles-nodlb:
 #
 # This is not part of the dependency build hierarchy.
 # It requires an explicit "make fetch-Lua".
+
+LUA_URL :=www.lua.org/ftp
+LUA_URL_MIRROR :=www.tecgraf.puc-rio.br/lua/mirror/ftp
+
+fetch-lua-mirror: LUA_URL :=$(LUA_URL_MIRROR)
+fetch-lua-mirror: fetch-Lua
+	@true
+
 fetch-lua: fetch-Lua
 	@true
 
 fetch-Lua:
-	( mkdir -p lib && cd lib && \
-	  curl -R -O https://www.lua.org/ftp/lua-$(LUA_VERSION).tar.gz && \
-	  tar zxf lua-$(LUA_VERSION).tar.gz && \
-	  rm -f lua-$(LUA_VERSION).tar.gz )
+	@( mkdir -p lib && cd lib && \
+	  n=0; \
+	  export curlstatus=1; \
+	  while [ $${n} -lt 2 ]; do \
+	    if [ $$curlstatus -ne 0 ]; then \
+	      if [ $${n} -eq 0 ]; then \
+	          luaurl=https://$(LUA_URL)/lua-$(LUA_VERSION).tar.gz; \
+	      fi; \
+	      if [ $${n} -eq 1 ]; then \
+	          luaurl=https://$(LUA_URL_MIRROR)/lua-$(LUA_VERSION).tar.gz; \
+	      fi; \
+	      echo trying $$luaurl; \
+	      shac1=`command -v shasum`; \
+	      shac2=`command -v sha256sum`; \
+	      if [ ! -z $$shac1 ]; then \
+	        shac="$$shac1 -a 256"; elif [ ! -z $$shac2 ]; then \
+	        shac=$$shac2; else echo "CAUTION: no way to check integrity"; \
+	      fi; \
+	      curl -R -O $$luaurl; \
+	      export curlstatus=$$?; \
+	      if [ $$curlstatus -eq 0 ]; then \
+	        if [ ! -z "$$shac" ]; then \
+	          echo Checking integrity with $$shac; \
+	          $$shac -w -c ../submodules/CHKSUMS < lua-$(LUA_VERSION).tar.gz; \
+	        fi; \
+	        tar zxf lua-$(LUA_VERSION).tar.gz && \
+	        rm -f lua-$(LUA_VERSION).tar.gz; \
+	      fi; \
+	    fi; \
+	    n=`expr $$n + 1`; \
+	  done; \
+	  true )
+
 # remove include/nhlua.h in case it was created for some other Lua version
 	@( if test -f include/nhlua.h ; then \
 	     rm -f include/nhlua.h && echo 'rm include/nhlua.h' ; fi )
 
 fetch-lua-http:
 	( mkdir -p lib && cd lib && \
-	  curl -R -O http://www.lua.org/ftp/lua-$(LUA_VERSION).tar.gz && \
+	  curl -R -O http://$(LUA_URL)/lua-$(LUA_VERSION).tar.gz && \
 	  tar zxf lua-$(LUA_VERSION).tar.gz && \
 	  rm -f lua-$(LUA_VERSION).tar.gz )
 
 # 'make update' can be used to install a revised version after making
 # customizations or such.  Unlike 'make install', it doesn't delete everything
 # from the target directory to have a clean start.
-update: $(GAME) recover $(VARDAT) spec_levs
+update: $(PRECHECK) $(GAME) recover $(VARDAT) spec_levs sys/unix/sysconf
 #	(don't yank the old version out from under people who're playing it)
 	-mv $(INSTDIR)/$(GAME) $(INSTDIR)/$(GAME).old
 	-mv $(INSTDIR)/nhdat $(INSTDIR)/nhdat.old
@@ -331,13 +385,15 @@ update: $(GAME) recover $(VARDAT) spec_levs
 	( $(MAKE) dofiles )
 # should already be present, but make sure
 	touch $(VARDIR)/perm $(VARDIR)/record
+# sysconf, but only if it does not exist
+	true; $(SYSCONFENSURE)
 # and a reminder
 	@echo You may also want to install the man pages via the doc Makefile.
 
 rootcheck:
 	@true; $(ROOTCHECK)
 
-install: rootcheck $(GAME) recover $(VARDAT) spec_levs
+install: rootcheck $(PRECHECK) $(GAME) recover $(VARDAT) spec_levs sys/unix/sysconf
 	true; $(PREINSTALL)
 # set up the directories
 # not all mkdirs have -p; those that don't will create a -p directory
@@ -359,6 +415,9 @@ install: rootcheck $(GAME) recover $(VARDAT) spec_levs
 	-( cd $(VARDIR) ; $(CHOWN) $(GAMEUID) perm record logfile xlogfile livelog ; \
 			$(CHGRP) $(GAMEGRP) perm record logfile xlogfile livelog ; \
 			chmod $(VARFILEPERM) perm record logfile xlogfile livelog )
+# sysconf
+	true; $(SYSCONFINSTALL)
+# other steps from hints file
 	true; $(POSTINSTALL)
 # and a reminder
 	@echo You may also want to reinstall the man pages via the doc Makefile.

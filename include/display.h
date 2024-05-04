@@ -1,4 +1,4 @@
-/* NetHack 3.7	display.h	$NHDT-Date: 1661295667 2022/08/23 23:01:07 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.77 $ */
+/* NetHack 3.7	display.h	$NHDT-Date: 1698741423 2023/10/31 08:37:03 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.95 $ */
 /* Copyright (c) Dean Luick, with acknowledgements to Kevin Darcy */
 /* and Dave Cohrs, 1990.                                          */
 /* NetHack may be freely redistributed.  See license for details. */
@@ -25,7 +25,7 @@
  * sensemon()
  *
  * Returns true if the hero can sense the given monster.  This includes
- * monsters that are hiding or mimicing other monsters.
+ * monsters that are hiding or mimicking other monsters.
  *
  * [3.7] Note: the map doesn't display any monsters when hero is swallowed
  * (or display non-adjacent, non-submerged ones when hero is underwater),
@@ -47,7 +47,7 @@
           /* OR 2b. hero is using a telepathy inducing */  \
           /*        object and in range                */  \
           || (Unblind_telepat                              \
-              && (mdistu(mon) <= (BOLT_LIM * BOLT_LIM)))))
+              && (mdistu(mon) <= u.unblind_telepat_range))))
 
 /* organized to perform cheaper tests first;
    is_pool() vs is_pool_or_lava(): hero who is underwater can see adjacent
@@ -104,7 +104,7 @@
  * canseemon() or canspotmon() which already check that.
  */
 #define _see_with_infrared(mon) \
-    (!Blind && Infravision && mon && infravisible(mon->data) \
+    (!Blind && Infravision && infravisible(mon->data) \
      && couldsee(mon->mx, mon->my))
 
 /*
@@ -157,7 +157,7 @@
  * definition here is convenient.  No longer limited to pets.
  */
 #define _is_safemon(mon) \
-    (flags.safe_dog && (mon) && (mon)->mpeaceful && canspotmon(mon)     \
+    (flags.safe_dog && (mon)->mpeaceful && canspotmon(mon)              \
      && !Confusion && !Hallucination && !Stunned)
 
 /*
@@ -181,10 +181,10 @@
  *
  * Respectively return a random monster or object.
  * random_object() won't return STRANGE_OBJECT or the generic objects.
- * -/+ MAXOCLASSES is used to skip it and them.
+ * -/+ FIRST_OBJECT is used to skip it and them.
  */
 #define random_monster(rng) ((*rng)(NUMMONS))
-#define random_object(rng) ((*rng)(NUM_OBJECTS - MAXOCLASSES) + MAXOCLASSES)
+#define random_object(rng) ((*rng)(NUM_OBJECTS - FIRST_OBJECT) + FIRST_OBJECT)
 
 /*
  * what_obj()
@@ -656,7 +656,7 @@ enum glyph_offsets {
                     (Ugender))
 
 /*
- * Change the given glyph into it's given type.  Note:
+ * Change the given glyph into its given type.  Note:
  *      1) Pets, detected, and ridden monsters are animals and are converted
  *         to the proper monster number.
  *      2) Bodies are all mapped into the generic CORPSE object
@@ -857,22 +857,22 @@ enum glyph_offsets {
 #define glyph_is_statue(glyph) \
     (glyph_is_male_statue(glyph) || glyph_is_fem_statue(glyph))
 /* generic objects are after strange object (GLYPH_OBJ_OFF) and before
-   other objects (GLYPH_OBJ_OFF + MAXOCLASSES) */
+   other objects (GLYPH_OBJ_OFF + FIRST_OBJECT) */
 #define glyph_is_normal_generic_obj(glyph) \
-    ((glyph) > GLYPH_OBJ_OFF && (glyph) < GLYPH_OBJ_OFF + MAXOCLASSES)
+    ((glyph) > GLYPH_OBJ_OFF && (glyph) < GLYPH_OBJ_OFF + FIRST_OBJECT)
 #define glyph_is_piletop_generic_obj(glyph) \
     ((glyph) > GLYPH_OBJ_PILETOP_OFF                            \
-     && (glyph) < GLYPH_OBJ_PILETOP_OFF + MAXOCLASSES)
+     && (glyph) < GLYPH_OBJ_PILETOP_OFF + FIRST_OBJECT)
 #define glyph_is_generic_object(glyph) \
     (glyph_is_normal_generic_obj(glyph)                         \
      || glyph_is_piletop_generic_obj(glyph))
 #define glyph_is_normal_piletop_obj(glyph) \
     ((glyph) == GLYPH_OBJ_PILETOP_OFF                           \
-     || ((glyph) > GLYPH_OBJ_PILETOP_OFF + MAXOCLASSES          \
+     || ((glyph) > GLYPH_OBJ_PILETOP_OFF + FIRST_OBJECT         \
          && (glyph) < (GLYPH_OBJ_PILETOP_OFF + NUM_OBJECTS)))
 #define glyph_is_normal_object(glyph) \
     ((glyph) == GLYPH_OBJ_OFF                                   \
-     || ((glyph) >= GLYPH_OBJ_OFF + MAXOCLASSES                 \
+     || ((glyph) >= GLYPH_OBJ_OFF + FIRST_OBJECT                \
          && (glyph) < (GLYPH_OBJ_OFF + NUM_OBJECTS))            \
      || glyph_is_normal_piletop_obj(glyph))
 
@@ -1026,23 +1026,31 @@ enum glyph_offsets {
 #define MG_BW_ICE  0x00200  /* similar for ice vs floor */
 #define MG_BW_SINK 0x00200  /* identical for sink vs fountain [note: someday
                              * this may become a distinct flag */
+#define MG_BW_ENGR 0x00200  /* likewise for corridor engravings */
 #define MG_NOTHING 0x00400  /* char represents GLYPH_NOTHING */
 #define MG_UNEXPL  0x00800  /* char represents GLYPH_UNEXPLORED */
 #define MG_MALE    0x01000  /* represents a male mon or statue of one */
 #define MG_FEMALE  0x02000  /* represents a female mon or statue of one */
 #define MG_BADXY   0x04000  /* bad coordinates were passed */
 
+/* docrt(): re-draw whole screen; docrt_flags(): docrt() with more control */
+enum docrt_flags_bits {
+    docrtRecalc  = 0, /* full docrt(), recalculate what the map should show */
+    docrtRefresh = 1, /* redraw_map(), draw what we think the map shows */
+    docrtMapOnly = 2, /* ORed with Recalc or Refresh; draw the map but not
+                       * status or perminv */
+    docrtNocls = 4,
+};
+
 typedef struct {
     xint8 gnew; /* perhaps move this bit into the rm structure. */
     glyph_info glyphinfo;
 } gbuf_entry;
 
-#ifdef TEXTCOLOR
 extern const int altarcolors[];
 extern const int zapcolors[];
 extern const int explodecolors[];
 extern int wallcolors[];
-#endif
 
 /* If TILES_IN_GLYPHMAP is defined during build, this is defined
  * in the generated tile.c, complete with appropriate tile references in

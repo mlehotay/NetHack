@@ -11,18 +11,18 @@
 #define Not_firsttime (on_level(&u.uz0, &u.uz))
 #define Qstat(x) (gq.quest_status.x)
 
-static void on_start(void);
-static void on_locate(void);
-static void on_goal(void);
-static boolean not_capable(void);
-static int is_pure(boolean);
-static void expulsion(boolean);
-static void chat_with_leader(struct monst *);
-static void chat_with_nemesis(void);
-static void chat_with_guardian(void);
-static void prisoner_speaks(struct monst *);
+staticfn void on_start(void);
+staticfn void on_locate(void);
+staticfn void on_goal(void);
+staticfn boolean not_capable(void);
+staticfn int is_pure(boolean);
+staticfn void expulsion(boolean);
+staticfn void chat_with_leader(struct monst *);
+staticfn void chat_with_nemesis(void);
+staticfn void chat_with_guardian(void);
+staticfn void prisoner_speaks(struct monst *);
 
-static void
+staticfn void
 on_start(void)
 {
     if (!Qstat(first_start)) {
@@ -36,7 +36,7 @@ on_start(void)
     }
 }
 
-static void
+staticfn void
 on_locate(void)
 {
     /* the locate messages are phrased in a manner such that they only
@@ -58,7 +58,7 @@ on_locate(void)
     }
 }
 
-static void
+staticfn void
 on_goal(void)
 {
     if (Qstat(killed_nemesis)) {
@@ -143,13 +143,13 @@ ok_to_quest(void)
                        && is_pure(FALSE) > 0) || Qstat(killed_leader));
 }
 
-static boolean
+staticfn boolean
 not_capable(void)
 {
     return (boolean) (u.ulevel < MIN_QUEST_LEVEL);
 }
 
-static int
+staticfn int
 is_pure(boolean talk)
 {
     int purity;
@@ -182,7 +182,7 @@ is_pure(boolean talk)
  * This assumes that the hero is currently _in_ the quest dungeon and that
  * there is a single branch to and from it.
  */
-static void
+staticfn void
 expulsion(boolean seal)
 {
     branch *br;
@@ -219,19 +219,48 @@ expulsion(boolean seal)
    artifact or you've just thrown it to/at him or her.  If quest
    completion text hasn't been given yet, give it now.  Otherwise
    give another message about the character keeping the artifact
-   and using the magic portal to return to the dungeon. */
+   and using the magic portal to return to the dungeon.  Also called
+   if hero throws or kicks an invocation item (probably the Bell)
+   at the leader. */
 void
-finish_quest(struct obj *obj) /* quest artifact; possibly null if carrying
-                                 Amulet */
+finish_quest(struct obj *obj) /* quest artifact or thrown unique item or faux
+                               * AoY; possibly null if carrying the Amulet */
 {
     struct obj *otmp;
 
-    if (u.uhave.amulet) { /* unlikely but not impossible */
+    if (obj && !is_quest_artifact(obj)) {
+        /* tossed an invocation item (or [fake] AoY) at the quest leader */
+        if (Deaf)
+            return; /* optional (unlike quest completion) so skip if deaf */
+        /* do ID first so that the message identifying the item will refer to
+           it by name (and so justify the ID we already gave...) */
+        fully_identify_obj(obj);
+        /* update_inventory() is not necessary or helpful here because item
+           was thrown, so isn't currently in inventory anyway */
+        if (obj->otyp == AMULET_OF_YENDOR) {
+            qt_pager("hasamulet");
+        } else if (obj->otyp == FAKE_AMULET_OF_YENDOR) {
+            verbalize(
+      "Sorry to say, this is a mere imitation of the true Amulet of Yendor.");
+        } else {
+            verbalize("Ah, I see you've found %s.", the(xname(obj)));
+        }
+        return;
+    }
+
+    if (u.uhave.amulet) {
+        /* has the amulet in inventory -- most likely the player has already
+           completed the quest and stopped in on her way back up, but it's not
+           impossible to have gotten the amulet before formally presenting the
+           quest artifact to the leader. */
         qt_pager("hasamulet");
         /* leader IDs the real amulet but ignores any fakes */
-        if ((otmp = carrying(AMULET_OF_YENDOR)) != 0)
+        if ((otmp = carrying(AMULET_OF_YENDOR)) != (struct obj *) 0) {
             fully_identify_obj(otmp);
+            update_inventory();
+        }
     } else {
+        /* normal quest completion; threw artifact or walked up carrying it */
         qt_pager(!Qstat(got_thanks) ? "offeredit" : "offeredit2");
         /* should have obtained bell during quest;
            if not, suggest returning for it now */
@@ -249,7 +278,7 @@ finish_quest(struct obj *obj) /* quest artifact; possibly null if carrying
     }
 }
 
-static void
+staticfn void
 chat_with_leader(struct monst *mtmp)
 {
     if (!mtmp->mpeaceful || Qstat(pissed_off))
@@ -347,7 +376,7 @@ leader_speaks(struct monst *mtmp)
         chat_with_leader(mtmp);
 }
 
-static void
+staticfn void
 chat_with_nemesis(void)
 {
     /*  The nemesis will do most of the talking, but... */
@@ -394,7 +423,7 @@ nemesis_stinks(coordxy mx, coordxy my)
     gc.context.mon_moving = save_mon_moving;
 }
 
-static void
+staticfn void
 chat_with_guardian(void)
 {
     /*  These guys/gals really don't have much to say... */
@@ -404,7 +433,7 @@ chat_with_guardian(void)
         qt_pager("guardtalk_before");
 }
 
-static void
+staticfn void
 prisoner_speaks(struct monst *mtmp)
 {
     if (mtmp->data == &mons[PM_PRISONER]
@@ -471,8 +500,10 @@ void
 quest_stat_check(struct monst *mtmp)
 {
     if (mtmp->data->msound == MS_NEMESIS)
-        Qstat(in_battle) = (!helpless(mtmp)
-                            && monnear(mtmp, u.ux, u.uy));
+        Qstat(in_battle) = (!helpless(mtmp) && monnear(mtmp, u.ux, u.uy));
 }
+
+#undef Not_firsttime
+#undef Qstat
 
 /*quest.c*/

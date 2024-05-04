@@ -1,4 +1,4 @@
-.\" $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.464 $ $NHDT-Date: 1655461129 2022/06/17 10:18:49 $
+.\" $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.574 $ $NHDT-Date: 1711040379 2024/03/21 16:59:39 $
 .\"
 .\" This is an excerpt from the 'roff' man page from the 'groff' package.
 .\"+--
@@ -25,19 +25,28 @@
 .\" with an optional filtering step between 'cat' and 'tbl':
 .\"  cat... |../util/makedefs --grep --input - --output - |tbl...
 .
+.if n \{\
+.po 5n
+.ll 70n
+.lt 70n
+.\}
+.
 .so tmac.nh	\" extra macros which aren't in tmac.n
 .
-.\" \n(fF=1: fixed-width font (Guidebook.txt), =0: proportional-width font
-.nr fF (\w'f'p)=(\w'F'p) \" compare width of 'f' to that of 'F'
+.\" building Guidebook.txt doesn't have CR font available; groff 1.23 issues
+.\" a warning each time any font can't be loaded; earlier versions silently
+.\" proceeded so lack of CR (fixed-width, moot for plain text) didn't matter
+.if n .do ftr CR R  \" if formatting for a terminal, substitute R for CR
+.                   \" (the substitution affects both '\f' and '.ft')
 .
-.ds h0 "NetHack Guidebook
-.ds h1
+.ds h0 NetHack Guidebook
+.ds h1 \" empty
 .ds h2 %
-.ds vr "NetHack 3.7.0
-.ds f0 "\*(vr
-.ds f1
-.\"DO NOT REMOVE NH_DATESUB .ds f2 "DATE(%B %-d, %Y)
-.ds f2 "July 13, 2023
+.ds vr NetHack 3.7.0
+.ds f0 \*(vr
+.ds f1 \" empty
+.\"DO NOT REMOVE NH_DATESUB .ds f2 DATE(%B %-d, %Y)
+.ds f2 April 12, 2024
 .
 .\" A note on some special characters:
 .\" \(lq = left double quote
@@ -45,9 +54,11 @@
 .\" \(oq = left (open) single quote
 .\" \(cq = right (close) single quote    \(aq = apostrophe / single quote
 .\"    - = hyphen                        \-   = minus sign
-.\"                                      \(em = M-sized dash
+.\" \(rs = backslash                     \(em = dash as wide as 'M' is tall
 .\"    ^ = small circumflex punctuation  \(ha = larger circumflex character
 .\"    ~ = small tilde punctuation       \(ti = larger tilde character
+.\"
+.\" See groff_man_style(7) or groff_char(7) for more on these.
 .
 .
 .\" finally, start the actual Guidebook...
@@ -246,16 +257,16 @@ The way the screen looks for you depends on your platform.
 .\" situations.  Originally the character had only reached a second room
 .\" (unchanged here) by turn 257 (now changed to 752) and was already
 .\" Weak from hunger (now changed to just Hungry) and also lacked any of
-\." Tourist's starting gold.  Confusion is added to include a condition.)
+.\" Tourist's starting gold.  Confusion is added to include a
+.\" condition.)
 .\"
-.\" Width is constrained by the margins of plain text output (Guidebook.txt).
-.\" Text output shows an extra space in front of the right hand boundary box
-.\" which isn't present in this data nor in the Postscript output.  It also
-.\" overwrites the label on the bottom boundary box line so that ends ups as
-.\" ------Figure-N------.  Odd but acceptable.
+.\" Width is constrained by the margins of plain text output
+.\" (Guidebook.txt).  Text output might show an extra space inboard of
+.\" the left and right box boundaries that does not appear in PostScript
+.\" output.  This behavior is specific to GNU tbl.
 .BR 2
 .ft CR \" set font to constant-width Roman
-.TS S
+.TS
 center box tab(~);
 L.
 The bat bites!
@@ -272,22 +283,24 @@ The bat bites!
 Player the Rambler   St:12 Dx:7 Co:18 In:11 Wi:9 Ch:15 Neutral
 Dlvl:1 $:993 HP:9(12) Pw:3(3) AC:10 Exp:1/19 T:752 Hungry Conf
 .TE
-.ft \" revert to previous font
+.ft R
 .ce 1
+.if t .sp 0.5v
 Figure 1
 .
 .\" Figure 2 uses trailing spaces to force the same width as Figure 1.
 .BR 1
 .ft CR
-.TS S
+.TS
 center box tab(~);
 L.
 Player the Rambler   St:12 Dx:7 Co:18 In:11 Wi:9 Ch:15        \"
 Neutral $:993 HP:9(12) Pw:3(3) AC:10 Exp:1/19 Hungry          \"
 Dlvl:1 T:752                                  Conf            \"
 .TE
-.ft
+.ft R
 .ce 1
+.if t .sp 0.5v
 Figure 2
 .
 .hn 2
@@ -396,7 +409,7 @@ Not shown when \fBNormal\fP.
 .lp ""
 Encumbrance:
 an indication of how what you are carrying affects your ability to move.
-Values are \fBUnencumbered\fP, \fBEncumbered\fP, \fBStressed\fP,
+Values are \fBUnencumbered\fP, \fBBurdened\fP, \fBStressed\fP,
 \fBStrained\fP, \fBOvertaxed\fP, and \fBOverloaded\fP.
 Not shown when \fBUnencumbered\fP.
 .lp ""
@@ -610,30 +623,23 @@ If you sense or remember a monster there, you will fight the monster
 instead.
 Only these one-step movement commands cause you to fight monsters; the
 others (below) are \(lqsafe.\(rq
-.SD n
-.\" note: the two number pad layouts are separated by a tab on each line;
-.\"       [that's out of date; it's now tab,backslash,space,tab]
-.\"       converting those tabs to spaces will screw up the formatting;
-.\"       the '(if ... set)' line starts with <backslash><space><tab>
-.\"       and is intended to line up with the right hand layout rather
-.\"       than be centered.  Second column forces the label to be evenly
-.\"       spaced between first and third; Phantom fourth column forces
-.\"       the whole to shift left since fully centered doesn't look good.
-.\"       "Figure 3 " includes a trailing space to shift left a little.
 .ft CR
-.TS S
-center;
-ce c ce ce.
-y  k  u	\ 	7  8  9\ 	\"
-\\ | /	\ 	\\ | /\ 	\"
-h\- . \-l	\ 	4\- . \-6\ 	\"
-/ | \\	\ 	/ | \\\ 	\"
-b  j  n	\ 	1  2  3\ 	\"
-\fR\ 	\ 	(if \fBnumber_pad\fR is set)\ 	\"
-\fR\ 	Figure 3\ 	\ 	\"
+.tr -\-@\(rs
+.TS
+box center expand;
+C C.
+y  k  u	7  8  9
+@ | /	@ | /
+h- . -l	4- . -6
+/ | @	/ | @
+b  j  n	1  2  3
+\fR(\fBnumber_pad\fP off)	\fR(\fBnumber_pad\fP on)
 .TE
-.ft
-.ED
+.tr --@@
+.ft R
+.if t .sp 0.5v
+.ce 1
+Figure 3
 .
 .lp [YUHJKLBN]
 Go in that direction until you hit a wall or run into something.
@@ -1222,6 +1228,10 @@ Toggle the
 .op autopickup
 option on/off.
 Default key is \(oq@\(cq.
+.lp "#bugreport"
+Bring up a browser window to submit a report to the NetHack Development Team.
+Can be disabled at the time the program is built; when enabled,
+CRASHREPORTURL must be set in the system configuration file.
 .lp "#call    "
 Call (name) a monster, or an object in inventory, on the floor,
 or in the discoveries list, or add an annotation for the
@@ -1380,6 +1390,8 @@ Debug mode only.
 .lp "#look    "
 Look at what is here, under you.
 Default key is \(oq:\(cq.
+.lp #lookaround
+Describe what you can see, or remember, of your surroundings.
 .lp "#loot    "
 Loot a box or bag on the floor beneath you, or the saddle
 from a steed standing next to you.
@@ -1570,21 +1582,44 @@ Default key is \(oqs\(cq.
 .lp "#seeall  "
 Show all equipment in use.
 Default key is \(oq*\(cq.
+.lp ""
+Will display in-use items in a menu even when there is only one.
 .lp #seeamulet
 Show the amulet currently worn.
 Default key is \(oq\(dq\(cq. \" double quote
+.lp ""
+Using the \(oq\f(CRm\fP\(cq prefix will force the display of a worn
+amulet in a menu rather than with just a message.
 .lp #seearmor
 Show the armor currently worn.
 Default key is \(oq[\(cq.
+.lp ""
+Will display worn armor in a menu even when there is only thing worn.
 .lp #seerings
 Show the ring(s) currently worn.
 Default key is \(oq=\(cq.
+.lp ""
+Will display worn rings in a menu if there are two (or there is
+just one and is a meat ring rather than a \(lqreal\(rq ring).
+Use the \(oq\f(CRm\fP\(cq prefix to force a menu for one ring.
 .lp #seetools
 Show the tools currently in use.
 Default key is \(oq(\(cq.
+.lp ""
+Will display the result in a message if there is one tool in use (worn
+blindfold or towel or lenses, lit lamp(s) and/or candle(s), leashes
+attached to pets).
+Will display a menu if there are more than one or if the command is
+preceded by the \(oq\f(CRm\fP\(cq prefix.
 .lp #seeweapon
 Show the weapon currently wielded.
 Default key is \(oq)\(cq.
+.lp ""
+If dual-wielding, a separate message about the secondary weapon will be
+given.
+Using the \(oq\f(CRm\fP\(cq prefix will force a menu and it will include
+primary weapon, alternate weapon even when not dual-wielding, and also
+whatever is currently assigned to the quiver slot.
 .lp "#shell   "
 Do a shell escape, switching from NetHack to a subprocess.
 Can be disabled at the time the program is built.
@@ -2765,7 +2800,7 @@ Here is a list of the armor class values provided by suits of armor:
 .\" it to get the second column (number) closer to the text on most lines.
 .\" Both AC4 and AC7 have trailing tab plus empty comment on their first
 .\" line and leading spaces to indent their second line.
-.TS S
+.TS
 center;
 a n.
 Dragon scale mail	1
@@ -3045,6 +3080,30 @@ Some chests are trapped, causing nasty things to happen when you
 unlock or open them.
 You can check for and try to deactivate traps
 with the \(lq#untrap\(rq extended command.
+.pg
+When the contents of a container are known, that container will be
+described as something like \(lqa sack containing 3 items\(rq.
+In this example, the 3 refers to number of \fIstacks\fP of compatible
+items, not to the total number of individual items.
+So a sack holding 2 sky blue potions, 7 arrows, and 350 gold pieces would be
+described as having 3 items rather than 10 or 359.
+And you would need to have 3 unused inventory slots available in order
+to take everything out (for the case where the items you remove don't
+combine into bigger stacks with things you're already carrying).
+.pg
+If a chest or large box is described as \(lqbroken\(rq, that means that it
+can't be locked rather than that it no longer functions as a container.
+.pg
+The \fIapply\fP and \fIloot\fP commands allow you to take out and/or
+put in an arbitrary number of items in a single operation.
+If you want to take everything out of a container, you can use the
+\(lq#tip\(rq command to pour the contents onto the floor.
+This may be your only way to get things out if your hands are stuck
+to a cursed two-handed weapon.
+When your hands aren't stuck, you have the potential to pour the
+contents into another container.
+(As of this writing, the other container must be carried rather than on
+the floor.)
 .hn 2
 Amulets (\(oq"\(cq)
 .pg
@@ -3309,7 +3368,7 @@ and to limit the number of questions during disclosure.
 Listed here roughly in order of difficulty and not necessarily in the order
 in which you might accomplish them.
 .\" Vary the output between Guidebook.txt and Guidebook.{ps,pdf}
-.ie \n(fF \{\
+.ie n \{\
 .\" fixed-width font: default key width is fine;
 .\" display longest entries (below) across two lines for Guidebook.txt
 .PS "Mines'\~End"
@@ -3339,7 +3398,7 @@ Read a passage from a Discworld Novel.
 Entered Sokoban.
 .PL "Big\~Room"
 Entered the Big Room.
-.ie \n(fF \{\
+.ie n \{\
 .PL "Soko-Prize"
 Explored to the top of Sokoban
 .br
@@ -3386,7 +3445,7 @@ Never wore any armor.
 .PL Ascended
 Delivered the Amulet to its final destination.
 .PE
-.if !\n(fF .in -5n .fi \" undo proportional-width font-specific indentation
+.if t .in -5n  \" undo proportional-width font-specific indentation
 .sp
 .lp "Notes:  "
 .pg
@@ -3592,7 +3651,7 @@ See the \(lqConfiguring Menu Colors\(rq section.
 Change the way messages are shown in the top status line.
 See the \(lqConfiguring Message Types\(rq section.
 .lp ROGUESYMBOLS
-Custom symbols for for the rogue level's symbol set.
+Custom symbols for the rogue level's symbol set.
 See \fISYMBOLS\fP below.
 .lp SOUND
 Define a sound mapping.
@@ -3624,13 +3683,12 @@ Example:
 .pg
 \ \" dummy paragraph to force some separation [.BR isn't working as intended]
 .pg
-.SD n \" suppress indentation
+.SD n \" begin display without indentation
 Here is an example of configuration file contents:
 .ED
 .\" [conditional indentation; see description of NETHACKOPTIONS below]
-.ds sD i \" assume proportional, indentation acceptable and preferred
-.\" Check for fixed-width font; fF set up at top of file
-.if \n(fF .ds sD n \" if same width, suppress indentation
+.ds sD i  \" typesetter; display indentation acceptable and preferred
+.if n .ds sD n  \" terminal; suppress indentation
 .SD \*(sD \" string variable sD will expand to either 'i' or 'n'
 .ft CR \" set font to constant-width Roman
 # Set your character's role, race, gender, and alignment.
@@ -3676,12 +3734,8 @@ you would enter the command
 .\" but the 'setenv' example is too wide for Guidebook.txt unless the
 .\" indentation is suppressed (.SD n).  Even though the second example
 .\" can be indented, it should match the first or they'll both look odd.
-.\" groff has a built-in register allowing recognition of '-T', but we
-.\" can't rely on that.  Assume Guidebook.ps uses a proportional font
-.\" and Guidebook.txt a fixed-width one and test which sort we're using.
-.ds sD i \" assume proportional, indentation acceptable and preferred
-.\" Check for fixed-width font; fF set up at top of file
-.if \n(fF .ds sD n \" if same width, suppress indentation
+.ds sD i  \" typesetter; display indentation acceptable and preferred
+.if n .ds sD n  \" terminal; suppress indentation
 .SD \*(sD
 \f(CR% setenv NETHACKOPTIONS "color,\\!leg,name:Blue Meanie,fruit:lime"\fP
 .ED
@@ -3722,6 +3776,8 @@ applies only to new games.
 .\" Ones less that 8 should be enclosed within double quotes and padded with
 .\" trailing spaces.
 .
+.lp accessiblemsg
+Add location or direction information to messages (default is off).
 .lp acoustics
 Enable messages about what your character hears (default on).
 Note that this has nothing to do with your computer's audio capabilities.
@@ -3844,6 +3900,13 @@ Show out-of-sight areas of lit rooms (default on).  Persistent.
 .lp "deaf    "
 Start the character permanently deaf (default false).
 Persistent.
+.lp dropped_nopick
+If this option is on, items you dropped will not be automatically
+picked up, even if
+.op autopickup
+is also on and they are in
+.op pickup_types
+or match a positive autopickup exception (default on).  Persistent.
 .lp disclose
 Controls what information the program reveals when the game ends.
 Value is a space separated list of prompting/category pairs
@@ -3982,7 +4045,7 @@ The behavior of this option depends on the type of windowing you use.
 In text windowing, text highlighting or inverse video is often used;
 with tiles, generally displays a heart symbol near pets.
 .lp ""
-With the curses interface, the
+With the tty or curses interface, the
 .op petattr
 option controls how to highlight pets and setting it will turn the
 .op hilite_pet
@@ -3994,8 +4057,29 @@ In text windowing, text highlighting or inverse video is often used;
 with tiles, generally displays a small plus-symbol beside the object
 on the top of the pile.
 .lp hitpointbar
-Show a hit point bar graph behind your name and title.
-Only available for TTY and Windows GUI, and only when statushilites is on.
+Show a hit point bar graph behind your name and title in the status
+display (default off).
+.lp ""
+The \(lqcurses\(rq interface supports it even if the status highlighting
+feature has been disabled when building the program.
+The \(lqtty\(rq and \(lqmswin\(rq (aka \(lqWindows GUI\(rq) interfaces
+support it only if status highlighting is left enabled when building.
+You don't need to set up any highlighting rules in order to display
+the bar.
+If there is one for hitpoints in effect and it specifies color, that
+color will be used for the bar.
+However if it specifies video attributes, they will be ignored in
+favor of \fIinverse\fP.
+For tty and curses, \fIblink\fP will also be used if the current
+hitpoint value is at or below the \fIcritical HP\fP threshold.
+.lp ""
+The \(lqQt\(rq interface also supports hitpointbar, by drawing
+a solid bar above the name and title with a hard-coded color scheme.
+(As of this writing, having the bar enabled unintentionally inhibits
+resizing the status panel.
+To resize that, use the \f(CR#optionsfull\fP command to toggle the
+\fIhitpointbar\fP option off, perform the resize while it's off, then
+use the same command to toggle it back on.)
 .lp horsename
 Name your starting horse (for example \(lqhorsename:Trigger\(rq).
 Cannot be set with the \(oq\f(CRO\fP\(cq command.
@@ -4030,6 +4114,8 @@ fountains, or altars which are ordinarily only described when covered
 by one or more objects (default off).
 Cannot be set with the \(oq\f(CRO\fP\(cq command.
 Persistent.
+.lp mention_map
+Give feedback when interesting map locations change (default off).
 .lp mention_walls
 Give feedback when walking against a wall (default off).
 Persistent.
@@ -4070,8 +4156,8 @@ Key to jump to the first page in a menu.
 Default \(oq\(ha\(cq.
 .lp menu_headings
 Controls how the headings in a menu are highlighted.
-Values are \(lqnone\(rq, \(lqbold\(rq, \(lqdim\(rq, \(lqitalic\(rq,
-\(lqunderline\(rq, \(lqblink\(rq, or \(lqinverse\(rq.
+Takes a text attribute, or text color and attribute separated by ampersand.
+For allowed attributes and colors, see \(lqConfiguring Menu Colors\(rq.
 Not all ports can actually display all types.
 .lp menu_invert_all
 Key to invert all items in a menu.
@@ -4122,6 +4208,8 @@ Default \(oq}\(cq.
 ." Format menu entries using TAB to separate columns (default off).
 ." Only applicable to some menus, and only useful to some interfaces.
 ." Debug mode only.
+.lp mon_movement
+Show a message when hero notices a monster movement (default is off).
 .lp monpolycontrol
 Prompt for new form whenever any monster changes shape (default off).
 Debug mode only.
@@ -4215,7 +4303,7 @@ symbols for the various object types.
 Any omitted types are filled in at the end from the previous order.
 .lp paranoid_confirmation
 A space separated list of specific situations where alternate
-prompting is desired.  The default is \(lqparanoid_confirmation:pray swim\(rq.
+prompting is desired.  The default is \(lqparanoid_confirmation:pray swim trap\(rq.
 .PS Were-change
 .PL Confirm
 for any prompts which are set to require \(lqyes\(rq rather than \(oqy\(cq,
@@ -4246,6 +4334,11 @@ to lycanthropy when hero has polymorph control;
 require \(oqy\(cq to confirm an attempt to pray rather
 than immediately praying; on by default;
 (to require \(lqyes\(rq rather than just \(oqy\(cq, set Confirm too);
+.PL trap
+require \(oqy\(cq to confirm an attempt to move into or onto a known trap,
+unless doing so is considered to be harmless;
+(to require \(lqyes\(rq rather than just \(oqy\(cq, set Confirm too);
+confirmation can be skipped by using the \(oq\f(CRm\fP\(cq movement prefix;
 .PL swim
 prevent walking into water or lava; on by default; (to deliberately step
 onto/into such terrain when this is set, use the \(oq\f(CRm\fP\(cq
@@ -4272,14 +4365,48 @@ To remove an entry that has been previously set without removing others,
 precede the first entry in the list with a minus sign,
 \f(CRparanoid_confirmation:-swim\fP.
 To both add some new entries and remove some old ones, you can use
-mulitple \fIparanoid_confirmation\fP option settings, or you can
+multiple \fIparanoid_confirmation\fP option settings, or you can
 use the \(oq\f(CR+\fP\(cq form and list entries to be added by their name
 and entries to be removed by \(oq\f(CR!\fP\(cq and name.
 The positive (no \(oq!\(cq) and negative (with \(oq!\(cq) entries
 can be intermixed.
 .lp perm_invent
-If true, always display your current inventory in a window.  This only
+If true, always display your current inventory in a window (default false).
+.lp ""
+This only
 makes sense for windowing system interfaces that implement this feature.
+For those that do, the
+.op perminv_mode
+option can be used to refine what gets displayed
+for \fIperm_invent\fP.
+Setting that to a value other than \fInone\fP
+while \fIperm_invent\fP is false will change it to true.
+.lp perminv_mode
+Augments the
+.op perm_invent
+option.
+Value is one of
+.PS "\f(CRin-use\fP"
+.PL "\f(CRnone\fP"
+behave as if \fIperm_invent\fP is false;
+.PL "\f(CRall\fP"
+show all inventory except for gold;
+.PL "\f(CRfull\fP"
+show full inventory including gold;
+.PL "\f(CRin-use\fP"
+only show items which are in use (worn, wielded, lit lamp).
+.\" %if these get uncommented, change .PS argument to "\f(CRgold+grid\fP"
+.\" %and the terminator for in-use to semi-colon.
+.\" .PL "\f(CRon+grid\fP"
+.\" special for tty only, show \fIall\fP plus unused inventory letters;
+.\" .PL "\f(CRgold+grid\fP"
+.\" special for tty only, show \fIfull\fP plus unused inventory letters.
+.PE
+Default is \fInone\fP but if \fIperm_invent\fP gets set to true
+while it is \fInone\fP it will be changed to \fIall\fP.
+.lp ""
+Note: if gold has been equipped in quiver/ammo-pouch then it will be
+included for \fIall\fP despite that mode normally omitting gold.
 .\" petattr is a wincap option but we'll document it here...
 .lp "petattr "
 Specifies one or more text highlighting attributes to use when showing
@@ -4287,29 +4414,10 @@ pets on the map.
 Effectively a superset of the
 .op hilite_pet
 boolean option.
-Curses interface only; value is one or more of the following letters.
-.sd
-.si
-.CC n "Normal text (no highlighting)"
-.CC i "Inverse video (default)"
-.CC b "Bold text"
-.CC u "Underlined text"
-.CC k "blinKing text"
-.CC d "Dim text"
-.CC t "iTalic text"
-.CC l "Left line indicator"
-.CC r "Right line indicator"
-.ei
-.ed
-Some of those choices might not work, particularly the final three,
+Curses or tty interface only; value is one of
+none, bold, dim, underline, italic, blink, and inverse.
+Some of those choices might not work,
 depending upon terminal hardware or terminal emulation software.
-.lp ""
-Currently multiple highlight-style letters can be combined by simply
-stringing them together (for example, \(lqbk\(rq), but in the future
-they might require being separated by plus signs (such as \(lqb+k\(rq,
-which works already).
-When using the \(oqn\(cq choice, it should be specified on its own,
-not in combination with any of the other letters.
 .lp "pettype "
 Specify the type of your initial pet, if you are playing a character class
 that uses multiple types of pets; or choose to have no initial pet at all.
@@ -4323,6 +4431,15 @@ When you pick up an item that would exceed this encumbrance
 level (Unencumbered, Burdened, streSsed, straiNed, overTaxed,
 or overLoaded), you will be asked if you want to continue.
 (Default \(oqS\(cq).
+Persistent.
+.lp pickup_stolen
+If this option is on and
+.op autopickup
+is also on, try to pick up things that a monster stole from you, even if they
+aren't in
+.op pickup_types
+or match an autopickup exception.
+Default is on.
 Persistent.
 .lp pickup_thrown
 If this option is on and
@@ -4377,6 +4494,8 @@ something pushes the old item into your alternate weapon slot (default off).
 Likewise for the \(oqa\(cq (apply) command if it causes the applied item to
 become wielded.
 Persistent.
+.lp query_menu
+Use a menu when asked specific yes/no queries, instead of a prompt.
 .lp quick_farsight
 When set, usually prevents the \(lqyou sense your surroundings\(rq message
 where play pauses to allow you to browse the map whenever clairvoyance
@@ -4476,16 +4595,31 @@ Control what parts of the score list you are shown at the end (for example
 Only the first letter of each category (\(oqt\(cq, \(oqa\(cq, or \(oqo\(cq)
 is necessary.
 Persistent.
+.lp showdamage
+Whenever your character takes damage, show a message of the damage taken,
+and the amount of hit points left.
 .lp "showexp "
 Show your accumulated experience points on bottom line (default off).
 Persistent.
 .lp showrace
 Display yourself as the glyph for your race, rather than the glyph
-for your role (default off).  Note that this setting affects only
+for your role (default off).
+Note that this setting affects only
 the appearance of the display, not the way the game treats you.
 Persistent.
 .lp showscore
 Show your approximate accumulated score on bottom line (default off).
+By default, this feature is suppressed when building the program.
+Persistent.
+.lp showvers
+Include the game's version number on the status lines (default off).
+Potentially useful if you switch between different versions or variants,
+or you are making screenshots or streaming video.
+Using the
+.op statuslines:3
+option is recommended so that there will be more room available for
+status information, unless you're using nethack's \fIQt\fP interface
+or your terminal emulator window displays fewer than 25 lines.
 Persistent.
 .lp "silent  "
 Suppress terminal beeps (default on).
@@ -4569,6 +4703,8 @@ Allow sounds to be emitted from an integrated sound library (default on).
 Display a sparkly effect when a monster (including yourself) is hit by an
 attack to which it is resistant (default on).
 Persistent.
+.lp spot_monsters
+Show a message when hero notices a monster (default is off).
 .lp standout
 Boldface monsters and \(lq\fB\-\-More\-\-\fP\(rq (default off).
 Persistent.
@@ -4753,7 +4889,7 @@ If NetHack can, it should use this size font for the status window.
 .lp font_size_text
 If NetHack can, it should use this size font for text windows.
 .lp fullscreen
-If NetHack can, it should try and display on the entire screen rather than
+If NetHack can, it should try to display on the entire screen rather than
 in a window.
 .lp "guicolor "
 Use color text and/or highlighting attributes when displaying some
@@ -4881,29 +5017,46 @@ setting the value to 3 or 4 instead will keep borders for the map, message,
 and status windows but have room for two additional lines of inventory
 plus widen each inventory line by two columns.
 .lp windowcolors
-If NetHack can, it should display windows with the specified
-foreground/background colors.
-Windows GUI only.
+If NetHack can, it should display all windows of a particular style
+with the specified foreground and background colors.
+Windows GUI and curses windowport only.
 The format is
 .si
-.lp "OPTION=windowcolors:wintype foreground/background"
+.lp "\f(CROPTION=windowcolors:\fIstyle foreground\f(CR/\fIbackground\fR"
 .ei
-.pg
-where wintype is one of \(lqmenu\(rq, \(lqmessage\(rq, \(lqstatus\(rq,
+.lp ""
+where \fIstyle\fP is one of \(lqmenu\(rq, \(lqmessage\(rq, \(lqstatus\(rq,
 or \(lqtext\(rq, and
-foreground and background are colors, either a hexadecimal \\'#rrggbb',
+\fIforeground\fP and \fIbackground\fP are colors, either numeric (hash
+sign followed by three pairs of hexadecimal digits, \fI#rrggbb\fP),
 one of the named colors (black, red, green, brown,
-blue, magenta, cyan, orange, brightgreen, yellow, brightblue,
-brightmagenta, brightcyan, white, trueblack, gray, purple,
+blue, magenta, cyan, orange, bright-green, yellow, bright-blue,
+bright-magenta, bright-cyan, white, gray, purple,
 silver, maroon, fuchsia, lime, olive, navy, teal, aqua),
-or one of Windows UI colors (activeborder, activecaption,
-appworkspace, background, btnface, btnshadow, btntext,
+or (for Windows only) one of Windows UI colors (trueblack, activeborder,
+activecaption, appworkspace, background, btnface, btnshadow, btntext,
 captiontext, graytext, greytext, highlight, highlighttext,
 inactiveborder, inactivecaption, menu, menutext, scrollbar,
 window, windowframe, windowtext).
 .lp wraptext
 If NetHack can, it should wrap long lines of text if they don't fit in
 the visible area of the window.
+.hn 2
+Crash Report Options
+.pg
+Please note that NetHack does not send \fBany\fP information off your
+computer unless you manually click submit on a form.
+.si
+.lp "OPTION=crash_email:\fIemail_address\fP
+.lp "OPTION=crash_name:\fIyour_name\fP
+.ei
+These options are used only to save you some typing on the crash
+report and #bugreport forms.
+.si
+.lp "OPTION=crash_urlmax:\fIbytes\fP
+.ei
+This option is used to limit the length of the URLs generated and is only
+needed if your browser cannot handle arbitrarily long URLs.
 .hn 2
 Platform-specific Customization options
 .pg
@@ -4983,7 +5136,9 @@ Regular expressions are normally POSIX extended regular expressions. It is
 possible to compile NetHack without regular expression support on a platform
 where there is no regular expression library. While this is not true of any
 modern platform, if your NetHack was built this way, patterns are instead glob
-patterns. This applies to Autopickup exceptions, Message types, Menu colors,
+patterns; regardless, this document refers to both as \(oqregular
+expressions.\(cq
+This applies to Autopickup exceptions, Message types, Menu colors,
 and User sounds.
 .hn 2
 Configuring Autopickup Exceptions
@@ -5333,7 +5488,7 @@ the volume to be set while playing the sound file;
 optional; the index corresponding to a sound file.
 .PE
 .lp ""
-The pattern should be a POSIX extended regular expression.
+The pattern should be a regular expression.
 .pg
 For example:
 .sd
@@ -5379,7 +5534,7 @@ orange, light-green, yellow, light-blue, light-magenta, light-cyan, and white.
 And \(lqno-color\(rq, the default foreground color on the display, which
 is not necessarily the same as black or white or any of the other colors.
 .pg
-Allowed attributes are none, bold, dim, underline, blink, and inverse.
+Allowed attributes are none, bold, dim, underline, italic, blink, and inverse.
 \(lqNormal\(rq is a synonym for \(lqnone\(rq; they should not be used in
 combination with any of the other attributes.
 .pg
@@ -5399,7 +5554,7 @@ the \f(CRtty\fP interface) rather than all at once, the only way a
 situation like that can be controlled is to specify just one attribute.
 .pg
 You can adjust the appearance of the following status fields:
-.TS S
+.TS
 center;
 c c c.
 .\"TABLE_START
@@ -5432,7 +5587,7 @@ Allowed behaviors are \(lqalways\(rq, \(lqup\(rq, \(lqdown\(rq,
 text to match against.
 For the \fIhitpoints\fP field, the additional behavior \(lqcriticalhp\(rq
 is available.
-It overrides always, percentage threshold, and absolute threshold if
+It overrides other behavior rules if
 hit points are at or below the \fImajor problem\fP threshold
 (which varies depending upon maximum hit points and experience level).
 .si
@@ -5490,9 +5645,11 @@ it also matches when value is below or above.
 If the prefix is \(oq<\(cq or \(oq>\(cq, only match when strictly
 above or below.
 .lp "*"
-criticalhp only applies to the hitpoints field and when defined
-it takes precedence over other hitpints rules except \fIchanged\fP,
-\fIup\fP, or \fIdown\fP.
+criticalhp only applies to the hitpoints field and only
+when current hit points are below a threshold (which varies by maximum
+hit points and experience level).
+When the threshold is met, a criticalhp rule takes precedence over all
+other hitpoints rules.
 .lp "*"
 text match sets the attribute when the field value
 matches the text.
@@ -5562,7 +5719,7 @@ control character.
 .\" to be too wide when generating plain text output.  Two spaces leaves
 .\" some room between the symbol character and name.)  Entries in first
 .\" column now use constant-width Roman font to approximate TeX tt font.
-.TS S
+.TS
 center;
 l s s
 l1fCR l1 l.
@@ -5853,8 +6010,17 @@ option and use the traditional
 Rogue-like commands.
 .lp paranoid_confirmation:swim
 Prevent walking into water or lava.
+.lp accessiblemsg
+Adds direction or location information to messages.
+.lp spot_monsters
+Shows a message when hero notices a monster; combine with accessiblemsg.
+.lp mon_movement
+Shows a message when hero notices a monster movement;
+combine with spot_monsters and accessiblemsg.
 .lp autodescribe
 Automatically describe the terrain under the cursor when targeting.
+.lp mention_map
+Give feedback messages when interesting map locations change.
 .lp mention_walls
 Give feedback messages when walking towards a wall or when travel command
 was interrupted.
@@ -5871,6 +6037,8 @@ of moving 8 units at a time.
 Prevent updates to the status lines at the bottom of the screen, if
 your screen-reader reads those lines. The same information can be
 seen via the \(lq#attributes\(rq command.
+.lp showdamage
+Give a message of damage taken and how many hit points are left.
 .hn 2
 Global Configuration for System Administrators
 .pg
@@ -5999,6 +6167,13 @@ When available, it should be left commented out on single player
 installations because over time the file could grow to be extremely
 large unless it is actively maintained.
 .
+.lp
+CRASHREPORTURL\ =\ If set to
+\f(CRhttps://www.nethack.org/links/cr-37BETA.html\fP
+and support is compiled in, brings up a browser window pre-populated with
+the information needed to report a problem if the game panics or ends
+up in an internally inconsistent state, or if the #bugreport command is
+invoked.
 .hn 1
 Scoring
 .pg
@@ -6443,7 +6618,7 @@ Development Team sometimes makes note of the names of the worst of these
 miscreants in this, the list of Dungeoneers:
 .BR 1
 .
-.TS S
+.TS
 center;
 c2 c2 c.
 .\"TABLE_START

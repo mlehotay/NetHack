@@ -293,7 +293,7 @@ static const char *arrow_or_PF = "ABCDPQRS", /* suffix char */
 /* Ultimate return value is (index into smg_keypad_codes[] + 256). */
 
 static short
-parse_function_key(register int c)
+parse_function_key(int c)
 {
     struct _rd_iosb iosb;
     unsigned long sts;
@@ -319,8 +319,8 @@ parse_function_key(register int c)
     } else
         sts = SS$_NORMAL;
     if (vms_ok(sts) || sts == SS$_TIMEOUT) {
-        register int cnt = iosb.trm_offset + iosb.trm_siz + inc;
-        register char *p = seq_buf;
+        int cnt = iosb.trm_offset + iosb.trm_siz + inc;
+        char *p = seq_buf;
 
         if (c == ESC) /* check for 7-bit vt100/ANSI, or vt52 */
             if (*p == '[' || *p == 'O')
@@ -328,7 +328,7 @@ parse_function_key(register int c)
             else if (strchr(arrow_or_PF, *p))
                 c = SS3; /*CSI*/
         if (cnt > 0 && (c == SS3 || (c == CSI && strchr(arrow_or_PF, *p)))) {
-            register char *q = strchr(smg_keypad_codes, *p);
+            char *q = strchr(smg_keypad_codes, *p);
 
             if (q)
                 result = 256 + (q - smg_keypad_codes);
@@ -517,7 +517,7 @@ setftty(void)
     settty_needed = TRUE;
 }
 
-/* enable kbd interupts if enabled when game started */
+/* enable kbd interrupts if enabled when game started */
 void
 intron(void)
 {
@@ -582,6 +582,23 @@ VA_DECL(const char *, s)
 #endif
     exit(EXIT_FAILURE);
 }
+
+#ifdef SIGWINCH
+/* called by resize_tty(wintty.c) after receiving a SIGWINCH signal;
+   terminal size has changed and we should update LI and CO (from termcap) */
+void
+getwindowsz(void)
+{
+    /*
+     * gettty() has code to do this, but it can't be used directly because
+     * it fetches terminal state in order to reset that upon termination.
+     * We need to avoid clobbering other saved state with values used by
+     * game-in-progress.  For now, do nothing.
+     */
+    return;
+}
+#endif
+
 #ifdef ENHANCED_SYMBOLS
 /*
  * set in tty_start_screen() and allows
@@ -592,6 +609,8 @@ VA_DECL(const char *, s)
 void
 tty_utf8graphics_fixup(void)
 {
+    return;
 }
 #endif  /* ENHANCED_SYMBOLS */
 
+/*vmstty.c */

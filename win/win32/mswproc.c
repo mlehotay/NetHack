@@ -12,7 +12,7 @@
 #include "dlb.h"
 #include "func_tab.h" /* for extended commands */
 #include "winMS.h"
-#include <assert.h>
+
 #include <mmsystem.h>
 #include "mhmap.h"
 #include "mhstatus.h"
@@ -35,7 +35,7 @@
 
 #ifdef DEBUG
 # ifdef _DEBUG
-static FILE* _s_debugfp = NULL;
+static FILE *_s_debugfp = NULL;
 extern void logDebug(const char *fmt, ...);
 # endif
 #endif
@@ -76,6 +76,7 @@ COLORREF message_bg_color = RGB(0, 0, 0);
 COLORREF message_fg_color = RGB(0xFF, 0xFF, 0xFF);
 
 strbuf_t raw_print_strbuf = { 0 };
+color_attr mswin_menu_promptstyle = { NO_COLOR, ATR_NONE };
 
 /* Interface definition, for windows.c */
 struct window_procs mswin_procs = {
@@ -92,7 +93,7 @@ struct window_procs mswin_procs = {
     WC2_HITPOINTBAR | WC2_FLUSH_STATUS | WC2_RESET_STATUS | WC2_HILITE_STATUS |
 #endif
 #ifdef ENHANCED_SYMBOLS
-     WC2_U_UTF8STR | WC2_U_24BITCOLOR |
+     WC2_U_UTF8STR | WC2_EXTRACOLORS |
 #endif
     0L,
     {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1},   /* color availability */
@@ -114,7 +115,7 @@ struct window_procs mswin_procs = {
     mswin_nh_poskey, mswin_nhbell, mswin_doprev_message, mswin_yn_function,
     mswin_getlin, mswin_get_ext_cmd, mswin_number_pad, mswin_delay_output,
 #ifdef CHANGE_COLOR /* only a Mac option currently */
-    mswin, mswin_change_background,
+    mswin_change_color, mswin_get_color_string,
 #endif
     /* other defs that really should go away (they're tty specific) */
     mswin_start_screen, mswin_end_screen, mswin_outrip,
@@ -127,7 +128,7 @@ struct window_procs mswin_procs = {
 };
 
 /*
-init_nhwindows(int* argcp, char** argv)
+init_nhwindows(int *argcp, char **argv)
                 -- Initialize the windows used by NetHack.  This can also
                    create the standard windows listed at the top, but does
                    not display them.
@@ -160,10 +161,10 @@ mswin_init_nhwindows(int *argc, char **argv)
     mswin_nh_input_init();
 
     /* set it to WIN_ERR so we can detect attempts to
-       use this ID before it is inialized */
+       use this ID before it is initialized */
     WIN_MAP = WIN_ERR;
 
-    /* Read Windows settings from the reqistry */
+    /* Read Windows settings from the registry */
     /* First set safe defaults */
     GetNHApp()->regMainMinX = CW_USEDEFAULT;
     mswin_read_reg();
@@ -239,22 +240,22 @@ mswin_init_nhwindows(int *argc, char **argv)
             | WC_FONTSIZ_TEXT | WC_VARY_MSGCOUNT,
         set_in_game);
 
-    mswin_color_from_string(iflags.wc_foregrnd_menu, &menu_fg_brush,
-                            &menu_fg_color);
-    mswin_color_from_string(iflags.wc_foregrnd_message, &message_fg_brush,
-                            &message_fg_color);
-    mswin_color_from_string(iflags.wc_foregrnd_status, &status_fg_brush,
-                            &status_fg_color);
-    mswin_color_from_string(iflags.wc_foregrnd_text, &text_fg_brush,
-                            &text_fg_color);
-    mswin_color_from_string(iflags.wc_backgrnd_menu, &menu_bg_brush,
-                            &menu_bg_color);
-    mswin_color_from_string(iflags.wc_backgrnd_message, &message_bg_brush,
-                            &message_bg_color);
-    mswin_color_from_string(iflags.wc_backgrnd_status, &status_bg_brush,
-                            &status_bg_color);
-    mswin_color_from_string(iflags.wc_backgrnd_text, &text_bg_brush,
-                            &text_bg_color);
+    mswin_color_from_string(iflags.wcolors[wcolor_menu].fg,
+                            &menu_fg_brush, &menu_fg_color);
+    mswin_color_from_string(iflags.wcolors[wcolor_message].fg,
+                            &message_fg_brush, &message_fg_color);
+    mswin_color_from_string(iflags.wcolors[wcolor_status].fg,
+                            &status_fg_brush, &status_fg_color);
+    mswin_color_from_string(iflags.wcolors[wcolor_text].fg,
+                            &text_fg_brush, &text_fg_color);
+    mswin_color_from_string(iflags.wcolors[wcolor_menu].bg,
+                            &menu_bg_brush, &menu_bg_color);
+    mswin_color_from_string(iflags.wcolors[wcolor_message].bg,
+                            &message_bg_brush, &message_bg_color);
+    mswin_color_from_string(iflags.wcolors[wcolor_status].bg,
+                            &status_bg_brush, &status_bg_color);
+    mswin_color_from_string(iflags.wcolors[wcolor_text].bg,
+                            &text_bg_brush, &text_bg_color);
 
     if (iflags.wc_splash_screen)
         mswin_display_splash_window(FALSE);
@@ -337,7 +338,7 @@ prompt_for_player_selection(void)
     anything any;
     menu_item *selected = 0;
     DWORD box_result;
-    int clr = 0;
+    int clr = NO_COLOR;
 
     logDebug("prompt_for_player_selection()\n");
 
@@ -1030,11 +1031,17 @@ mswin_putstr_ex(winid wid, int attr, const char *text, int app)
         /* yield a bit so it gets done immediately */
         mswin_get_nh_event();
     } else {
+        char *was = GetNHApp()->saved_text;
+
         // build text to display later in message box
         GetNHApp()->saved_text =
             realloc(GetNHApp()->saved_text,
                     strlen(text) + strlen(GetNHApp()->saved_text) + 1);
-        strcat(GetNHApp()->saved_text, text);
+        if (!GetNHApp()->saved_text) {
+            free(was);
+        } else {
+            strcat(GetNHApp()->saved_text, text);
+        }
     }
 }
 
@@ -1156,6 +1163,7 @@ mswin_add_menu(winid wid, const glyph_info *glyphinfo,
         data.accelerator = accelerator;
         data.group_accel = group_accel;
         data.attr = attr;
+        data.color = clr;
         data.str = str;
         data.presel = presel;
         data.itemflags = itemflags;
@@ -1254,7 +1262,20 @@ mswin_ctrl_nhwindow(
     int request,
     win_request_info *wri)
 {
-    return (win_request_info *) 0;
+    if (!wri)
+        return (win_request_info *) 0;
+
+    switch(request) {
+    case set_mode:
+    case request_settings:
+        break;
+    case set_menu_promptstyle:
+        mswin_menu_promptstyle = wri->fromcore.menu_promptstyle;
+        break;
+    default:
+        break;
+    }
+    return wri;
 }
 
 /*
@@ -1880,9 +1901,9 @@ mswin_delay_output(void)
 }
 
 void
-mswin_change_color(void)
+mswin_change_color(int color, long rgb, int reverse)
 {
-    logDebug("mswin_change_color()\n");
+    logDebug("mswin_change_color(%d, %ld, %d)\n", color, rgb, reverse);
 }
 
 char *
@@ -2094,15 +2115,17 @@ mswin_getmsghistory(boolean init)
     if (init) {
         text = (PMSNHMsgGetText) malloc(sizeof(MSNHMsgGetText)
                                         + TEXT_BUFFER_SIZE);
-        text->max_size =
-            TEXT_BUFFER_SIZE
-            - 1; /* make sure we always have 0 at the end of the buffer */
+        if (text) {
+            text->max_size =
+                TEXT_BUFFER_SIZE
+                - 1; /* make sure we always have 0 at the end of the buffer */
 
-        ZeroMemory(text->buffer, TEXT_BUFFER_SIZE);
-        SendMessage(mswin_hwnd_from_winid(WIN_MESSAGE), WM_MSNH_COMMAND,
-                    (WPARAM) MSNH_MSG_GETTEXT, (LPARAM) text);
+            ZeroMemory(text->buffer, TEXT_BUFFER_SIZE);
+            SendMessage(mswin_hwnd_from_winid(WIN_MESSAGE), WM_MSNH_COMMAND,
+                        (WPARAM) MSNH_MSG_GETTEXT, (LPARAM) text);
 
-        next_message = text->buffer;
+            next_message = text->buffer;
+        }
     }
 
     if (!(next_message && next_message[0])) {
@@ -2710,27 +2733,29 @@ mswin_color_from_string(char *colorstring, HBRUSH *brushptr,
                            - hexadecimals);
         ++colorstring;
         red_value *= 16;
-        red_value += (int) (strchr(hexadecimals, tolower((uchar) *colorstring))
-                            - hexadecimals);
+        red_value +=
+            (int) (strchr(hexadecimals, tolower((uchar) *colorstring))
+                   - hexadecimals);
         ++colorstring;
 
-        green_value = (int) (strchr(hexadecimals,
-                                   tolower((uchar) *colorstring))
-                             - hexadecimals);
+        green_value =
+            (int) (strchr(hexadecimals, tolower((uchar) *colorstring))
+                   - hexadecimals);
         ++colorstring;
         green_value *= 16;
-        green_value += (int) (strchr(hexadecimals,
-                                    tolower((uchar) *colorstring))
-                              - hexadecimals);
+        green_value +=
+            (int) (strchr(hexadecimals, tolower((uchar) *colorstring))
+                   - hexadecimals);
         ++colorstring;
 
-        blue_value = (int) (strchr(hexadecimals, tolower((uchar) *colorstring))
-                            - hexadecimals);
+        blue_value =
+            (int) (strchr(hexadecimals, tolower((uchar) *colorstring))
+                   - hexadecimals);
         ++colorstring;
         blue_value *= 16;
-        blue_value += (int) (strchr(hexadecimals,
-                                   tolower((uchar) *colorstring))
-                             - hexadecimals);
+        blue_value +=
+            (int) (strchr(hexadecimals, tolower((uchar) *colorstring))
+                   - hexadecimals);
         ++colorstring;
 
         *colorptr = RGB(red_value, green_value, blue_value);
@@ -2753,7 +2778,10 @@ mswin_color_from_string(char *colorstring, HBRUSH *brushptr,
     if (max_brush > TOTAL_BRUSHES)
         panic("Too many colors!");
     *brushptr = CreateSolidBrush(*colorptr);
-    brush_table[max_brush++] = *brushptr;
+    if (IndexOk(max_brush, brush_table)) {
+        brush_table[max_brush] = *brushptr;
+        max_brush++;
+    }
 }
 
 void
@@ -3022,7 +3050,7 @@ mswin_status_enablefield(int fieldidx, const char *nm, const char *fmt,
     }
 }
 
-/* TODO: turn this into a commmon helper; multiple identical implementations */
+/* TODO: turn this into a common helper; multiple identical implementations */
 static int
 mswin_condcolor(long bm, unsigned long *bmarray)
 {
@@ -3040,11 +3068,12 @@ static int
 mswin_condattr(long bm, unsigned long *bmarray)
 {
     if (bm && bmarray) {
-        if (bm & bmarray[HL_ATTCLR_DIM]) return HL_DIM;
-        if (bm & bmarray[HL_ATTCLR_BLINK]) return HL_BLINK;
-        if (bm & bmarray[HL_ATTCLR_ULINE]) return HL_ULINE;
+        if (bm & bmarray[HL_ATTCLR_BOLD])    return HL_BOLD;
+        if (bm & bmarray[HL_ATTCLR_DIM])     return HL_DIM;
+        if (bm & bmarray[HL_ATTCLR_ITALIC])  return HL_ITALIC;
+        if (bm & bmarray[HL_ATTCLR_ULINE])   return HL_ULINE;
+        if (bm & bmarray[HL_ATTCLR_BLINK])   return HL_BLINK;
         if (bm & bmarray[HL_ATTCLR_INVERSE]) return HL_INVERSE;
-        if (bm & bmarray[HL_ATTCLR_BOLD]) return HL_BOLD;
     }
 
     return HL_NONE;
@@ -3066,7 +3095,7 @@ status_update(int fldindex, genericptr_t ptr, int chg, int percent, int color, u
                    windowport that it should output all changes received
                    to this point. It marks the end of a bot() cycle.
                 -- fldindex could also be BL_RESET, which is not really
-                   a field index, but is a special advisory to to tell the 
+                   a field index, but is a special advisory to tell the 
                    windowport that it should redisplay all its status fields,
                    even if no changes have been presented to it.
                 -- ptr is usually a "char *", unless fldindex is BL_CONDITION.
@@ -3093,7 +3122,7 @@ status_update(int fldindex, genericptr_t ptr, int chg, int percent, int color, u
                    use to display the text.
                 -- condmasks is a pointer to a set of BL_ATTCLR_MAX unsigned
                    longs telling which conditions should be displayed in each
-                   color and attriubte.
+                   color and attribute.
 */
 
 DISABLE_WARNING_FORMAT_NONLITERAL

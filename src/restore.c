@@ -12,30 +12,30 @@ extern int dotrow; /* shared with save */
 #endif
 
 #ifdef ZEROCOMP
-static void zerocomp_minit(void);
-static void zerocomp_mread(int, genericptr_t, unsigned int);
-static int zerocomp_mgetc(void);
+staticfn void zerocomp_minit(void);
+staticfn void zerocomp_mread(int, genericptr_t, unsigned int);
+staticfn int zerocomp_mgetc(void);
 #endif
 
-static void find_lev_obj(void);
-static void restlevchn(NHFILE *);
-static void restdamage(NHFILE *);
-static void restobj(NHFILE *, struct obj *);
-static struct obj *restobjchn(NHFILE *, boolean);
-static void restmon(NHFILE *, struct monst *);
-static struct monst *restmonchn(NHFILE *);
-static struct fruit *loadfruitchn(NHFILE *);
-static void freefruitchn(struct fruit *);
-static void ghostfruit(struct obj *);
-static boolean restgamestate(NHFILE *);
-static void restlevelstate(void);
-static int restlevelfile(xint8);
-static void rest_bubbles(NHFILE *);
-static void restore_gamelog(NHFILE *);
-static void restore_msghistory(NHFILE *);
-static void reset_oattached_mids(boolean);
-static void rest_levl(NHFILE *, boolean);
-static void rest_stairs(NHFILE *);
+staticfn void find_lev_obj(void);
+staticfn void restlevchn(NHFILE *);
+staticfn void restdamage(NHFILE *);
+staticfn void restobj(NHFILE *, struct obj *);
+staticfn struct obj *restobjchn(NHFILE *, boolean);
+staticfn void restmon(NHFILE *, struct monst *);
+staticfn struct monst *restmonchn(NHFILE *);
+staticfn struct fruit *loadfruitchn(NHFILE *);
+staticfn void freefruitchn(struct fruit *);
+staticfn void ghostfruit(struct obj *);
+staticfn boolean restgamestate(NHFILE *);
+staticfn void restlevelstate(void);
+staticfn int restlevelfile(xint8);
+staticfn void rest_bubbles(NHFILE *);
+staticfn void restore_gamelog(NHFILE *);
+staticfn void restore_msghistory(NHFILE *);
+staticfn void reset_oattached_mids(boolean);
+staticfn void rest_levl(NHFILE *, boolean);
+staticfn void rest_stairs(NHFILE *);
 
 /*
  * Save a mapping of IDs from ghost levels to the current level.  This
@@ -50,8 +50,8 @@ struct bucket {
     } map[N_PER_BUCKET];
 };
 
-static void clear_id_mapping(void);
-static void add_id_mapping(unsigned, unsigned);
+staticfn void clear_id_mapping(void);
+staticfn void add_id_mapping(unsigned, unsigned);
 
 #ifdef AMII_GRAPHICS
 void amii_setpens(int); /* use colors from save file */
@@ -68,11 +68,11 @@ extern int amii_numcolors;
 #define Mread(fd,adr,siz) mread((fd), (genericptr_t) (adr), (unsigned) (siz))
 
 /* Recalculate gl.level.objects[x][y], since this info was not saved. */
-static void
+staticfn void
 find_lev_obj(void)
 {
-    register struct obj *fobjtmp = (struct obj *) 0;
-    register struct obj *otmp;
+    struct obj *fobjtmp = (struct obj *) 0;
+    struct obj *otmp;
     int x, y;
 
     for (x = 0; x < COLNO; x++)
@@ -113,7 +113,7 @@ find_lev_obj(void)
 void
 inven_inuse(boolean quietly)
 {
-    register struct obj *otmp, *otmp2;
+    struct obj *otmp, *otmp2;
 
     for (otmp = gi.invent; otmp; otmp = otmp2) {
         otmp2 = otmp->nobj;
@@ -125,7 +125,7 @@ inven_inuse(boolean quietly)
     }
 }
 
-static void
+staticfn void
 restlevchn(NHFILE *nhfp)
 {
     int cnt = 0;
@@ -151,7 +151,7 @@ restlevchn(NHFILE *nhfp)
     }
 }
 
-static void
+staticfn void
 restdamage(NHFILE *nhfp)
 {
     unsigned int dmgcount = 0;
@@ -179,7 +179,7 @@ restdamage(NHFILE *nhfp)
 }
 
 /* restore one object */
-static void
+staticfn void
 restobj(NHFILE *nhfp, struct obj *otmp)
 {
     int buflen = 0;
@@ -234,11 +234,11 @@ restobj(NHFILE *nhfp, struct obj *otmp)
     }
 }
 
-static struct obj *
+staticfn struct obj *
 restobjchn(NHFILE *nhfp, boolean frozen)
 {
-    register struct obj *otmp, *otmp2 = 0;
-    register struct obj *first = (struct obj *) 0;
+    struct obj *otmp, *otmp2 = 0;
+    struct obj *first = (struct obj *) 0;
     int buflen = 0;
     boolean ghostly = (nhfp->ftype == NHF_BONESFILE);
 
@@ -250,6 +250,7 @@ restobjchn(NHFILE *nhfp, boolean frozen)
             break;
 
         otmp = newobj();
+        assert(otmp != 0);
         restobj(nhfp, otmp);
         if (!first)
             first = otmp;
@@ -302,7 +303,7 @@ restobjchn(NHFILE *nhfp, boolean frozen)
 }
 
 /* restore one monster */
-static void
+staticfn void
 restmon(NHFILE *nhfp, struct monst *mtmp)
 {
     int buflen = 0;
@@ -372,11 +373,11 @@ restmon(NHFILE *nhfp, struct monst *mtmp)
     } /* mextra */
 }
 
-static struct monst *
+staticfn struct monst *
 restmonchn(NHFILE *nhfp)
 {
-    register struct monst *mtmp, *mtmp2 = 0;
-    register struct monst *first = (struct monst *) 0;
+    struct monst *mtmp, *mtmp2 = 0;
+    struct monst *first = (struct monst *) 0;
     int offset, buflen = 0;
     boolean ghostly = (nhfp->ftype == NHF_BONESFILE);
 
@@ -387,6 +388,7 @@ restmonchn(NHFILE *nhfp)
             break;
 
         mtmp = newmonst();
+        assert(mtmp != 0);
         restmon(nhfp, mtmp);
         if (!first)
             first = mtmp;
@@ -449,10 +451,10 @@ restmonchn(NHFILE *nhfp)
     return first;
 }
 
-static struct fruit *
+staticfn struct fruit *
 loadfruitchn(NHFILE *nhfp)
 {
-    register struct fruit *flist, *fnext;
+    struct fruit *flist, *fnext;
 
     flist = 0;
     for (;;) {
@@ -469,10 +471,10 @@ loadfruitchn(NHFILE *nhfp)
     return flist;
 }
 
-static void
-freefruitchn(register struct fruit *flist)
+staticfn void
+freefruitchn(struct fruit *flist)
 {
-    register struct fruit *fnext;
+    struct fruit *fnext;
 
     while (flist) {
         fnext = flist->nextf;
@@ -481,10 +483,10 @@ freefruitchn(register struct fruit *flist)
     }
 }
 
-static void
-ghostfruit(register struct obj *otmp)
+staticfn void
+ghostfruit(struct obj *otmp)
 {
-    register struct fruit *oldf;
+    struct fruit *oldf;
 
     for (oldf = go.oldfruit; oldf; oldf = oldf->nextf)
         if (oldf->fid == otmp->spe)
@@ -502,8 +504,7 @@ ghostfruit(register struct obj *otmp)
 #define SYSOPT_CHECK_SAVE_UID TRUE
 #endif
 
-static
-boolean
+staticfn boolean
 restgamestate(NHFILE *nhfp)
 {
     struct flag newgameflags;
@@ -512,7 +513,7 @@ restgamestate(NHFILE *nhfp)
     struct obj *bc_obj;
     char timebuf[15];
     unsigned long uid = 0;
-    boolean defer_perm_invent;
+    boolean defer_perm_invent, restoring_special;
 
     if (nhfp->structlevel)
         Mread(nhfp->fd, &uid, sizeof uid);
@@ -529,7 +530,7 @@ restgamestate(NHFILE *nhfp)
     newgamecontext = gc.context; /* copy statically init'd context */
     if (nhfp->structlevel)
         Mread(nhfp->fd, &gc.context, sizeof gc.context);
-    gc.context.warntype.species = (gc.context.warntype.speciesidx >= LOW_PM)
+    gc.context.warntype.species = (ismnum(gc.context.warntype.speciesidx))
                                   ? &mons[gc.context.warntype.speciesidx]
                                   : (struct permonst *) 0;
     /* gc.context.victual.piece, .tin.tin, .spellbook.book, and .polearm.hitmon
@@ -548,7 +549,7 @@ restgamestate(NHFILE *nhfp)
        of unpaid items before shopkeeper's bill is available is a no-no;
        named fruit names aren't accessible yet either
        [3.6.2: moved perm_invent from flags to iflags to keep it out of
-       save files; retaining the override here is simpler than trying to
+       save files; retaining the override here is simpler than trying
        to figure out where it really belongs now] */
     defer_perm_invent = iflags.perm_invent;
     iflags.perm_invent = FALSE;
@@ -557,11 +558,12 @@ restgamestate(NHFILE *nhfp)
        in the discover case, we don't want to set that for a normal
        game until after the save file has been removed */
     iflags.deferred_X = (newgameflags.explore && !discover);
+    restoring_special = (wizard || discover);
     if (newgameflags.debug) {
         /* authorized by startup code; wizard mode exists and is allowed */
         wizard = TRUE, discover = iflags.deferred_X = FALSE;
-    } else if (wizard) {
-        /* specified by save file; check authorization now */
+    } else if (restoring_special) {
+        /* specified by save file; check authorization now. */
         set_playmode();
     }
     role_init(); /* Reset the initial role, race, gender, and alignment */
@@ -571,6 +573,13 @@ restgamestate(NHFILE *nhfp)
     if (nhfp->structlevel)
         Mread(nhfp->fd, &u, sizeof u);
     gy.youmonst.cham = u.mcham;
+
+    if (restoring_special && iflags.explore_error_flag) {
+        /* savefile has wizard or explore mode, but player is no longer
+           authorized to access either; can't downgrade mode any further, so
+           fail restoration. */
+        u.uhp = 0; 
+    }
 
     if (nhfp->structlevel)
         Mread(nhfp->fd, timebuf, 14);
@@ -682,6 +691,7 @@ restgamestate(NHFILE *nhfp)
     /* must come after all mons & objs are restored */
     relink_timers(FALSE);
     relink_light_sources(FALSE);
+    adj_erinys(u.ualign.abuse);
     /* inventory display is now viable */
     iflags.perm_invent = defer_perm_invent;
     return TRUE;
@@ -689,7 +699,7 @@ restgamestate(NHFILE *nhfp)
 
 /* update game state pointers to those valid for the current level (so we
    don't dereference a wild u.ustuck when saving game state, for instance) */
-static void
+staticfn void
 restlevelstate(void)
 {
     /*
@@ -700,7 +710,7 @@ restlevelstate(void)
 }
 
 /*ARGSUSED*/
-static int
+staticfn int
 restlevelfile(xint8 ltmp)
 {
     char whynot[BUFSZ];
@@ -812,7 +822,7 @@ dorecover(NHFILE *nhfp)
     }
     restoreinfo.mread_flags = 0;
     rewind_nhfile(nhfp);        /* return to beginning of file */
-    (void) validate(nhfp, (char *) 0);
+    (void) validate(nhfp, (char *) 0, FALSE);
     get_plname_from_file(nhfp, gp.plname);
 
     getlev(nhfp, 0, (xint8) 0);
@@ -871,7 +881,7 @@ dorecover(NHFILE *nhfp)
     return 1;
 }
 
-static void
+staticfn void
 rest_stairs(NHFILE *nhfp)
 {
     int buflen = 0;
@@ -926,7 +936,7 @@ restcemetery(NHFILE *nhfp, struct cemetery **cemeteryaddr)
 }
 
 /*ARGSUSED*/
-static void
+staticfn void
 rest_levl(
     NHFILE *nhfp,
 #ifdef RLECOMP
@@ -983,8 +993,8 @@ trickery(char *reason)
 void
 getlev(NHFILE *nhfp, int pid, xint8 lev)
 {
-    register struct trap *trap;
-    register struct monst *mtmp;
+    struct trap *trap;
+    struct monst *mtmp;
     long elapsed;
     branch *br;
     int hpid = 0;
@@ -994,6 +1004,8 @@ getlev(NHFILE *nhfp, int pid, xint8 lev)
 #ifdef TOS
     short tlev;
 #endif
+
+    gp.program_state.in_getlev = TRUE;
 
     if (ghostly)
         clear_id_mapping();
@@ -1047,11 +1059,15 @@ getlev(NHFILE *nhfp, int pid, xint8 lev)
         Mread(nhfp->fd, &gu.updest, sizeof gu.updest);
         Mread(nhfp->fd, &gd.dndest, sizeof gd.dndest);
         Mread(nhfp->fd, &gl.level.flags, sizeof gl.level.flags);
-        if (gd.doors)
+        if (gd.doors) {
             free(gd.doors);
+            gd.doors = 0;
+        }
         Mread(nhfp->fd, &gd.doors_alloc, sizeof gd.doors_alloc);
-        gd.doors = (coord *) alloc(gd.doors_alloc * sizeof (coord));
-        Mread(nhfp->fd, gd.doors, gd.doors_alloc * sizeof (coord));
+        if (gd.doors_alloc) { /* avoid pointless alloc(0) */
+            gd.doors = (coord *) alloc(gd.doors_alloc * sizeof (coord));
+            Mread(nhfp->fd, gd.doors, gd.doors_alloc * sizeof (coord));
+        }
     }
     rest_rooms(nhfp); /* No joke :-) */
     if (gn.nroom)
@@ -1141,6 +1157,8 @@ getlev(NHFILE *nhfp, int pid, xint8 lev)
     restdamage(nhfp);
     rest_regions(nhfp);
     rest_bubbles(nhfp); /* for water and air; empty marker on other levels */
+    load_exclusions(nhfp);
+    rest_track(nhfp);
 
     if (ghostly) {
         stairway *stway = gs.stairs;
@@ -1217,6 +1235,7 @@ getlev(NHFILE *nhfp, int pid, xint8 lev)
 
     if (ghostly)
         clear_id_mapping();
+    gp.program_state.in_getlev = FALSE;
 }
 
 void
@@ -1232,7 +1251,7 @@ get_plname_from_file(NHFILE *nhfp, char *plbuf)
 }
 
 /* restore Plane of Water's air bubbles and Plane of Air's clouds */
-static void
+staticfn void
 rest_bubbles(NHFILE *nhfp)
 {
     xint8 bbubbly;
@@ -1248,7 +1267,7 @@ rest_bubbles(NHFILE *nhfp)
         restore_waterlevel(nhfp);
 }
 
-static void
+staticfn void
 restore_gamelog(NHFILE *nhfp)
 {
     int slen = 0;
@@ -1271,7 +1290,7 @@ restore_gamelog(NHFILE *nhfp)
     }
 }
 
-static void
+staticfn void
 restore_msghistory(NHFILE *nhfp)
 {
     int msgsize = 0, msgcount = 0;
@@ -1296,7 +1315,7 @@ restore_msghistory(NHFILE *nhfp)
 }
 
 /* Clear all structures for object and monster ID mapping. */
-static void
+staticfn void
 clear_id_mapping(void)
 {
     struct bucket *curr;
@@ -1309,7 +1328,7 @@ clear_id_mapping(void)
 }
 
 /* Add a mapping to the ID map. */
-static void
+staticfn void
 add_id_mapping(unsigned int gid, unsigned int nid)
 {
     int idx;
@@ -1359,7 +1378,7 @@ lookup_id_mapping(unsigned int gid, unsigned int *nidp)
     return FALSE;
 }
 
-static void
+staticfn void
 reset_oattached_mids(boolean ghostly)
 {
     struct obj *otmp;
@@ -1394,7 +1413,7 @@ restore_menu(
     char **saved;
     menu_item *chosen_game = (menu_item *) 0;
     int k, clet, ch = 0; /* ch: 0 => new game */
-    int clr = 0;
+    int clr = NO_COLOR;
 
     *gp.plname = '\0';
     saved = get_saved_games(); /* array of character names */
@@ -1407,13 +1426,10 @@ restore_menu(
             clear_nhwindow(bannerwin);
             /* COPYRIGHT_BANNER_[ABCD] */
             for (k = 1; k <= 4; ++k)
-                add_menu(tmpwin, &nul_glyphinfo, &any, 0, 0, ATR_NONE,
-                         clr, copyright_banner_line(k), MENU_ITEMFLAGS_NONE);
-            add_menu(tmpwin, &nul_glyphinfo, &any, 0, 0, ATR_NONE, clr, "",
-                     MENU_ITEMFLAGS_NONE);
+                add_menu_str(tmpwin, copyright_banner_line(k));
+            add_menu_str(tmpwin, "");
         }
-        add_menu(tmpwin, &nul_glyphinfo, &any, 0, 0, ATR_NONE,
-                 clr, "Select one of your saved games", MENU_ITEMFLAGS_NONE);
+        add_menu_str(tmpwin, "Select one of your saved games");
         for (k = 0; saved[k]; ++k) {
             any.a_int = k + 1;
             add_menu(tmpwin, &nul_glyphinfo, &any, 0, 0,
@@ -1455,7 +1471,7 @@ restore_menu(
 #endif /* SELECTSAVED */
 
 int
-validate(NHFILE *nhfp, const char *name)
+validate(NHFILE *nhfp, const char *name, boolean without_waitsynch_perfile)
 {
     readLenType rlen = 0;
     struct savefile_info sfi;
@@ -1464,6 +1480,8 @@ validate(NHFILE *nhfp, const char *name)
 
     if (nhfp->structlevel)
         utdflags |= UTD_CHECKSIZES;
+    if (without_waitsynch_perfile)
+        utdflags |= UTD_WITHOUT_WAITSYNCH_PERFILE;
     if (!(reslt = uptodate(nhfp, name, utdflags)))
         return 1;
 

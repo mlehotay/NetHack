@@ -40,12 +40,12 @@
  *                       random intervals.
  */
 
-static boolean md_start(coord *);
-static boolean md_stop(coord *, coord *);
-static boolean md_rush(struct monst *, int, int);
-static void newmail(struct mail_info *);
+staticfn boolean md_start(coord *);
+staticfn boolean md_stop(coord *, coord *);
+staticfn boolean md_rush(struct monst *, int, int);
+staticfn void newmail(struct mail_info *);
 #if defined(SIMPLE_MAIL) || defined(SERVER_ADMIN_MSG)
-static void read_simplemail(const char *mbox, boolean adminmsg);
+staticfn void read_simplemail(const char *mbox, boolean adminmsg);
 #endif
 
 #if !defined(UNIX) && !defined(VMS)
@@ -145,7 +145,7 @@ getmailstatus(void)
  * Pick coordinates for a starting position for the mail daemon.  Called
  * from newmail() and newphone().
  */
-static boolean
+staticfn boolean
 md_start(coord *startp)
 {
     coord testcc;     /* scratch coordinates */
@@ -243,7 +243,7 @@ md_start(coord *startp)
  * enexto().  Use enexto() as a last resort because enexto() chooses
  * its point randomly, which is not what we want.
  */
-static boolean
+staticfn boolean
 md_stop(coord *stopp,  /* stopping position (we fill it in) */
         coord *startp) /* starting position (read only) */
 {
@@ -273,7 +273,7 @@ md_stop(coord *stopp,  /* stopping position (we fill it in) */
 }
 
 /* Let the mail daemon have a larger vocabulary. */
-static NEARDATA const char *mail_text[] = { "Gangway!", "Look out!",
+staticfn NEARDATA const char *mail_text[] = { "Gangway!", "Look out!",
                                             "Pardon me!" };
 #define md_exclamations() (mail_text[rn2(3)])
 
@@ -283,12 +283,12 @@ static NEARDATA const char *mail_text[] = { "Gangway!", "Look out!",
  * FALSE if the md gets stuck in a position where there is a monster.  Return
  * TRUE otherwise.
  */
-static boolean
+staticfn boolean
 md_rush(struct monst *md,
-        register int tx, register int ty) /* destination of mail daemon */
+        int tx, int ty) /* destination of mail daemon */
 {
     struct monst *mon;            /* displaced monster */
-    register int dx, dy;          /* direction counters */
+    int dx, dy;          /* direction counters */
     int fx = md->mx, fy = md->my; /* current location */
     int nfx = fx, nfy = fy,       /* new location */
         d1, d2;                   /* shortest distances */
@@ -387,7 +387,7 @@ md_rush(struct monst *md,
 
 /* Deliver a scroll of mail. */
 /*ARGSUSED*/
-static void
+staticfn void
 newmail(struct mail_info *info)
 {
     struct monst *md;
@@ -416,7 +416,7 @@ newmail(struct mail_info *info)
         if (info->response_cmd)
             new_omailcmd(obj, info->response_cmd);
 
-        if (!next2u(md->mx, md->my)) {
+        if (!m_next2u(md)) {
             SetVoice(md, 0, 80, 0);
             verbalize("Catch!");
         }
@@ -568,7 +568,7 @@ ckmailstatus(void)
 void
 read_simplemail(const char *mbox, boolean adminmsg)
 {
-    FILE* mb = fopen(mbox, "r");
+    FILE *mb = fopen(mbox, "r");
     char curline[128], *msg;
     boolean seen_one_already = FALSE;
 #ifdef SIMPLE_MAIL
@@ -684,7 +684,7 @@ void
 readmail(struct obj *otmp UNUSED)
 {
 #ifdef DEF_MAILREADER /* This implies that UNIX is defined */
-    register const char *mr = 0;
+    const char *mr = 0;
 #endif /* DEF_MAILREADER */
 #ifdef SIMPLE_MAIL
     read_simplemail(mailbox, FALSE);

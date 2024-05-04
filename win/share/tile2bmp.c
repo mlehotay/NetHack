@@ -15,6 +15,8 @@
 #endif
 
 #include "config.h"
+#include "hacklib.h"
+
 #include "tile.h"
 extern void monst_globals_init(void);
 extern void objects_globals_init(void);
@@ -142,7 +144,7 @@ DISABLE_WARNING_UNREACHABLE_CODE
 int
 main(int argc, char *argv[])
 {
-    int i, j;
+    int i, j, number_of_rows, number_in_final_row;
     uchar *c;
     char tilefile_full_path[256] = { 0 };
 
@@ -251,8 +253,19 @@ main(int argc, char *argv[])
     }
     fwrite(newbmp, bmpsize, 1, fp);
     fclose(fp);
-    Fprintf(stderr, "Total of %d tiles written to %s.\n",
-            tiles_counted, bmpname);
+    number_of_rows = tiles_counted / max_tiles_in_row;
+    number_in_final_row = tiles_counted % max_tiles_in_row;
+
+    Fprintf(stderr, "Total of %d tiles written to %s, "
+            "%d full rows of %d tiles",
+            tiles_counted, bmpname,
+            number_of_rows, max_tiles_in_row);
+    if (number_in_final_row != 0) {
+        Fprintf(stderr, ", final row %d has %d tile%s",
+                number_of_rows + 1, number_in_final_row,
+                number_in_final_row > 1 ? "s" : "");
+    }
+    (void) fputs(".\n\n", stderr);
     free((genericptr_t) newbmp);
 
     exit(EXIT_SUCCESS);

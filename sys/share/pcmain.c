@@ -1,4 +1,4 @@
-/* NetHack 3.7	pcmain.c	$NHDT-Date: 1596498282 2020/08/03 23:44:42 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.121 $ */
+/* NetHack 3.7	pcmain.c	$NHDT-Date: 1693359605 2023/08/30 01:40:05 $  $NHDT-Branch: keni-crashweb2 $:$NHDT-Revision: 1.133 $ */
 /* Copyright (c) Stichting Mathematisch Centrum, Amsterdam, 1985. */
 /*-Copyright (c) Derek S. Ray, 2015. */
 /* NetHack may be freely redistributed.  See license for details. */
@@ -76,7 +76,7 @@ mingw_main(int argc, char *argv[])
 {
     boolean resuming;
 
-    early_init();
+    early_init(argc, argv);
     resuming = pcmain(argc, argv);
     moveloop(resuming);
     nethack_exit(EXIT_SUCCESS);
@@ -88,7 +88,7 @@ boolean
 pcmain(int argc, char *argv[])
 {
     NHFILE *nhfp;
-    register char *dir;
+    char *dir;
 #if defined(MSDOS)
     char *envp = NULL;
     char *sptr = NULL;
@@ -209,7 +209,7 @@ _CrtSetReportFile(_CRT_ASSERT, _CRTDBG_FILE_STDERR);*/
                 }
             }
 
-            /* okay so we have the overriding and definitive locaton
+            /* okay so we have the overriding and definitive location
             for sysconf, but only in the event that there is not a 
             sysconf file there (for whatever reason), check a secondary
             location rather than abort. */
@@ -279,7 +279,7 @@ _CrtSetReportFile(_CRT_ASSERT, _CRTDBG_FILE_STDERR);*/
     }
 #endif
 
-#if defined(TOS) && defined(TEXTCOLOR)
+#if defined(TOS)
     if (iflags.BIOS && iflags.use_color)
         set_colors();
 #endif
@@ -718,6 +718,13 @@ authorize_wizard_mode(void)
     if (!strcmp(gp.plname, WIZARD_NAME))
         return TRUE;
     return FALSE;
+}
+
+/* similar to above, validate explore mode access */
+boolean
+authorize_explore_mode(void)
+{
+    return TRUE; /* no restrictions on explore mode */
 }
 
 #ifdef EXEPATH

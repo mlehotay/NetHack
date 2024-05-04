@@ -124,9 +124,9 @@ struct obj {
 #define on_ice recharged    /* corpse on ice */
     Bitfield(lamplit, 1);   /* a light-source -- can be lit */
     Bitfield(globby, 1);    /* combines with like types on adjacent squares */
-    Bitfield(greased, 1);    /* covered with grease */
-    Bitfield(nomerge, 1);    /* set temporarily to prevent merging */
-    Bitfield(was_thrown, 1); /* thrown by hero since last picked up */
+    Bitfield(greased, 1);   /* covered with grease */
+    Bitfield(nomerge, 1);   /* set temporarily to prevent merging */
+    Bitfield(how_lost, 2);  /* stolen by mon or thrown, dropped by hero */
 
     Bitfield(in_use, 1); /* for magic items before useup items */
     Bitfield(bypass, 1); /* mark this as an object to be skipped by bhito() */
@@ -137,15 +137,16 @@ struct obj {
                           * and for horn of plenty (when tipping) even though
                           * they have no locks */
     Bitfield(pickup_prev, 1); /* was picked up previously */
+    Bitfield(ghostly, 1); /* it just got placed into a bones file */
 #if 0
     /* not implemented */
     Bitfield(tknown, 1); /* trap status known for chests */
     Bitfield(eknown, 1); /* effect known for wands zapped or rings worn when
                           * not seen yet after being picked up while blind
                           * [maybe for remaining stack of used potion too] */
-    /* 1 free bit */
+    /* 7 free bits */
 #else
-    /* 3 free bits */
+    /* 1 free bit */
 #endif
 
     int corpsenm;         /* type of corpse is mons[corpsenm] */
@@ -256,7 +257,7 @@ struct obj {
 /* 'missile' aspect is up to the caller and does not imply is_missile();
    rings might be launched as missiles when being scattered by an explosion */
 #define stone_missile(o) \
-    ((o) && (objects[(o)->otyp].oc_material == GEMSTONE             \
+    ((objects[(o)->otyp].oc_material == GEMSTONE             \
              || (objects[(o)->otyp].oc_material == MINERAL))        \
          && (o)->oclass != RING_CLASS)
 
@@ -412,13 +413,16 @@ struct obj {
 
 #define unpolyable(o) ((o)->otyp == WAN_POLYMORPH \
                        || (o)->otyp == SPE_POLYMORPH \
-                       || (o)->otyp == POT_POLYMORPH)
+                       || (o)->otyp == POT_POLYMORPH \
+                       || (o)->otyp == AMULET_OF_UNCHANGING)
 
 /* achievement tracking; 3.6.x did this differently */
 #define is_mines_prize(o) ((o)->o_id == gc.context.achieveo.mines_prize_oid)
 #define is_soko_prize(o) ((o)->o_id == gc.context.achieveo.soko_prize_oid)
 
-#define is_art(o,art) ((o) && (o)->oartifact == (art))
+/* is_art() is now a function in artifact.c */
+/* #define is_art(o,art) ((o) && (o)->oartifact == (art)) */
+
 #define u_wield_art(art) is_art(uwep, art)
 
 /* mummy wrappings are more versatile sizewise than other cloaks */
@@ -456,6 +460,12 @@ struct obj {
 #define POTHIT_HERO_THROW  1 /* thrown by hero */
 #define POTHIT_MONST_THROW 2 /* thrown by a monster */
 #define POTHIT_OTHER_THROW 3 /* propelled by some other means [scatter()] */
+
+/* tracking how an item left your inventory */
+#define LOST_NONE    0 /* still in inventory, or method not covered below */
+#define LOST_THROWN  1 /* thrown or fired by the hero */
+#define LOST_DROPPED 2 /* dropped or tipped out of a container by the hero */
+#define LOST_STOLEN  3 /* stolen from hero's inventory by a monster */
 
 /*
  *  Notes for adding new oextra structures:

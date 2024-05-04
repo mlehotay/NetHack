@@ -1,4 +1,4 @@
-/* NetHack 3.7	dlb_main.c	$NHDT-Date: 1687547434 2023/06/23 19:10:34 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.24 $ */
+/* NetHack 3.7	dlb_main.c	$NHDT-Date: 1706213798 2024/01/25 20:16:38 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.27 $ */
 /* Copyright (c) Kenneth Lorber, Bethesda, Maryland, 1993. */
 /* NetHack may be freely redistributed.  See license for details. */
 
@@ -7,6 +7,8 @@
 
 #include "config.h"
 #include "dlb.h"
+#include "hacklib.h"
+
 #if !defined(O_WRONLY) && !defined(MAC) && !defined(AZTEC_C)
 #include <fcntl.h>
 #endif
@@ -16,10 +18,7 @@
 
 ATTRNORETURN static void xexit(int) NORETURN;
 ATTRNORETURN extern void panic(const char *, ...) NORETURN;
-char *eos(char *); /* also used by dlb.c */
 FILE *fopen_datafile(const char *, const char *);
-unsigned FITSuint_(unsigned long long, const char *, int);
-unsigned Strlen_(const char *, const char *, int);
 
 #ifdef DLB
 #ifdef DLBLIB
@@ -138,14 +137,6 @@ FILE *
 fopen_datafile(const char *filename, const char *mode)
 {
     return fopen(filename, mode);
-}
-
-char *
-eos(char *s)
-{
-    while (*s)
-        s++;
-    return s;
 }
 
 #ifdef DLB
@@ -367,8 +358,7 @@ main(int argc UNUSED_if_no_DLB, char **argv UNUSED_if_no_DLB)
             for (; ap < argc; ap++, nfiles++) {
                 if (nfiles == ldlimit)
                     grow_ld(&ld, &ldlimit, DLB_FILES_ALLOC / 5);
-                ld[nfiles].fname = (char *) alloc(Strlen(argv[ap]) + 1);
-                Strcpy(ld[nfiles].fname, argv[ap]);
+                ld[nfiles].fname = dupstr(argv[ap]);
             }
         }
 
@@ -385,8 +375,7 @@ main(int argc UNUSED_if_no_DLB, char **argv UNUSED_if_no_DLB)
                 if (nfiles == ldlimit)
                     grow_ld(&ld, &ldlimit, DLB_FILES_ALLOC / 5);
                 *(eos(buf) - 1) = '\0'; /* strip newline */
-                ld[nfiles].fname = (char *) alloc((int)strlen(buf) + 1);
-                Strcpy(ld[nfiles].fname, buf);
+                ld[nfiles].fname = dupstr(buf);
             }
             fclose(list);
         }
@@ -409,7 +398,7 @@ main(int argc UNUSED_if_no_DLB, char **argv UNUSED_if_no_DLB)
             ld[i].fsize = lseek(fd, 0, SEEK_END);
             ld[i].foffset = flen;
 
-            slen += strlen(ld[i].fname); /* don't add null (yet) */
+            slen += (long) strlen(ld[i].fname); /* don't add null (yet) */
             flen += ld[i].fsize;
             close(fd);
         }
@@ -422,10 +411,10 @@ main(int argc UNUSED_if_no_DLB, char **argv UNUSED_if_no_DLB)
             xexit(EXIT_FAILURE);
         }
 
-        /* caculate directory size */
+        /* calculate directory size */
         dir_size = 40                    /* header line (see below) */
                    + ((nfiles + 1) * 11) /* handling+file offset+SP+newline */
-                   + slen + strlen(DLB_DIRECTORY); /* file names */
+                   + slen + (long) strlen(DLB_DIRECTORY); /* file names */
 
         /* write directory */
         write_dlb_directory(out, nfiles, ld, slen, dir_size, flen);
@@ -552,16 +541,4 @@ xexit(int retcd)
     /*NOTREACHED*/
 }
 
-/* from hacklib.c */
-unsigned
-Strlen_(const char *str, const char *file, int line)
-{
-    size_t len = strnlen(str, LARGEST_INT);
-
-    if (len == LARGEST_INT) {
-        panic("%s:%d string too long", file, line);
-        /*NOTREACHED*/
-    }
-    return (unsigned) len;
-}
 /*dlb_main.c*/

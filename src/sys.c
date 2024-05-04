@@ -1,4 +1,4 @@
-/* NetHack 3.7	sys.c	$NHDT-Date: 1596498215 2020/08/03 23:43:35 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.57 $ */
+/* NetHack 3.7	sys.c	$NHDT-Date: 1693083254 2023/08/26 20:54:14 $  $NHDT-Branch: keni-crashweb2 $:$NHDT-Revision: 1.63 $ */
 /* Copyright (c) Kenneth Lorber, Kensington, Maryland, 2008. */
 /* NetHack may be freely redistributed.  See license for details. */
 
@@ -70,6 +70,7 @@ sys_early_init(void)
 #endif
 #endif
 #endif
+    sysopt.crashreporturl = NULL;
 
     sysopt.check_save_uid = 1;
     sysopt.check_plname = 0;
@@ -106,7 +107,7 @@ sysopt_release(void)
         sysopt.debugfiles = (char *) 0;
 #ifdef DUMPLOG
     if (sysopt.dumplogfile)
-        free((genericptr_t)sysopt.dumplogfile), sysopt.dumplogfile=(char *)0;
+        free((genericptr_t) sysopt.dumplogfile), sysopt.dumplogfile=(char *) 0;
 #endif
     if (sysopt.genericusers)
         free((genericptr_t) sysopt.genericusers),

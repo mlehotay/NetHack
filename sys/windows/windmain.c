@@ -1,4 +1,4 @@
-/* NetHack 3.7	windmain.c	$NHDT-Date: 1596498320 2020/08/03 23:45:20 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.157 $ */
+/* NetHack 3.7	windmain.c	$NHDT-Date: 1693359653 2023/08/30 01:40:53 $  $NHDT-Branch: keni-crashweb2 $:$NHDT-Revision: 1.189 $ */
 /* Copyright (c) Derek S. Ray, 2015. */
 /* NetHack may be freely redistributed.  See license for details. */
 
@@ -114,10 +114,12 @@ void set_default_prefix_locations(const char *programPath);
 void copy_sysconf_content(void);
 void copy_config_content(void);
 void copy_hack_content(void);
+void copy_symbols_content(void);
+
 #ifdef PORT_HELP
 void port_help(void);
 #endif
-void windows_raw_print(const char* str);
+void windows_raw_print(const char *str);
 
 
 
@@ -158,10 +160,15 @@ get_known_folder_path(
 void
 create_directory(const char * path)
 {
-    HRESULT hr = CreateDirectoryA(path, NULL);
 
-    if (FAILED(hr) && hr != ERROR_ALREADY_EXISTS)
-        error("Unable to create directory '%s'", path);
+    BOOL dres = CreateDirectoryA(path, NULL);
+
+    if (!dres) {
+        DWORD dw = GetLastError();
+
+        if (dw != ERROR_ALREADY_EXISTS)
+            error("Unable to create directory '%s'", path);
+    }
 }
 
 RESTORE_WARNING_UNREACHABLE_CODE
@@ -343,7 +350,8 @@ copy_file(
     const char * dst_folder,
     const char * dst_name,
     const char * src_folder,
-    const char * src_name)
+    const char * src_name,
+    boolean copy_even_if_it_exists)
 {
     char dst_path[MAX_PATH];
     strcpy(dst_path, dst_folder);
@@ -356,11 +364,11 @@ copy_file(
     if(!file_exists(src_path))
         error("Unable to copy file '%s' as it does not exist", src_path);
 
-    if(file_exists(dst_path))
+    if(file_exists(dst_path) && !copy_even_if_it_exists)
         return;
 
-    BOOL success = CopyFileA(src_path, dst_path, TRUE);
-    if(!success) error("Failed to copy '%s' to '%s'", src_path, dst_path);
+    BOOL success = CopyFileA(src_path, dst_path, !copy_even_if_it_exists);
+    if(!success) error("Failed to copy '%s' to '%s' (%d)", src_path, dst_path, errno);
 }
 
 /* update file copying if it does not exist or src is newer then dst */
@@ -399,6 +407,32 @@ update_file(
 
 }
 
+void
+copy_symbols_content(void)
+{
+    char dst_path[MAX_PATH],
+         interim_path[MAX_PATH],
+         orig_path[MAX_PATH];
+
+    /* Using the SYSCONFPREFIX path, lock it so that it does not change */
+    fqn_prefix_locked[SYSCONFPREFIX] = TRUE;
+
+    strcpy(orig_path, gf.fqn_prefix[DATAPREFIX]);
+    strcat(orig_path, SYMBOLS_TEMPLATE);
+    strcpy(interim_path, gf.fqn_prefix[SYSCONFPREFIX]);
+    strcat(interim_path, SYMBOLS_TEMPLATE);
+    strcpy(dst_path, gf.fqn_prefix[SYSCONFPREFIX]);
+    strcat(dst_path, SYMBOLS);
+
+    if (!file_exists(interim_path) || file_newer(orig_path, interim_path))
+        copy_file(gf.fqn_prefix[SYSCONFPREFIX], SYMBOLS_TEMPLATE,
+                  gf.fqn_prefix[DATAPREFIX], SYMBOLS_TEMPLATE, TRUE);
+
+    if (!file_exists(dst_path) || file_newer(interim_path, dst_path))
+        copy_file(gf.fqn_prefix[SYSCONFPREFIX], SYMBOLS,
+                    gf.fqn_prefix[SYSCONFPREFIX], SYMBOLS_TEMPLATE, TRUE);
+}
+
 void copy_sysconf_content(void)
 {
     /* Using the SYSCONFPREFIX path, lock it so that it does not change */
@@ -407,15 +441,9 @@ void copy_sysconf_content(void)
     update_file(gf.fqn_prefix[SYSCONFPREFIX], SYSCF_TEMPLATE,
         gf.fqn_prefix[DATAPREFIX], SYSCF_TEMPLATE, FALSE);
 
-//    update_file(gf.fqn_prefix[SYSCONFPREFIX], SYMBOLS_TEMPLATE,
-//        gf.fqn_prefix[DATAPREFIX], SYMBOLS_TEMPLATE, FALSE);
-
     /* If the required early game file does not exist, copy it */
     copy_file(gf.fqn_prefix[SYSCONFPREFIX], SYSCF_FILE,
-        gf.fqn_prefix[DATAPREFIX], SYSCF_TEMPLATE);
-
-    update_file(gf.fqn_prefix[SYSCONFPREFIX], SYMBOLS,
-        gf.fqn_prefix[DATAPREFIX], SYMBOLS, TRUE);
+        gf.fqn_prefix[DATAPREFIX], SYSCF_TEMPLATE, FALSE);
 
 }
 
@@ -431,7 +459,7 @@ void copy_config_content(void)
     /* If the required early game file does not exist, copy it */
     /* NOTE: We never replace .nethackrc or sysconf */
     copy_file(gf.fqn_prefix[CONFIGPREFIX], CONFIG_FILE,
-        gf.fqn_prefix[DATAPREFIX], CONFIG_TEMPLATE);
+        gf.fqn_prefix[DATAPREFIX], CONFIG_TEMPLATE, FALSE);
 }
 
 void
@@ -471,6 +499,9 @@ MAIN(int argc, char *argv[])
     char fnamebuf[BUFSZ], encodedfnamebuf[BUFSZ];
     char failbuf[BUFSZ];
     int getlock_result = 0;
+    HWND hwnd;
+    HDC hdc;
+    int bpp;
 
 #ifdef _MSC_VER
     _CrtSetDbgFlag ( _CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF );
@@ -484,7 +515,17 @@ MAIN(int argc, char *argv[])
     safe_routines();
 #endif /* WIN32CON */
 
-    early_init();
+    early_init(argc, argv);
+    /* setting iflags.colorcount has to be after early_init()
+     * because it zeros out all of iflags */
+    hwnd = GetDesktopWindow();
+    hdc = GetDC(hwnd);
+    if (hdc) {
+        bpp = GetDeviceCaps(hdc, BITSPIXEL);
+        iflags.colorcount = (bpp >= 16) ? 16777216 : (bpp >= 8) ? 256 : 16;
+        ReleaseDC(hwnd, hdc);
+    }
+
 #ifdef _MSC_VER
 #ifdef DEBUG
     /* set these appropriately for VS debugging */
@@ -517,19 +558,20 @@ _CrtSetReportFile(_CRT_ASSERT, _CRTDBG_FILE_STDERR);*/
     if (getcwd(orgdir, sizeof orgdir) == (char *) 0)
         error("NetHack: current directory path too long");
 #endif
-
+    initoptions_init();	// This allows OPTIONS in syscf on Windows.
     set_default_prefix_locations(argv[0]);
 
 #if defined(CHDIR) && !defined(NOCWD_ASSUMPTIONS)
     chdir(gf.fqn_prefix[HACKPREFIX]);
 #endif
 
-    if (GUILaunched || IsDebuggerPresent())
-        getreturn_enabled = TRUE;
+    /* if (GUILaunched || IsDebuggerPresent()) */
+    getreturn_enabled = TRUE;
 
     check_recordfile((char *) 0);
     iflags.windowtype_deferred = TRUE;
     copy_sysconf_content();
+    copy_symbols_content();
     initoptions();
 
     /* Now that sysconf has had a chance to set the TROUBLEPREFIX, don't
@@ -592,8 +634,9 @@ _CrtSetReportFile(_CRT_ASSERT, _CRTDBG_FILE_STDERR);*/
             windowtype = gc.chosen_windowtype;
     }
     choose_windows(windowtype);
-
-#if defined(SND_LIB_WINDSOUND)
+#if defined(SND_LIB_FMOD)
+    assign_soundlib(soundlib_fmod);
+#elif defined(SND_LIB_WINDSOUND)
     assign_soundlib(soundlib_windsound);
 #endif
 
@@ -607,6 +650,9 @@ _CrtSetReportFile(_CRT_ASSERT, _CRTDBG_FILE_STDERR);*/
 #ifdef WIN32CON
     if (WINDOWPORT(tty))
         consoletty_open(1);
+#endif
+#ifdef WINCHAIN
+    commit_windowchain();
 #endif
 
     init_nhwindows(&argc, argv);
@@ -672,7 +718,7 @@ _CrtSetReportFile(_CRT_ASSERT, _CRTDBG_FILE_STDERR);*/
         raw_print("Cannot create lock file");
     } else {
         gh.hackpid = GetCurrentProcessId();
-        write(nhfp->fd, (genericptr_t) &gh.hackpid, sizeof(gh.hackpid));
+        (void) write(nhfp->fd, (genericptr_t) &gh.hackpid, sizeof(gh.hackpid));
         close_nhfile(nhfp);
     }
     /*
@@ -782,6 +828,11 @@ process_options(int argc, char * argv[])
             argc--;
             argv++;
         }
+#if defined(CRASHREPORT)
+      	if (argcheck(argc, argv, ARG_BIDSHOW) == 2) {
+		nethack_exit(EXIT_SUCCESS);
+	}
+#endif
         if (argc > 1 && !strncmp(argv[1], "-d", 2) && argv[1][2] != 'e') {
             /* avoid matching "-dec" for DECgraphics; since the man page
              * says -d directory, hope nobody's using -desomething_else
@@ -991,6 +1042,13 @@ authorize_wizard_mode(void)
     return FALSE;
 }
 
+/* similar to above, validate explore mode access */
+boolean
+authorize_explore_mode(void)
+{
+    return TRUE; /* no restrictions on explore mode */
+}
+
 #define PATH_SEPARATOR '\\'
 
 #if defined(WIN32) && !defined(WIN32CON)
@@ -1033,8 +1091,8 @@ fakeconsole(void)
             AllocConsole();
             AttachConsole(GetCurrentProcessId());
             /*  rval = SetStdHandle(STD_OUTPUT_HANDLE, hWrite); */
-            freopen("CON", "w", stdout);
-            freopen("CON", "r", stdin);
+            (void) freopen("CON", "w", stdout);
+            (void) freopen("CON", "r", stdin);
         }
         has_fakeconsole = TRUE;
     }
@@ -1096,7 +1154,7 @@ windows_exepath(void)
 }
 
 char *
-translate_path_variables(const char* str, char* buf)
+translate_path_variables(const char *str, char *buf)
 {
     const char *src;
     char evar[BUFSZ], *dest, *envp, *eptr = (char *) 0;
@@ -1150,7 +1208,7 @@ translate_path_variables(const char* str, char* buf)
 
 /*ARGSUSED*/
 void
-windows_raw_print(const char* str)
+windows_raw_print(const char *str)
 {
     if (str)
         fprintf(stdout, "%s\n", str);
@@ -1160,7 +1218,7 @@ windows_raw_print(const char* str)
 
 /*ARGSUSED*/
 void
-windows_raw_print_bold(const char* str)
+windows_raw_print_bold(const char *str)
 {
     windows_raw_print(str);
     return;
@@ -1188,7 +1246,7 @@ windows_nh_poskey(int *x UNUSED, int *y UNUSED, int *mod UNUSED)
 
 /*ARGSUSED*/
 char
-windows_yn_function(const char* query UNUSED, const char* resp UNUSED,
+windows_yn_function(const char *query UNUSED, const char *resp UNUSED,
                     char def UNUSED)
 {
     return '\033';
@@ -1196,7 +1254,7 @@ windows_yn_function(const char* query UNUSED, const char* resp UNUSED,
 
 /*ARGSUSED*/
 static void
-windows_getlin(const char* prompt UNUSED, char* outbuf)
+windows_getlin(const char *prompt UNUSED, char *outbuf)
 {
     Strcpy(outbuf, "\033");
 }
@@ -1205,7 +1263,7 @@ windows_getlin(const char* prompt UNUSED, char* outbuf)
 static int
 eraseoldlocks(void)
 {
-    register int i;
+    int i;
 
     /* cannot use maxledgerno() here, because we need to find a lock name
      * before starting everything (including the dungeon initialization
@@ -1363,7 +1421,7 @@ gotlock:
 #endif /* PC_LOCKING */
 
 boolean
-file_exists(const char* path)
+file_exists(const char *path)
 {
     struct stat sb;
 
@@ -1382,10 +1440,10 @@ RESTORE_WARNING_UNREACHABLE_CODE
   does not exist, it returns TRUE.
  */
 boolean
-file_newer(const char* a_path, const char* b_path)
+file_newer(const char *a_path, const char *b_path)
 {
-    struct stat a_sb;
-    struct stat b_sb;
+    struct stat a_sb = { 0 };
+    struct stat b_sb = { 0 };
     double timediff;
 
     if (stat(a_path, &a_sb))
@@ -1409,7 +1467,7 @@ file_newer(const char* a_path, const char* b_path)
 int
 tty_self_recover_prompt(void)
 {
-    register int c, ci, ct, pl, retval = 0;
+    int c, ci, ct, pl, retval = 0;
     /* for saving/replacing functions, if needed */
     struct window_procs saved_procs = {0};
 
@@ -1477,7 +1535,7 @@ tty_self_recover_prompt(void)
 int
 other_self_recover_prompt(void)
 {
-    register int c, ci, ct, pl, retval = 0;
+    int c, ci, ct, pl, retval = 0;
     boolean ismswin = WINDOWPORT(mswin),
             iscurses = WINDOWPORT(curses);
 

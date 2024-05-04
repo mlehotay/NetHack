@@ -1,5 +1,5 @@
 \documentstyle[titlepage,longtable]{article}
-% NetHack 3.7  Guidebook.tex $NHDT-Date: 1431192762 2015/12/16 17:32:42 $  $NHDT-Branch: master $:$NHDT-Revision: 1.60 $ */
+% NetHack 3.7  Guidebook.tex $NHDT-Date: 1711040379 2024/03/21 16:59:39 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.562 $ */
 %+% we're still limping along in LaTeX 2.09 compatibility mode
 %-%\documentclass{article}
 %-%\usepackage{hyperref} % before longtable
@@ -26,6 +26,8 @@
 
 \newcommand{\elist}{\end{list}}
 
+\hyphenation{CRASHREPORTURL}
+
 % this will make \tt underscores look better, but requires that
 % math subscripts will never be used in this document
 \catcode`\_=12
@@ -46,7 +48,7 @@
 \author{Original version - Eric S. Raymond\\
 (Edited and expanded for 3.7.0 by Mike Stephenson and others)}
 %DO NOT REMOVE NH_DATESUB \date{DATE(%B %-d, %Y)}
-\date{July 13, 2023}
+\date{April 12, 2024}
 
 \maketitle
 
@@ -451,7 +453,7 @@ Not shown when {\it Normal}.
 %.lp ""
 Encumbrance:
 an indication of how what you are carrying affects your ability to move.
-Values are {\it Unencumbered}, {\it Encumbered}, {\it Stressed},
+Values are {\it Unencumbered}, {\it Burdened}, {\it Stressed},
 {\it Strained}, {\it Overtaxed}, and {\it Overloaded}.
 Not shown when {\it Unencumbered}.
 
@@ -1332,6 +1334,12 @@ Show your attributes. Default key is `{\tt \^{}X}'.
 \item[\tb{\#autopickup}]
 Toggle the {\it autopickup\/} option. Default key is `{\tt @}'.
 %.lp
+\item[\tb{\#bugreport}]
+Bring up a browser window to submit a report to the {\it NetHack Development
+Team}.
+Can be disabled at the time the program is built; when enabled,
+CRASHREPORTURL must be set in the system configuration file.
+%.lp
 \item[\tb{\#call}]
 Call (name) a monster, or an object in inventory, on the floor,
 or in the discoveries list, or add an annotation for the
@@ -1497,6 +1505,9 @@ Debug mode only.
 %.lp
 \item[\tb{\#look}]
 Look at what is here, under you. Default key is `{\tt :}'.
+%.lp
+\item[\tb{\#lookaround}]
+Describe what you can see, or remember, of your surroundings.
 %.lp
 \item[\tb{\#loot}]
 Loot a box or bag on the floor beneath you, or the saddle
@@ -1697,21 +1708,47 @@ Search for traps and secret doors around you. Default key is `{\tt s}'.
 %.lp
 \item[\tb{\#seeall}]
 Show all equipment in use. Default key is `{\tt *}'.
+%.lp ""
+\\
+Will display in-use items in a menu even when there is only one.
 %.lp
 \item[\tb{\#seeamulet}]
 Show the amulet currently worn. Default key is `{\tt "}'.
+%.lp ""
+\\
+Using the `{\tt m}' prefix will force the display of a worn
+amulet in a menu rather than with just a message.
 %.lp
 \item[\tb{\#seearmor}]
 Show the armor currently worn. Default key is `{\tt [}'.
+%.lp ""
+\\
+Will display worn armor in a menu even when there is only thing worn.
 %.lp
 \item[\tb{\#seerings}]
 Show the ring(s) currently worn. Default key is `{\tt =}'.
+%.lp ""
+Will display worn rings in a menu if there are two (or there is
+just one and is a meat ring rather than a ``real'' ring).
+Use the `{\tt m}' prefix to force a menu for one ring.
 %.lp
 \item[\tb{\#seetools}]
 Show the tools currently in use. Default key is `{\tt (}'.
+%.lp ""
+Will display the result in a message if there is one tool in use (worn
+blindfold or towel or lenses, lit lamp(s) and/or candle(s), leashes
+attached to pets).
+Will display a menu if there are more than one or if the command is
+preceded by the `{\tt m}' prefix.
 %.lp
 \item[\tb{\#seeweapon}]
 Show the weapon currently wielded. Default key is `{\tt )}'.
+%.lp ""
+If dual-wielding, a separate message about the secondary weapon will be
+given.
+Using the `{\tt m}' prefix will force a menu and it will include
+primary weapon, alternate weapon even when not dual-wielding, and also
+whatever is currently assigned to the quiver slot.
 %.lp
 \item[\tb{\#shell}]
 Do a shell escape, switching from NetHack to a subprocess.
@@ -3337,6 +3374,33 @@ Some chests are trapped, causing nasty things to happen when you
 unlock or open them.  You can check for and try to deactivate traps
 with the ``{\tt \#untrap}'' extended command.
 
+%.pg
+When the contents of a container are known, that container will be
+described as something like ``a sack containing 3 items''.
+In this example, the 3 refers to number of {\it stacks\/} of compatible
+items, not to the total number of individual items.
+So a sack holding 2 sky blue potions, 7 arrows, and 350 gold pieces would be
+described as having 3 items rather than 10 or 359.
+And you would need to have 3 unused inventory slots available in order
+to take everything out (for the case where the items you remove don't
+combine into bigger stacks with things you're already carrying).
+
+%.pg
+If a chest or large box is described as ``broken'', that means that it
+can't be locked rather than that it no longer functions as a container.
+
+%.pg
+The {\it apply\/} and {\it loot\/} commands allow you to take out and/or
+put in an arbitrary number of items in a single operation.
+If you want to take everything out of a container, you can use the
+``{\tt \#tip}'' command to pour the contents onto the floor.
+This may be your only way to get things out if your hands are stuck
+to a cursed two-handed weapon.
+When your hands aren't stuck, you have the potential to pour the
+contents into another container.
+(As of this writing, the other container must be carried rather than on
+the floor.)
+
 %.hn 2
 \subsection*{Amulets (`{\tt "}')}
 
@@ -3763,7 +3827,7 @@ On Windows, the name is \mbox{``.nethackrc''} location in the folder
 The file may not exist,
 but it is a normal ASCII text file and can be created with any
 text editor.
-After runing {\it NetHack\/} for the first time, you should find a default
+After running {\it NetHack\/} for the first time, you should find a default
 template for ths configuration file named \mbox{``.nethackrc.template''} in
 \mbox{{``\%USERPROFILE\%\textbackslash NetHack\textbackslash''}}.
 If you have not created the configuration file, {\it NetHack\/} will create
@@ -3921,7 +3985,7 @@ Change the way messages are shown in the top status line.
 See the ``Configuring Message Types`` section.
 %.lp
 \item[\bb{ROGUESYMBOLS}]
-Custom symbols for for the rogue level's symbol set.
+Custom symbols for the rogue level's symbol set.
 See {\it SYMBOLS} below.
 %.lp
 \item[\bb{SOUND}]
@@ -4055,6 +4119,9 @@ the game.  Changing a persistent option in the configuration file
 applies only to new games.
 
 \blist{}
+%.lp
+\item[\ib{accessiblemsg}]
+Add location or direction information to messages (default is off).
 %.lp
 \item[\ib{acoustics}]
 Enable messages about what your character hears (default on).
@@ -4197,6 +4264,12 @@ Show out-of-sight areas of lit rooms (default on).  Persistent.
 %.lp
 \item[\ib{deaf}]
 Start the character permanently deaf (default false).  Persistent.
+%.lp
+\item[\ib{dropped\verb+_+nopick}]
+If this option is on, items you dropped will not be automatically picked up,
+even if ``{\it autopickup\/}'' is also on and they are in
+``{\it pickup\verb+_+types\/}'' or match a positive autopickup exception
+(default on).  Persistent.
 %.lp
 \item[\ib{disclose}]
 Controls what information the program reveals when the game ends.
@@ -4348,7 +4421,7 @@ In text windowing, text highlighting or inverse video is often used;
 with tiles, generally displays a heart symbol near pets.
 
 %.lp ""
-With the curses interface, the {\it petattr\/}
+With the tty or curses interface, the {\it petattr\/}
 option controls how to highlight pets and setting it will turn the
 {\it hilite\verb+_+pet\/} option on or off as warranted.
 %.lp
@@ -4360,8 +4433,31 @@ with tiles, generally displays a small plus-symbol beside the object
 on the top of the pile.
 %.lp
 \item[\ib{hitpointbar}]
-Show a hit point bar graph behind your name and title.
-Only available for TTY and Windows GUI, and only when statushilites is on.
+Show a hit point bar graph behind your name and title in the status
+display (default off).
+\\
+%.lp
+The ``curses'' interface supports it even if the status highlighting
+feature has been disabled when building the program.
+The ``tty'' and ``mswin'' (aka ``Windows GUI'') interfaces
+support it only if status highlighting is left enabled when building.
+You don't need to set up any highlighting rules in order to display
+the bar.
+If there is one for hitpoints in effect and it specifies color, that
+color will be used for the bar.
+However if it specifies video attributes, they will be ignored in
+favor of {\it inverse}.
+For tty and curses, {\it blink\/} will also be used if the current
+hitpoint value is at or below the {\it critical HP\/} threshold.
+\\
+%.lp
+The ``Qt'' interface also supports hitpointbar, by drawing
+a solid bar above the name and title with a hard-coded color scheme.
+(As of this writing, having the bar enabled unintentionally inhibits
+resizing the status panel.
+To resize that, use the {\tt \#optionsfull} command to toggle the
+{\it hitpointbar\/} option off, perform the resize while it's off, then
+use the same command to toggle it back on.)
 %.lp
 \item[\ib{horsename}]
 Name your starting horse (for example, ``{\tt horsename:Trigger}'').
@@ -4403,6 +4499,9 @@ An obsolete synonym for ``{\tt gender:male}''.  Cannot be set with the
 Give feedback when walking onto various dungeon features such as stairs,
 fountains, or altars which are ordinarily only described when covered
 by one or more objects (default off).  Persistent.
+%.lp
+\item[\ib{mention\verb+_+map}]
+Give feedback when interesting map locations change (default off).
 %.lp
 \item[\ib{mention\verb+_+walls}]
 Give feedback when walking against a wall (default off).  Persistent.
@@ -4449,9 +4548,8 @@ Implemented by the Amiga, Gem and tty ports.
 Default `\verb+^+'.
 \item[\ib{menu\verb+_+headings}]
 Controls how the headings in a menu are highlighted.
-Values are ``{\tt none}'', ``{\tt bold}'', ``{\tt dim}'',
-``{\tt italic}'', ``{\tt underline}'',``{\tt blink}'', or
-``{\tt inverse}''.
+Takes a text attribute, or text color and attribute separated by ampersand.
+For allowed attributes and colors, see ``{\it Configuring Menu Colors\/}``.
 Not all ports can actually display all types.
 \item[\ib{menu\verb+_+invert\verb+_+all}]
 Key to invert all items in a menu.
@@ -4510,6 +4608,9 @@ Default `{\tt \verb+}+}'.
 % Format menu entries using TAB to separate columns (default off).
 % Only applicable to some menus, and only useful to some interfaces.
 % Debug mode only.
+%.lp
+\item[\ib{mon\verb+_+movement}]
+Show a message when hero notices a monster movement (default is off).
 %.lp
 \item[\ib{monpolycontrol}]
 Prompt for new form whenever any monster changes shape (default off).
@@ -4620,7 +4721,7 @@ are filled in at the end from the previous order.
 \item[\ib{paranoid\verb+_+confirmation}]
 A space separated list of specific situations where alternate
 prompting is desired.
-The default is ``{\it paranoid\verb+_+confirmation:pray swim}''.
+The default is ``{\it paranoid\verb+_+confirmation:pray swim trap}''.
 %.sd
 %.si
 \newlength{\pcwidth}
@@ -4646,7 +4747,7 @@ a peaceful monster;
 \item[{\tt wand-break}]
 require ``{\tt yes}'' rather than `{\tt y}' to confirm breaking
 a wand with the {\it apply} command;
-\item[{\tt eating}]
+\item[{\tt eating~}]
 require ``{\tt yes}'' rather than `{\tt y}' to confirm whether to
 continue eating;
 \item[{\tt Were-change}]
@@ -4656,6 +4757,11 @@ to lycanthropy when hero has polymorph control;
 require `{\tt y}' to confirm an attempt to pray rather
 than immediately praying; on by default;
 (to require ``yes'' rather than just `y', set Confirm too);
+\item[{\tt trap~~~}]
+require `{\tt y}' to confirm an attempt to move into or onto a known trap,
+unless doing so is considered to be harmless;
+(to require ``yes'' rather than just `y', set Confirm too);
+confirmation can be skipped by using the `{\tt m}' movement prefix;
 \item[{\tt swim~~~}]
 prevent walking into water or lava; on by default; (to deliberately step
 onto/into such terrain when this is set, use the `{\tt m}'
@@ -4684,47 +4790,61 @@ To remove an entry that has been previously set without removing others,
 precede the first entry in the list with a minus sign,
 ``{\it paranoid\verb+_+confirmation:-swim\/}.
 To both add some new entries and remove some old ones, you can use
-mulitple {\it paranoid\verb+_+confirmation\/} option settings, or you can
+multiple {\it paranoid\verb+_+confirmation\/} option settings, or you can
 use the `{\tt \verb|+|}' form and list entries to be added by their name
 and entries to be removed by `{\tt !}' and name.
 The positive (no `!') and negative (with `!') entries
 can be intermixed.
 %.lp
 \item[\ib{perm\verb+_+invent}]
-If true, always display your current inventory in a window.  This only
+If true, always display your current inventory in a window (default is false).
+%.lp ""
+\\
+This only
 makes sense for windowing system interfaces that implement this feature.
+For those that do, the
+{\tt perminv\verb+_+mode}
+option can be used to refine what gets displayed
+for {\it perm\verb+_+invent\/}.
+Setting that to a value other than {\it none\/}
+while {\it perm\verb+_+invent\/} is false will change it to true.
+%.lp
+\item[\ib{perminv\verb+_+mode}]
+Augments the
+{\tt perm\verb+_+invent}
+option.
+Value is one of
+%.PS "\f(CRin-use\fP"
+\settowidth{\pcwidth}{\tt in-use}  %reuse the paranoid_confirm width
+\addtolength{\pcwidth}{\labelsep}
+\blist{\leftmargin \pcwidth \topsep 1mm \itemsep 0mm}
+%.PL
+\item[{\tt none}]
+behave as if {\it perm\verb+_+invent\/} is false;
+\item[{all}]
+show all inventory except for gold;
+\item[{full}]
+show full inventory including gold;
+\item[{in-use}]
+only show items which are in use (worn, wielded, lit lamp).
+%.PE
+\elist
+Default is {\it none\/} but if {\it perm\verb+_+invent\/} gets set to true
+while it is {\it none\/} it will be changed to {\it all\/}.
+%.lp ""
+\\
+Note: if gold has been equipped in quiver/ammo-pouch then it will be
+included for {\it all\/} despite that mode normally omitting gold.
 %.lp
 %.\" petattr is a wincap option but we'll document it here...
 \item[\ib{petattr}]
 Specifies one or more text highlighting attributes to use when showing
 pets on the map.
 Effectively a superset of the {\it hilite\verb+_+pet\/} boolean option.
-Curses interface only; value is one or more of the following letters.
-
-%.sd
-%.si
-{\tt n} --- Normal text (no highlighting)\\
-{\tt i} --- Inverse video (default)\\
-{\tt b} --- Bold text\\
-{\tt u} --- Underlined text\\
-{\tt k} --- blinKing text\\
-{\tt d} --- Dim text\\
-{\tt t} --- iTalic text\\
-{\tt l} --- Left line indicator\\
-{\tt r} --- Right line indicator\\
-%.ei
-%.ed
-
-Some of those choices might not work, particularly the final three,
+Curses or tty interface only; value is one of
+none, bold, dim, underline, italic, blink, and inverse.
+Some of those choices might not work,
 depending upon terminal hardware or terminal emulation software.
-
-%.lp ""
-Currently multiple highlight-style letters can be combined by simply
-stringing them together (for example, ``bk''), but in the future
-they might require being separated by plus signs (such as ``b\verb&+&k'',
-which works already).
-When using the `n' choice, it should be specified on its own,
-not in combination with any of the other letters.
 
 %.lp
 \item[\ib{pettype}]
@@ -4742,6 +4862,14 @@ When you pick up an item that would exceed this encumbrance
 level (Unencumbered, Burdened, streSsed, straiNed, overTaxed,
 or overLoaded), you will be asked if you want to continue.
 (Default `S').  Persistent.
+%.lp
+\item[\ib{pickup\verb+_+stolen}]
+If this option is on and ``{\it autopickup\/}'' is also on, try to pick up
+things that a monster stole from you, even if they aren't in
+``{\it pickup\verb+_+types\/}'' or
+match an autopickup exception.
+Default is on.
+Persistent.
 %.lp
 \item[\ib{pickup\verb+_+thrown}]
 If this option is on and ``{\it autopickup\/}'' is also on, try to pick up
@@ -4797,6 +4925,9 @@ Using the `{\tt w}' (wield) command when already wielding
 something pushes the old item into your alternate weapon slot (default off).
 Likewise for the `{\tt a}' (apply) command if it causes the applied item to
 become wielded.  Persistent.
+%.lp
+\item[\ib{query\verb+_+menu}]
+Use a menu when asked specific yes/no queries, instead of a prompt.
 %.lp
 \item[\ib{quick\verb+_+farsight}]
 When set, usually prevents the ``you sense your surroundings'' message
@@ -4900,6 +5031,10 @@ Control what parts of the score list you are shown at the end (for example,
 letter of each category (`{\tt t}', `{\tt a}' or `{\tt o}') is necessary.
 Persistent.
 %.lp
+\item[\ib{showdamage}]
+Whenever your character takes damage, show a message of the damage taken,
+and the amount of hit points left.
+%.lp
 \item[\ib{showexp}]
 Show your accumulated experience points on bottom line (default off).
 Persistent.
@@ -4912,6 +5047,18 @@ Persistent.
 %.lp
 \item[\ib{showscore}]
 Show your approximate accumulated score on bottom line (default off).
+By default, this feature is suppressed when building the program.
+Persistent.
+%.lp
+\item[\ib{showvers}]
+Include the game's version number on the status lines (default off).
+Potentially useful if you switch between different versions or variants,
+or you are making screenshots or streaming video.
+Using the
+{\it statuslines:3\/}
+option is recommended so that there will be more room available for
+status information, unless you're using nethack's {\it Qt\/} interface
+or your terminal emulator window displays fewer than 25 lines.
 Persistent.
 %.lp
 \item[\ib{silent}]
@@ -5008,6 +5155,9 @@ Allow sounds to be emitted from an integrated sound library (default on).
 \item[\ib{sparkle}]
 Display a sparkly effect when a monster (including yourself) is hit by an
 attack to which it is resistant (default on).  Persistent.
+%.lp
+\item[\ib{spot\verb+_+monsters}]
+Show a message when hero notices a monster (default is off).
 %.lp
 \item[\ib{standout}]
 Boldface monsters and ``{\tt --More--}'' (default off).  Persistent.
@@ -5234,7 +5384,7 @@ If {\it NetHack\/} can, it should use this size font for the status window.
 If {\it NetHack\/} can, it should use this size font for text windows.
 %.lp
 \item[\ib{fullscreen}]
-If {\it NetHack\/} can, it should try and display on the entire screen rather than in a window.
+If {\it NetHack\/} can, it should try to display on the entire screen rather than in a window.
 %.lp
 \item[\ib{guicolor}]
 Use color text and/or highlighting attributes when displaying some
@@ -5387,33 +5537,59 @@ and status windows but have room for two additional lines of inventory
 plus widen each inventory line by two columns.
 %.lp
 \item[\ib{windowcolors}]
-If {\it NetHack\/} can, it should display windows with the specified
-foreground/background colors.
-Windows GUI only.
-The format is
-\begin{verbatim}
-    OPTION=windowcolors:wintype foreground/background
-\end{verbatim}
-
-%.pg
-where wintype is one of {\it menu}, {\it message}, {\it status}, or {\it text}, and
-foreground and background are colors, either a hexadecimal {\it \#rrggbb},
+If {\it NetHack\/} can, it should display all windows of a particular style
+with the specified foreground and background colors.
+Windows GUI and curses windowport only.
+The format is\\
+{\tt ~~~~OPTION=windowcolors:}{\it style foreground\/}{\tt /}{\it background}\\
+where {\it style} is one of {\tt menu}, {\tt message}, {\tt status},
+or {\tt text}, and
+{\it foreground} and {\it background} are colors, either numeric (hash
+sign followed by three pairs of hexadecimal digits, {\it \#rrggbb\/}),
 one of the named colors ({\it black}, {\it red}, {\it green}, {\it brown},
 {\it blue}, {\it magenta}, {\it cyan}, {\it orange},
-{\it brightgreen}, {\it yellow}, {\it brightblue}, {\it brightmagenta},
-{\it brightcyan}, {\it white}, {\it trueblack}, {\it gray}, {\it purple},
+{\it bright-green}, {\it yellow}, {\it bright-blue}, {\it bright-magenta},
+{\it bright-cyan}, {\it white}, {\it gray}, {\it purple},
 {\it silver}, {\it maroon}, {\it fuchsia}, {\it lime}, {\it olive},
-{\it navy}, {\it teal}, {\it aqua}), or one of Windows UI colors ({\it activeborder},
-{\it activecaption}, {\it appworkspace}, {\it background}, {\it btnface}, {\it btnshadow},
-{\it btntext}, {\it captiontext}, {\it graytext}, {\it greytext}, {\it highlight},
+{\it navy}, {\it teal}, {\it aqua}),
+or (for Windows only) one of Windows UI colors ({\it trueblack},
+{\it activeborder}, {\it activecaption}, {\it appworkspace}, {\it background},
+{\it btnface}, {\it btnshadow}, {\it btntext}, {\it captiontext},
+{\it graytext}, {\it greytext}, {\it highlight},
 {\it highlighttext}, {\it inactiveborder}, {\it inactivecaption}, {\it menu},
-{\it menutext}, {\it scrollbar}, {\it window}, {\it windowframe}, {\it windowtext}).
+{\it menutext}, {\it scrollbar}, {\it window}, {\it windowframe},
+{\it windowtext}).
 
 %.lp
 \item[\ib{wraptext}]
 If {\it NetHack\/} can, it should wrap long lines of text if they don't fit
 in the visible area of the window.
 \elist
+
+%.hn 2
+\subsection*{Crash Report Options}
+%.pg
+
+Please note that NetHack does not send {\textbf any} information off your
+computer unless you manually click submit on a form.
+%.si
+\blist{}
+%.lp
+\item[OPTION=crash_email:{\it email_address}]
+%.lp
+\item[OPTION=crash_name:{\it your_name}]
+%.ei
+\elist
+These options are used only to save you some typing on the crash
+report and \#bugreport forms.  
+%.si
+\blist{}
+%.lp
+\item[OPTION=crash_urlmax:{\it bytes}]
+%.ei
+\elist
+This option is used to limit the length of the URLs generated and is only
+needed if your browser cannot handle arbitrarily long URLs.
 
 %.hn 2
 \subsection*{Platform-specific Customization options}
@@ -5516,7 +5692,8 @@ possible to compile {\it NetHack\/} without regular expression support on
 a platform where
 there is no regular expression library. While this is not true of any modern
 platform, if your {\it NetHack\/} was built this way, patterns are instead glob
-patterns. This applies to Autopickup exceptions, Message types, Menu colors,
+patterns; regardless, this document refers to both as ``regular expressions.''
+This applies to Autopickup exceptions, Message types, Menu colors,
 and User sounds.
 
 %.hn 2
@@ -5913,7 +6090,7 @@ Each SOUND entry is broken down into the following parts:
 \elist
 
 %.lp ""
-The pattern should be a POSIX extended regular expression.
+The pattern should be a regular expression.
 
 For example:
 
@@ -5959,7 +6136,7 @@ orange, light-green, yellow, light-blue, light-magenta, light-cyan, and white.
 And {\it no-color}, the default foreground color on the display, which
 is not necessarily the same as black or white or any of the other colors.
 
-Allowed attributes are none, bold, dim, underline, blink, and inverse.
+Allowed attributes are none, bold, dim, underline, italic, blink, and inverse.
 ``Normal'' is a synonym for ``none''; they should not be used in
 combination with any of the other attributes.
 
@@ -6018,7 +6195,7 @@ Allowed behaviors are ``always'', ``up'', ``down'', ``changed'', a
 percentage or absolute number threshold, or text to match against.
 For the {\it hitpoints\/} field, the additional behavior ``criticalhp''
 is available.
-It overrides always, percentage threshold, and absolute threshold if
+It overrides other behavior rules if
 hit points are at or below the {\it major problem\/} threshold
 (which varies depending upon maximum hit points and experience level).
 
@@ -6073,9 +6250,11 @@ it also matches when value is below or above.
 If the prefix is `{\tt <}' or `{\tt >}', only match when strictly
 above or below.
 %.lp "*"
-\item[{\tt criticalhp}] only applies to the hitpoints field and when defined
-it takes precedence over other hitpints rules except {\it changed\/},
-{\it up\/}, or {\it down\/}.
+\item[{\tt criticalhp}] only applies to the hitpoints field and only
+when current hit points are below a threshold (which varies by maximum
+hit points and experience level).
+When the threshold is met, a criticalhp rule takes precedence over all
+other hitpoints rules.
 %.lp "*"
 \item[{\tt text}] match sets the attribute when the field value
 matches the text.
@@ -6447,8 +6626,21 @@ traditional Rogue-like commands.
 \item[\ib{paranoid\verb+_+confirmation:swim}]
 Prevent walking into water or lava.
 %.lp
+\item[\ib{accessiblemsg}]
+Adds direction or location information to messages.
+%.lp
+\item[\ib{spot\verb+_+monsters}]
+Shows a message when hero notices a monster; combine with accessiblemsg.
+%.lp
+\item[\ib{mon\verb+_+movement}]
+Shows a message when hero notices a monster movement;
+combine with spot\verb+_+monsters and accessiblemsg.
+%.lp
 \item[\ib{autodescribe}]
 Automatically describe the terrain under the cursor when targeting.
+%.lp
+\item[\ib{mention\verb+_+map}]
+Give feedback messages when interesting map locations change.
 %.lp
 \item[\ib{mention\verb+_+walls}]
 Give feedback messages when walking towards a wall or when travel command
@@ -6470,6 +6662,9 @@ of moving 8 units at a time.
 Prevent updates to the status lines at the bottom of the screen, if
 your screen-reader reads those lines. The same information can be
 seen via the {\tt \#attributes} command.
+%.lp
+\item[\ib{showdamage}]
+Give a message of damage taken and how many hit points are left.
 \elist
 
 %.hn2
@@ -6606,6 +6801,14 @@ Only relevant if the program was built with LIVELOG enabled.
 When available, it should be left commented out on single player
 installations because over time the file could grow to be extremely
 large unless it is actively maintained.
+%.lp
+\item[\ib{CRASHREPORTURL}]
+If set to
+{\tt https://www.nethack.org/links/cr-37BETA.html}
+and support is compiled in, brings up a browser window populated with
+the information needed to report a problem if the game panics or ends
+up in an internally inconsistent state, or if the \#bugreport command is
+invoked.
 \elist
 
 %.hn 1

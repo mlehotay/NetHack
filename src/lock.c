@@ -1,4 +1,4 @@
-/* NetHack 3.7	lock.c	$NHDT-Date: 1654464994 2022/06/05 21:36:34 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.114 $ */
+/* NetHack 3.7	lock.c	$NHDT-Date: 1713657045 2024/04/20 23:50:45 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.136 $ */
 /* Copyright (c) Stichting Mathematisch Centrum, Amsterdam, 1985. */
 /*-Copyright (c) Robert Patrick Rankin, 2011. */
 /* NetHack may be freely redistributed.  See license for details. */
@@ -6,12 +6,12 @@
 #include "hack.h"
 
 /* occupation callbacks */
-static int picklock(void);
-static int forcelock(void);
+staticfn int picklock(void);
+staticfn int forcelock(void);
 
-static const char *lock_action(void);
-static boolean obstructed(coordxy, coordxy, boolean);
-static void chest_shatter_msg(struct obj *);
+staticfn const char *lock_action(void);
+staticfn boolean obstructed(coordxy, coordxy, boolean);
+staticfn void chest_shatter_msg(struct obj *);
 
 boolean
 picking_lock(coordxy *x, coordxy *y)
@@ -33,7 +33,7 @@ picking_at(coordxy x, coordxy y)
 }
 
 /* produce an occupation string appropriate for the current activity */
-static const char *
+staticfn const char *
 lock_action(void)
 {
     /* "unlocking"+2 == "locking" */
@@ -63,7 +63,7 @@ lock_action(void)
 }
 
 /* try to open/close a lock */
-static int
+staticfn int
 picklock(void)
 {
     if (gx.xlock.box) {
@@ -207,7 +207,7 @@ breakchestlock(struct obj *box, boolean destroyit)
 }
 
 /* try to force a locked chest */
-static int
+staticfn int
 forcelock(void)
 {
     if ((gx.xlock.box->ox != u.ux) || (gx.xlock.box->oy != u.uy))
@@ -234,14 +234,14 @@ forcelock(void)
             return ((gx.xlock.usedtime = 0));
         }
     } else             /* blunt */
-        wake_nearby(); /* due to hammering on the container */
+        wake_nearby(FALSE); /* due to hammering on the container */
 
     if (rn2(100) >= gx.xlock.chance)
         return 1; /* still busy */
 
     You("succeed in forcing the lock.");
     exercise(gx.xlock.picktyp ? A_DEX : A_STR, TRUE);
-    /* breakchestlock() might destroy gx.xlock.box; if so, gx.xlock context will
+    /* breakchestlock() might destroy xlock.box; if so, xlock context will
        be cleared (delobj -> obfree -> maybe_reset_pick); but it might not,
        so explicitly clear that manually */
     breakchestlock(gx.xlock.box, (boolean) (!gx.xlock.picktyp && !rn2(3)));
@@ -441,7 +441,8 @@ pick_lock(
 
         count = 0;
         c = 'n'; /* in case there are no boxes here */
-        for (otmp = gl.level.objects[cc.x][cc.y]; otmp; otmp = otmp->nexthere) {
+        for (otmp = gl.level.objects[cc.x][cc.y]; otmp;
+             otmp = otmp->nexthere) {
             /* autounlock on boxes: only the one that was just discovered to
                be locked; don't include any other boxes which might be here */
             if (autounlock && otmp != container)
@@ -569,7 +570,7 @@ pick_lock(
         }
         if (!IS_DOOR(door->typ)) {
             int res = PICKLOCK_DID_NOTHING, oldglyph = door->glyph;
-            schar oldlastseentyp = gl.lastseentyp[cc.x][cc.y];
+            schar oldlastseentyp = update_mapseen_for(cc.x, cc.y);
 
             /* this is probably only relevant when blind */
             feel_location(cc.x, cc.y);
@@ -667,8 +668,8 @@ RESTORE_WARNING_FORMAT_NONLITERAL
 int
 doforce(void)
 {
-    register struct obj *otmp;
-    register int c, picktyp;
+    struct obj *otmp;
+    int c, picktyp;
     char qbuf[QBUFSZ];
 
     /*
@@ -681,11 +682,14 @@ doforce(void)
         return ECMD_OK;
     }
     if (!u_have_forceable_weapon()) {
-        You_cant("force anything %s weapon.",
+        boolean use_plural = uwep && uwep->quan > 1;
+
+        You_cant("force anything %s weapon%s.",
                  !uwep ? "when not wielding a"
-                       : (uwep->oclass != WEAPON_CLASS && !is_weptool(uwep))
-                             ? "without a proper"
-                             : "with that");
+                 : (uwep->oclass != WEAPON_CLASS && !is_weptool(uwep))
+                   ? (use_plural ? "without proper" : "without a proper")
+                   : (use_plural ? "with that" : "with those"),
+                 use_plural ? "s" : "");
         return ECMD_OK;
     }
     if (!can_reach_floor(TRUE)) {
@@ -769,7 +773,7 @@ int
 doopen_indir(coordxy x, coordxy y)
 {
     coord cc;
-    register struct rm *door;
+    struct rm *door;
     boolean portcullis;
     const char *dirprompt;
     int res = ECMD_OK;
@@ -819,7 +823,7 @@ doopen_indir(coordxy x, coordxy y)
     /* this used to be 'if (Blind)' but using a key skips that so we do too */
     {
         int oldglyph = door->glyph;
-        schar oldlastseentyp = gl.lastseentyp[cc.x][cc.y];
+        schar oldlastseentyp = update_mapseen_for(cc.x, cc.y);
 
         newsym(cc.x, cc.y);
         if (door->glyph != oldglyph
@@ -860,6 +864,7 @@ doopen_indir(coordxy x, coordxy y)
             locked = TRUE;
             break;
         }
+        set_msg_xy(cc.x, cc.y);
         pline("This door%s.", mesg);
         if (locked && flags.autounlock) {
             struct obj *unlocktool;
@@ -887,6 +892,7 @@ doopen_indir(coordxy x, coordxy y)
 
     /* door is known to be CLOSED */
     if (rnl(20) < (ACURRSTR + ACURR(A_DEX) + ACURR(A_CON)) / 3) {
+        set_msg_xy(cc.x, cc.y);
         pline_The("door opens.");
         if (door->doormask & D_TRAPPED) {
             b_trapped("door", FINGER);
@@ -899,13 +905,14 @@ doopen_indir(coordxy x, coordxy y)
         unblock_point(cc.x, cc.y); /* vision: new see through there */
     } else {
         exercise(A_STR, TRUE);
+        set_msg_xy(cc.x, cc.y);
         pline_The("door resists!");
     }
 
     return ECMD_TIME;
 }
 
-static boolean
+staticfn boolean
 obstructed(coordxy x, coordxy y, boolean quietly)
 {
     struct monst *mtmp = m_at(x, y);
@@ -939,8 +946,8 @@ obstructed(coordxy x, coordxy y, boolean quietly)
 int
 doclose(void)
 {
-    register coordxy x, y;
-    register struct rm *door;
+    coordxy x, y;
+    struct rm *door;
     boolean portcullis;
     int res = ECMD_OK;
 
@@ -979,7 +986,7 @@ doclose(void)
     portcullis = (is_drawbridge_wall(x, y) >= 0);
     if (Blind) {
         int oldglyph = door->glyph;
-        schar oldlastseentyp = gl.lastseentyp[x][y];
+        schar oldlastseentyp = update_mapseen_for(x, y);
 
         feel_location(x, y);
         if (door->glyph != oldglyph || gl.lastseentyp[x][y] != oldlastseentyp)
@@ -1056,8 +1063,8 @@ boxlock(struct obj *obj, struct obj *otmp) /* obj *is* a box */
         break;
     case WAN_OPENING:
     case SPE_KNOCK:
-        if (obj->olocked) { /* unlock; couldn't be broken */
-            pline("Klick!");
+        if (obj->olocked) { /* unlock; isn't broken so doesn't need fixing */
+            Soundeffect(se_klick, 50);
             pline("Klick!");
             obj->olocked = 0;
             res = 1;
@@ -1084,7 +1091,7 @@ boxlock(struct obj *obj, struct obj *otmp) /* obj *is* a box */
 boolean
 doorlock(struct obj *otmp, coordxy x, coordxy y)
 {
-    register struct rm *door = &levl[x][y];
+    struct rm *door = &levl[x][y];
     boolean res = TRUE;
     int loudness = 0;
     const char *msg = (const char *) 0;
@@ -1199,7 +1206,7 @@ doorlock(struct obj *otmp, coordxy x, coordxy y)
                 } else {
                     /* for mtmp, mb_trapped() does is own wake_nearto() */
                     loudness = 40;
-                    if (Verbose(1, doorlock1)) {
+                    if (flags.verbose) {
                         Soundeffect(se_kaboom_door_explodes, 75);
                         if ((sawit || seeit) && !Unaware) {
                             pline("KABOOM!!  You see a door explode.");
@@ -1218,7 +1225,7 @@ doorlock(struct obj *otmp, coordxy x, coordxy y)
             unblock_point(x, y);
             seeit = cansee(x, y);
             newsym(x, y);
-            if (Verbose(1, doorlock2)) {
+            if (flags.verbose) {
                 if ((sawit || seeit) && !Unaware) {
                     pline_The("door crashes open!");
                 } else if (!Deaf) {
@@ -1254,7 +1261,7 @@ doorlock(struct obj *otmp, coordxy x, coordxy y)
     return res;
 }
 
-static void
+staticfn void
 chest_shatter_msg(struct obj *otmp)
 {
     const char *disposition;

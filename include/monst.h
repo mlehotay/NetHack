@@ -64,7 +64,6 @@ enum m_ap_types {
 #define MON_ENDGAME_FREE 0x20
 #define MON_ENDGAME_MIGR 0x40
 #define MON_OBLITERATE   0x80
-#define MSTATE_MASK      0xFF
 
 #define M_AP_TYPMASK  0x7
 #define M_AP_F_DKNOWN 0x8
@@ -88,7 +87,10 @@ enum m_seen_resistance {
 
 #define m_seenres(mon, mask) ((mon)->seen_resistance & (mask))
 #define m_setseenres(mon, mask) ((mon)->seen_resistance |= (mask))
+#define m_clearseenres(mon, mask) ((mon)->seen_resistance &= ~(mask))
 #define monstseesu_ad(adtyp) monstseesu(cvt_adtyp_to_mseenres(adtyp))
+#define monstunseesu_ad(adtyp) monstunseesu(cvt_adtyp_to_mseenres(adtyp))
+#define monstunseesu_prop(prop) monstunseesu(cvt_prop_to_mseenres(prop))
 
 struct monst {
     struct monst *nmon;
@@ -157,6 +159,8 @@ struct monst {
     Bitfield(wormno, 5);    /* at most 31 worms on any level */
     Bitfield(mtemplit, 1);  /* temporarily seen; only valid during bhit() */
     Bitfield(meverseen, 1); /* mon has been seen at some point */
+
+    Bitfield(mspotted, 1);  /* mon is currently seen by hero */
 
 #define MAX_NUM_WORMS 32    /* should be 2^(wormno bitfield size) */
 
@@ -245,7 +249,9 @@ struct monst {
 #define engulfing_u(mon) (u.uswallow && (u.ustuck == (mon)))
 #define helpless(mon) ((mon)->msleeping || !(mon)->mcanmove)
 
-#define mon_offmap(mon) (((mon)->mstate & (MON_DETACH|MON_MIGRATING|MON_LIMBO|MON_OFFMAP)) != 0)
+#define mon_perma_blind(mon) (!mon->mcansee && !mon->mblinded)
+
+#define mon_offmap(mon) ((mon)->mstate != MON_FLOOR)
 
 /* Get the maximum difficulty monsters that can currently be generated,
    given the current level difficulty and the hero's level. */
@@ -260,5 +266,28 @@ struct monst {
 #ifdef PMNAME_MACROS
 #define Mgender(mon) ((mon)->female ? FEMALE : MALE)
 #endif
+#define mon_resistancebits(mon) \
+    ((mon)->data->mresists | (mon)->mextrinsics | (mon)->mintrinsics)
+#define resists_fire(mon) \
+    ((mon_resistancebits(mon) & MR_FIRE) != 0)
+#define resists_cold(mon) \
+    ((mon_resistancebits(mon) & MR_COLD) != 0)
+#define resists_sleep(mon) \
+    ((mon_resistancebits(mon) & MR_SLEEP) != 0)
+#define resists_disint(mon) \
+    ((mon_resistancebits(mon) & MR_DISINT) != 0)
+#define resists_elec(mon) \
+    ((mon_resistancebits(mon) & MR_ELEC) != 0)
+#define resists_poison(mon) \
+    ((mon_resistancebits(mon) & MR_POISON) != 0)
+#define resists_acid(mon) \
+    ((mon_resistancebits(mon) & MR_ACID) != 0)
+#define resists_ston(mon) \
+    ((mon_resistancebits(mon) & MR_STONE) != 0)
+#define is_lminion(mon) \
+    (is_minion((mon)->data) && mon_aligntyp(mon) == A_LAWFUL)
+
+/* x is a valid index into mons[] array */
+#define ismnum(x) ((x) >= LOW_PM && (x) < NUMMONS)
 
 #endif /* MONST_H */

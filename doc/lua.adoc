@@ -528,6 +528,18 @@ Example:
  des.engraving({x,y}, "engrave", "Foo");
 
 
+=== exclusion
+
+Exclude an area of the map from being randomly chosen target when
+falling or teleporting into the level.  Multiple exclusions per level are allowed.
+
+* type is one of "teleport", "teleport-up", or "teleport-down".
+
+Example:
+
+ des.exclusion({ type = "teleport", region = { 0,0, 10,5 } });
+
+
 === feature
 
 Create a feature, and set flags for it.
@@ -555,6 +567,21 @@ Only used for testing purposes. See also <<_reset_level>>.
 Example:
 
  des.finalize_level();
+
+
+=== gas_cloud
+
+Create a gas cloud.
+The `damage` and `ttl` fields are optional.
+Defaults to non-poisonous and infinite lifetime.
+
+Example:
+
+ des.gas_cloud({ x = XX, y = YY });
+ des.gas_cloud({ coord = { XX, YY } });
+ des.gas_cloud({ selection = SEL });
+ des.gas_cloud({ selection = SEL, damage = 5 });
+ des.gas_cloud({ selection = SEL, damage = 5, ttl = 200 });
 
 
 === gold
@@ -612,6 +639,7 @@ Set flags for this level.
 | icedpools     | Ice generated with the level will be treated as frozen pools instead of frozen moats.
 | corrmaze      |
 | premapped     | Map, including traps and boulders, is revealed on entrance.
+| sokoban       | Level has special Sokoban rules
 | solidify      | Areas outside the specified level map are made undiggable and unphaseable.
 | inaccessibles | If inaccessible areas are generated, generate ways for them to connect to the "accessible" area.
 | noflip        | Prevent flipping the level.
@@ -852,7 +880,7 @@ Example:
 Create a room region, which can be irregular; use the boundary <<_map_characters,map character>> to restrict the floodfilled area.
 
 If using the first form with a selection and "lit", the lit area will extend
-outward 1 space from the selection to attempt to accomodate adjacent walls,
+outward 1 space from the selection to attempt to accommodate adjacent walls,
 regardless of whether they are actually walls or not. If using "unlit", this
 will not happen.
 

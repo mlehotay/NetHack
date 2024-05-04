@@ -1,4 +1,4 @@
-/* NetHack 3.7	priest.c	$NHDT-Date: 1624322670 2021/06/22 00:44:30 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.70 $ */
+/* NetHack 3.7	priest.c	$NHDT-Date: 1693292537 2023/08/29 07:02:17 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.93 $ */
 /* Copyright (c) Izchak Miller, Steve Linhart, 1989.              */
 /* NetHack may be freely redistributed.  See license for details. */
 
@@ -9,8 +9,8 @@
 #define ALGN_SINNED (-4) /* worse than strayed (-1..-3) */
 #define ALGN_PIOUS 14    /* better than fervent (9..13) */
 
-static boolean histemple_at(struct monst *, coordxy, coordxy);
-static boolean has_shrine(struct monst *);
+staticfn boolean histemple_at(struct monst *, coordxy, coordxy);
+staticfn boolean has_shrine(struct monst *);
 
 void
 newepri(struct monst *mtmp)
@@ -42,8 +42,8 @@ move_special(struct monst *mtmp, boolean in_his_shop, schar appr,
              boolean uondoor, boolean avoid,
              coordxy omx, coordxy omy, coordxy ggx, coordxy ggy)
 {
-    register coordxy nx, ny, nix, niy;
-    register schar i;
+    coordxy nx, ny, nix, niy;
+    schar i;
     schar chcnt, cnt;
     coord poss[9];
     long info[9];
@@ -140,7 +140,7 @@ move_special(struct monst *mtmp, boolean in_his_shop, schar appr,
 char
 temple_occupied(char *array)
 {
-    register char *ptr;
+    char *ptr;
 
     for (ptr = array; *ptr; ptr++)
         if (gr.rooms[*ptr - ROOMOFFSET].rtype == TEMPLE)
@@ -148,7 +148,7 @@ temple_occupied(char *array)
     return '\0';
 }
 
-static boolean
+staticfn boolean
 histemple_at(struct monst *priest, coordxy x, coordxy y)
 {
     return (boolean) (priest && priest->ispriest
@@ -301,6 +301,7 @@ char *
 priestname(
     struct monst *mon,
     int article,
+    boolean reveal_high_priest,
     char *pname) /* caller-supplied output buffer */
 {
     boolean do_hallu = Hallucination,
@@ -346,7 +347,7 @@ priestname(
             ; /* polymorphed priest; use ``what'' as is */
         } else {
             if (high_priest)
-                Strcat(pname, "high ");
+                Strcat(pname, Hallucination ? "grand " : "high ");
             if (Hallucination)
                 what = "poohbah";
             else if (mon->female)
@@ -361,8 +362,9 @@ priestname(
 
     Strcat(pname, what);
     /* same as distant_monnam(), more or less... */
-    if (do_hallu || !high_priest || !Is_astralevel(&u.uz)
-        || next2u(mon->mx, mon->my) || gp.program_state.gameover) {
+    if (do_hallu || !high_priest || reveal_high_priest
+        || !Is_astralevel(&u.uz)
+        || m_next2u(mon) || gp.program_state.gameover) {
         Strcat(pname, " of ");
         Strcat(pname, halu_gname(mon_aligntyp(mon)));
     }
@@ -375,7 +377,7 @@ p_coaligned(struct monst *priest)
     return (boolean) (u.ualign.type == mon_aligntyp(priest));
 }
 
-static boolean
+staticfn boolean
 has_shrine(struct monst *pri)
 {
     struct rm *lev;
@@ -394,7 +396,7 @@ has_shrine(struct monst *pri)
 struct monst *
 findpriest(char roomno)
 {
-    register struct monst *mtmp;
+    struct monst *mtmp;
 
     for (mtmp = fmon; mtmp; mtmp = mtmp->nmon) {
         if (DEADMONSTER(mtmp))
@@ -531,7 +533,7 @@ intemple(int roomno)
                 You("sense a presence close by!");
             mtmp->mpeaceful = 0;
             set_malign(mtmp);
-            if (Verbose(3, intemple))
+            if (flags.verbose)
                 You("are frightened to death, and unable to move.");
             nomul(-3);
             gm.multi_reason = "being terrified of a ghost";
@@ -685,8 +687,8 @@ struct monst *
 mk_roamer(struct permonst *ptr, aligntyp alignment, coordxy x, coordxy y,
           boolean peaceful)
 {
-    register struct monst *roamer;
-    register boolean coaligned = (u.ualign.type == alignment);
+    struct monst *roamer;
+    boolean coaligned = (u.ualign.type == alignment);
 
 #if 0 /* this was due to permonst's pxlth field which is now gone */
     if (ptr != &mons[PM_ALIGNED_CLERIC] && ptr != &mons[PM_ANGEL])
@@ -733,8 +735,8 @@ in_your_sanctuary(
     struct monst *mon, /* if non-null, <mx,my> overrides <x,y> */
     coordxy x, coordxy y)
 {
-    register char roomno;
-    register struct monst *priest;
+    char roomno;
+    struct monst *priest;
 
     if (mon) {
         if (is_minion(mon->data) || is_rider(mon->data))
@@ -837,7 +839,7 @@ ghod_hitsu(struct monst *priest)
 void
 angry_priest(void)
 {
-    register struct monst *priest;
+    struct monst *priest;
     struct rm *lev;
 
     if ((priest = findpriest(temple_occupied(u.urooms))) != 0) {
@@ -860,6 +862,7 @@ angry_priest(void)
                 newemin(priest);
             priest->ispriest = 0; /* now a roaming minion */
             priest->isminion = 1;
+            assert(has_emin(priest));
             EMIN(priest)->min_align = eprip->shralign;
             EMIN(priest)->renegade = FALSE;
             /* discard priest's memory of his former shrine;

@@ -18,9 +18,13 @@
 #include "rm.h"
 #else
 #include "hack.h"
-#include "display.h"
-#include <stdarg.h>
 #endif
+
+#ifdef Snprintf
+#undef Snprintf
+#endif
+#define Snprintf(str, size, ...) \
+    nh_snprintf(__func__, __LINE__, str, size, __VA_ARGS__)
 
 #ifdef MONITOR_HEAP
 /* with heap monitoring enabled, free(ptr) is a macro which expands to
@@ -30,10 +34,6 @@
 #endif
 
 #define Fprintf (void) fprintf
-#define Snprintf(str, size, ...) \
-    nh_snprintf(__func__, __LINE__, str, size, __VA_ARGS__)
-void nh_snprintf(const char *func, int line, char *str, size_t size,
-                 const char *fmt, ...);
 
 /*
  * Defining OBTAIN_TILEMAP to get a listing of the tile-mappings
@@ -118,14 +118,14 @@ struct tilemap_t {
 #endif
 } tilemap[MAX_GLYPH];
 
-#define MAX_TILENAM 30
+#define MAX_TILENAM 256
     /* List of tiles encountered and their usage */
 struct tiles_used {
     int tilenum;
     enum tilesrc src;
     int file_entry;
     char tilenam[MAX_TILENAM];
-    char references[120];
+    char references[1024];
 };
 struct tiles_used *tilelist[2500] = { 0 };
 
@@ -1360,8 +1360,9 @@ main(int argc UNUSED, char *argv[] UNUSED)
     Fprintf(ofp, "%smaxmontile = %d,\n", indent, lastmontile);
     Fprintf(ofp, "%smaxobjtile = %d,\n", indent, lastobjtile);
     Fprintf(ofp, "%smaxothtile = %d;\n\n", indent, lastothtile);
+    Fprintf(ofp, "#define NO_CUSTOMCOLOR (0U)\n\n");
     Fprintf(ofp, "/* glyph, ttychar, { %s%s } */\n",
-            "glyphflags, {color, symidx}, ovidx, tileidx", enhanced);
+            "glyphflags, { NO_COLOR, symidx }, NO_CUSTOMCOLOR, NO_CUSTOMCOLOR, ovidx, tileidx", enhanced);
 #ifdef ENHANCED_SYMBOLS
     enhanced = ", 0"; /* replace ", utf8rep" since we're done with that */
 #endif
@@ -1369,7 +1370,7 @@ main(int argc UNUSED, char *argv[] UNUSED)
     Fprintf(ofp, "%sNO_GLYPH, ' ', NO_COLOR,\n", indent);
     Fprintf(ofp, "%s%s/* glyph_map */\n", indent, indent);
     Fprintf(ofp, "%s%s{ %s, TILE_UNEXPLORED%s }\n", indent, indent,
-            "MG_UNEXPL, { NO_COLOR, SYM_UNEXPLORED + SYM_OFF_X }",
+            "MG_UNEXPL, { NO_COLOR, SYM_UNEXPLORED + SYM_OFF_X }, NO_CUSTOMCOLOR, NO_CUSTOMCOLOR",
             enhanced);
     Fprintf(ofp, "};\n");
     Fprintf(ofp, "\nglyph_map glyphmap[MAX_GLYPH] = {\n");
@@ -1384,7 +1385,7 @@ main(int argc UNUSED, char *argv[] UNUSED)
             /*NOTREACHED*/
         }
         Fprintf(ofp,
-                "    { 0U, { 0, 0 }, %4d%s },   /* [%04d] %s:%03d %s */\n",
+                "    { 0U, { NO_COLOR, 0 }, NO_CUSTOMCOLOR, NO_CUSTOMCOLOR, %4d%s },   /* [%04d] %s:%03d %s */\n",
                 tilenum, enhanced, i,
                 tilesrc_texts[tilelist[tilenum]->src],
                 tilelist[tilenum]->file_entry,
@@ -1484,7 +1485,8 @@ precheck(int offset, const char *glyphtype)
                 glyphtype);
 }
 
-void add_tileref(
+void
+add_tileref(
     int n,
     int glyphref,
     enum tilesrc src,
@@ -1547,29 +1549,5 @@ free_tilerefs(void)
 }
 
 #endif
-
-DISABLE_WARNING_FORMAT_NONLITERAL
-
-void
-nh_snprintf(
-    const char *func UNUSED,
-    int line UNUSED,
-    char *str, size_t size,
-    const char *fmt, ...)
-{
-    va_list ap;
-    int n;
-
-    va_start(ap, fmt);
-    n = vsnprintf(str, size, fmt, ap);
-    va_end(ap);
-
-    if (n < 0 || (size_t) n >= size) { /* is there a problem? */
-        str[size - 1] = 0;             /* make sure it is nul terminated */
-    }
-}
-
-RESTORE_WARNING_FORMAT_NONLITERAL
-
 
 /*tilemap.c*/

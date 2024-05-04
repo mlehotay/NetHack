@@ -1,9 +1,8 @@
-/* NetHack 3.7	vision.c	$NHDT-Date: 1657918095 2022/07/15 20:48:15 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.49 $ */
+/* NetHack 3.7	vision.c	$NHDT-Date: 1707424350 2024/02/08 20:32:30 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.62 $ */
 /* Copyright (c) Dean Luick, with acknowledgements to Dave Cohrs, 1990. */
 /* NetHack may be freely redistributed.  See license for details.       */
 
 #include "hack.h"
-#include <assert.h>
 
 /* Circles
  * ==================================================================*/
@@ -23,7 +22,8 @@
  *              ....X   +4
  *              @...X   +4
  *
- */
+ * Externally referenced from light.c
+*/
 const coordxy circle_data[] = {
     /*  0*/ 0,
     /*  1*/ 1,  1,
@@ -87,14 +87,14 @@ static coordxy left_ptrs[ROWNO][COLNO]; /* LOS algorithm helpers */
 static coordxy right_ptrs[ROWNO][COLNO];
 
 /* Forward declarations. */
-static void fill_point(int, int);
-static void dig_point(int, int);
-static void view_init(void);
-static void view_from(coordxy, coordxy, seenV **, coordxy *, coordxy *, int,
+staticfn void fill_point(int, int);
+staticfn void dig_point(int, int);
+staticfn void view_init(void);
+staticfn void view_from(coordxy, coordxy, seenV **, coordxy *, coordxy *, int,
                       void (*)(coordxy, coordxy, genericptr_t),
                       genericptr_t);
-static void get_unused_cs(seenV ***, coordxy **, coordxy **);
-static void rogue_vision(seenV **, coordxy *, coordxy *);
+staticfn void get_unused_cs(seenV ***, coordxy **, coordxy **);
+staticfn void rogue_vision(seenV **, coordxy *, coordxy *);
 
 /* Macro definitions that I can't find anywhere. */
 #define sign(z) ((z) < 0 ? -1 : ((z) ? 1 : 0))
@@ -135,14 +135,16 @@ vision_init(void)
 /*
  * does_block()
  *
- * Returns true if something at (x,y) blocks sight.
+ * Returns 0 if nothing at (x,y) blocks sight, 1 if anything other than
+ * an opaque region (gas cloud rather than CLOUD terrain) blocks sight,
+ * or 2 if an opaque region blocks sight.  [At present, the rest of the
+ * code makes no distinction between 1 and 2, just between 0 and non-0.]
  */
 int
 does_block(int x, int y, struct rm *lev)
 {
     struct obj *obj;
     struct monst *mon;
-    int i;
 
 #ifdef DEBUG
     /* set DEBUGFILES=seethru in environment to see through bubbles */
@@ -160,8 +162,7 @@ does_block(int x, int y, struct rm *lev)
 #ifdef DEBUG
     if (gs.seethru != 1) {
 #endif
-    if (lev->typ == CLOUD || IS_WATERWALL(lev->typ)
-        || lev->typ == LAVAWALL
+    if (lev->typ == CLOUD || IS_WATERWALL(lev->typ) || lev->typ == LAVAWALL
         || (Underwater && is_moat(x, y)))
         return 1;
 #ifdef DEBUG
@@ -173,7 +174,7 @@ does_block(int x, int y, struct rm *lev)
         if (obj->otyp == BOULDER)
             return 1;
 
-    /* Mimics mimicing a door or boulder or ... block light. */
+    /* Mimics mimicking a door or boulder or ... block light. */
     if ((mon = m_at(x, y)) && (!mon->minvis || See_invisible)
         && is_lightblocker_mappear(mon))
         return 1;
@@ -182,14 +183,8 @@ does_block(int x, int y, struct rm *lev)
     if (gs.seethru != 1) {
 #endif
     /* Clouds (poisonous or not) block light. */
-    for (i = 0; i < gn.n_regions; i++) {
-        /* Ignore regions with ttl == 0 - expire_gas_cloud must unblock its
-         * points prior to being removed itself. */
-        if (gr.regions[i]->ttl > 0 && gr.regions[i]->visible
-            && inside_region(gr.regions[i], x, y)) {
-            return 1;
-        }
-    }
+    if (visible_region_at(x, y))
+        return 2;
 #ifdef DEBUG
     } /* gs.seethru */
 #endif
@@ -207,8 +202,8 @@ void
 vision_reset(void)
 {
     int y;
-    register int x, i, dig_left, block;
-    register struct rm *lev;
+    int x, i, dig_left, block;
+    struct rm *lev;
 
     /* Start out with cs0 as our current array */
     gv.viz_array = cs_rows0;
@@ -256,7 +251,7 @@ vision_reset(void)
         }
     }
 
-    iflags.vision_inited = 1; /* vision is ready */
+    iflags.vision_inited = TRUE; /* vision is ready */
     gv.vision_full_recalc = 1;   /* we want to run vision_recalc() */
 }
 
@@ -266,11 +261,11 @@ vision_reset(void)
  * Called from vision_recalc() and at least one light routine.  Get pointers
  * to the unused vision work area.
  */
-static void
+staticfn void
 get_unused_cs(seenV ***rows, coordxy **rmin, coordxy **rmax)
 {
-    register int row;
-    register coordxy *nrmin, *nrmax;
+    int row;
+    coordxy *nrmin, *nrmax;
 
     if (gv.viz_array == cs_rows0) {
         *rows = cs_rows1;
@@ -306,12 +301,12 @@ get_unused_cs(seenV ***rows, coordxy **rmin, coordxy **rmax)
  * We set the in_sight bit here as well to escape a bug that shows up
  * due to the one-sided lit wall hack.
  */
-static void
+staticfn void
 rogue_vision(seenV **next, coordxy *rmin, coordxy *rmax)
 {
     int rnum = levl[u.ux][u.uy].roomno - ROOMOFFSET; /* no SHARED... */
     int start, stop, in_door, xhi, xlo, yhi, ylo;
-    register int zx, zy;
+    int zx, zy;
 
     /* If in a lit room, we are able to see to its boundaries. */
     /* If dark, set COULD_SEE so various spells work -dlc */
@@ -363,7 +358,7 @@ rogue_vision(seenV **next, coordxy *rmin, coordxy *rmax)
 
 #ifdef EXTEND_SPINE
 
-static int new_angle(struct rm *, unsigned char *, int, int);
+staticfn int new_angle(struct rm *, unsigned char *, int, int);
 /*
  * new_angle()
  *
@@ -406,10 +401,10 @@ static int new_angle(struct rm *, unsigned char *, int, int);
  *        many exceptions.  I may have to bite the bullet and do more
  *        checks.       - Dean 2/11/93
  */
-static int
+staticfn int
 new_angle(struct rm *lev, unsigned char *sv, int row, int col)
 {
-    register int res = *sv;
+    int res = *sv;
 
     /*
      * Do extra checks for crosswalls and T walls if we see them from
@@ -519,14 +514,14 @@ vision_recalc(int control)
     int row = 0;       /* row counter (outer loop)  */
     int start, stop;   /* inner loop starting/stopping index */
     int dx, dy;        /* one step from a lit door or lit wall (see below) */
-    register int col;  /* inner loop counter */
-    register struct rm *lev; /* pointer to current pos */
+    int col;  /* inner loop counter */
+    struct rm *lev; /* pointer to current pos */
     struct rm *flev;   /* pointer to position in "front" of current pos */
     const seenV *sv;   /* ptr to seen angle bits */
     int oldseenv;      /* previous seenv value */
 
     gv.vision_full_recalc = 0; /* reset flag */
-    if (gi.in_mklev || !iflags.vision_inited)
+    if (gi.in_mklev || gp.program_state.in_getlev || !iflags.vision_inited)
         return;
 
     /*
@@ -803,7 +798,7 @@ vision_recalc(int control)
 
             /*
              * At this point we know that the row position is *not* in normal
-             * sight.  That is, the position is could be seen, but is dark
+             * sight.  That is, the position could be seen, but is dark
              * or LOS is just plain blocked.
              *
              * Update the position if:
@@ -811,7 +806,7 @@ vision_recalc(int control)
              *   the glyph -- E.g. darken room spot, etc.
              * o If we now could see the location (yet the location is not
              *   lit), but previously we couldn't see the location, or vice
-             *   versa.  Update the spot because there there may be an
+             *   versa.  Update the spot because there may be an
              *   infrared monster there.
              */
             } else {
@@ -839,7 +834,7 @@ vision_recalc(int control)
     gv.viz_rmin = next_rmin;
     gv.viz_rmax = next_rmax;
 
-    recalc_mapseen();
+    notice_all_mons(TRUE);
 }
 
 /*
@@ -937,9 +932,9 @@ unblock_point(int x, int y)
  * + If you are a blocked spot, then your right will point to the
  *   right-most blocked spot to your right that is connected to you.
  *   This means that a right-edge (a blocked spot that has an open
- *    spot on its right) will point to itself.
+ *   spot on its right) will point to itself.
  */
-static void
+staticfn void
 dig_point(int row, int col)
 {
     int i;
@@ -1023,7 +1018,7 @@ dig_point(int row, int col)
     }
 }
 
-static void
+staticfn void
 fill_point(int row, int col)
 {
     int i;
@@ -1188,7 +1183,7 @@ static genericptr_t varg;
 #define q1_path(srow, scol, y2, x2, label)           \
     {                                                \
         int dx, dy;                                  \
-        register int k, err, x, y, dxs, dys;         \
+        int k, err, x, y, dxs, dys;                  \
                                                      \
         x = (scol);                                  \
         y = (srow);                                  \
@@ -1236,7 +1231,7 @@ static genericptr_t varg;
 #define q4_path(srow, scol, y2, x2, label)           \
     {                                                \
         int dx, dy;                                  \
-        register int k, err, x, y, dxs, dys;         \
+        int k, err, x, y, dxs, dys;                  \
                                                      \
         x = (scol);                                  \
         y = (srow);                                  \
@@ -1285,7 +1280,7 @@ static genericptr_t varg;
 #define q2_path(srow, scol, y2, x2, label)           \
     {                                                \
         int dx, dy;                                  \
-        register int k, err, x, y, dxs, dys;         \
+        int k, err, x, y, dxs, dys;                  \
                                                      \
         x = (scol);                                  \
         y = (srow);                                  \
@@ -1333,7 +1328,7 @@ static genericptr_t varg;
 #define q3_path(srow, scol, y2, x2, label)           \
     {                                                \
         int dx, dy;                                  \
-        register int k, err, x, y, dxs, dys;         \
+        int k, err, x, y, dxs, dys;                  \
                                                      \
         x = (scol);                                  \
         y = (srow);                                  \
@@ -1378,10 +1373,10 @@ static genericptr_t varg;
 
 #else /* !MACRO_CPATH -- quadrants are really functions */
 
-static int _q1_path(int, int, int, int);
-static int _q2_path(int, int, int, int);
-static int _q3_path(int, int, int, int);
-static int _q4_path(int, int, int, int);
+staticfn int _q1_path(int, int, int, int);
+staticfn int _q2_path(int, int, int, int);
+staticfn int _q3_path(int, int, int, int);
+staticfn int _q4_path(int, int, int, int);
 
 #define q1_path(sy, sx, y, x, dummy) result = _q1_path(sy, sx, y, x)
 #define q2_path(sy, sx, y, x, dummy) result = _q2_path(sy, sx, y, x)
@@ -1391,11 +1386,11 @@ static int _q4_path(int, int, int, int);
 /*
  * Quadrant I (step < 0).
  */
-static int
+staticfn int
 _q1_path(int scol, int srow, int y2, int x2)
 {
     int dx, dy;
-    register int k, err, x, y, dxs, dys;
+    int k, err, x, y, dxs, dys;
 
     x = scol;
     y = srow;
@@ -1438,11 +1433,11 @@ _q1_path(int scol, int srow, int y2, int x2)
 /*
  * Quadrant IV (step > 0).
  */
-static int
+staticfn int
 _q4_path(int scol, int srow, int y2, int x2)
 {
     int dx, dy;
-    register int k, err, x, y, dxs, dys;
+    int k, err, x, y, dxs, dys;
 
     x = scol;
     y = srow;
@@ -1485,11 +1480,11 @@ _q4_path(int scol, int srow, int y2, int x2)
 /*
  * Quadrant II (step < 0).
  */
-static int
+staticfn int
 _q2_path(int scol, int srow, int y2, int x2)
 {
     int dx, dy;
-    register int k, err, x, y, dxs, dys;
+    int k, err, x, y, dxs, dys;
 
     x = scol;
     y = srow;
@@ -1532,11 +1527,11 @@ _q2_path(int scol, int srow, int y2, int x2)
 /*
  * Quadrant III (step > 0).
  */
-static int
+staticfn int
 _q3_path(int scol, int srow, int y2, int x2)
 {
     int dx, dy;
-    register int k, err, x, y, dxs, dys;
+    int k, err, x, y, dxs, dys;
 
     x = scol;
     y = srow;
@@ -1619,11 +1614,11 @@ clear_path(int col1, int row1, int col2, int row2)
 /*
  * Defines local to Algorithm C.
  */
-static void right_side(int, int, int, const coordxy *);
-static void left_side(int, int, int, const coordxy *);
+staticfn void right_side(int, int, int, const coordxy *);
+staticfn void left_side(int, int, int, const coordxy *);
 
 /* Initialize algorithm C (nothing). */
-static void
+staticfn void
 view_init(void)
 {
 }
@@ -1638,7 +1633,7 @@ view_init(void)
  *   right_mark  last (right side) visible spot on prev row
  *   limits      points at range limit for current row, or NULL
  */
-static void
+staticfn void
 right_side(
     int row,
     int left,
@@ -1650,8 +1645,8 @@ right_side(
     int nrow;                   /* new row (calculate once) */
     int deeper;                 /* if TRUE, call self as needed */
     int result;                 /* set by q?_path() */
-    register int i;             /* loop counter */
-    register seenV *rowp = NULL; /* row optimization */
+    int i;             /* loop counter */
+    seenV *rowp = NULL; /* row optimization */
     coordxy *row_min = NULL;     /* left most  [used by macro set_min()] */
     coordxy *row_max = NULL;     /* right most [used by macro set_max()] */
     int lim_max;                /* right most limit of circle */
@@ -1830,7 +1825,7 @@ right_side(
  * This routine is the mirror image of right_side().  See right_side() for
  * extensive comments.
  */
-static void
+staticfn void
 left_side(
     int row,
     int left_mark,
@@ -1838,8 +1833,8 @@ left_side(
     const coordxy *limits)
 {
     int left, left_edge, nrow, deeper, result;
-    register int i;
-    register seenV *rowp = NULL;
+    int i;
+    seenV *rowp = NULL;
     coordxy *row_min = NULL;
     coordxy *row_max = NULL;
     int lim_min;
@@ -1974,7 +1969,7 @@ left_side(
  *   func           function to call on each spot
  *   arg            argument for func
  */
-static void
+staticfn void
 view_from(
     coordxy srow, coordxy scol,
     seenV **loc_cs_rows,
@@ -1983,7 +1978,7 @@ view_from(
     void (*func)(coordxy, coordxy, genericptr_t),
     genericptr_t arg)
 {
-    register int i; /* loop counter */
+    int i; /* loop counter */
     seenV *rowp;    /* optimization for setting could_see */
     int nrow;       /* the next row */
     int left;       /* the left-most visible column */
@@ -2091,7 +2086,7 @@ do_clear_area(
         view_from(srow, scol, (seenV **) 0, (coordxy *) 0, (coordxy *) 0,
                   range, func, arg);
     } else {
-        register int x;
+        int x;
         int y, min_x, max_x, max_y, offset;
         const coordxy *limits;
         boolean override_vision;
@@ -2131,6 +2126,7 @@ howmonseen(struct monst *mon)
     int xraydist = (u.xray_range < 0) ? -1 : (u.xray_range * u.xray_range);
     unsigned how_seen = 0; /* result */
 
+    /* assert(mon != NULL) */
     /* normal vision;
        cansee is true for both normal and astral vision,
        but couldsee it not true for astral vision */

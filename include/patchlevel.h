@@ -1,4 +1,4 @@
-/* NetHack 3.7	patchlevel.h	$NHDT-Date: 1686726254 2023/06/14 07:04:14 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.241 $ */
+/* NetHack 3.7	patchlevel.h	$NHDT-Date: 1703294869 2023/12/23 01:27:49 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.249 $ */
 /* Copyright (c) Stichting Mathematisch Centrum, Amsterdam, 1985. */
 /*-Copyright (c) Michael Allison, 2012. */
 /* NetHack may be freely redistributed.  See license for details. */
@@ -17,7 +17,7 @@
  * Incrementing EDITLEVEL can be used to force invalidation of old bones
  * and save files.
  */
-#define EDITLEVEL 88
+#define EDITLEVEL 102
 
 /*
  * Development status possibilities.
@@ -36,7 +36,7 @@
 #define DEBUG
 #endif
 
-#define COPYRIGHT_BANNER_A "NetHack, Copyright 1985-2023"
+#define COPYRIGHT_BANNER_A "NetHack, Copyright 1985-2024"
 #define COPYRIGHT_BANNER_B \
     "         By Stichting Mathematisch Centrum and M. Stephenson."
 /* nomakedefs.copyright_banner_c is generated at runtime */
@@ -85,7 +85,7 @@
  *      defined to force it back into effect
  *  update_inventory() after leash goes slack
  *  player assigned name for monsters, specific objects, or object types could be
-        longer than what was intented to be allowed; for 'curses', much longer
+        longer than what was intended to be allowed; for 'curses', much longer
  *  windows: added winflexbison to travis-ci configuration to permit full build of
  *      levcomp and dgncomp
  *  windows: a bad chdir specified in win/win32/dgnstuff.mak caused full build to
@@ -155,7 +155,7 @@
  *  Fixed stale 'thrownobj' pointer for returning thrown aklys while engulfed
  *  Fixed uarmh null pointer dereference if a helm of opposite alignment came
  *     off due to being polymorphed
- *  Fixed 'object lost' panic when attempting to crawl of of the water during
+ *  Fixed 'object lost' panic when attempting to crawl out of the water during
  *     emergency disrobing/dropping
  *  Running now stops when moving over engravings so you can tell where they are
  *  Fixed detection of unseen/secret doors which failed to find monsters hiding

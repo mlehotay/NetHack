@@ -31,15 +31,6 @@ typedef struct s_level { /* special dungeon level element */
     d_flags flags;  /* type flags */
 } s_level;
 
-typedef struct stairway { /* basic stairway identifier */
-    coordxy sx, sy;         /* x / y location of the stair */
-    d_level tolev;        /* where does it go */
-    boolean up;           /* up or down? */
-    boolean isladder;     /* ladder or stairway? */
-    boolean u_traversed;  /* hero has traversed this stair */
-    struct stairway *next;
-} stairway;
-
 /* level region types */
 enum level_region_types {
     LR_DOWNSTAIR = 0,
@@ -57,6 +48,14 @@ typedef struct dest_area { /* non-stairway level change identifier */
     coordxy nlx, nly;        /* outline of invalid area */
     coordxy nhx, nhy;        /* opposite corner of invalid area */
 } dest_area;
+
+/* teleportation exclusion zones in the level */
+typedef struct exclusion_zone {
+    xint16 zonetype; /* level_region_types */
+    coordxy lx, ly;
+    coordxy hx, hy;
+    struct exclusion_zone *next;
+} exclusion_zone;
 
 typedef struct dungeon {   /* basic dungeon identifier */
     char dname[24];        /* name of the dungeon (eg. "Hell") */

@@ -1,4 +1,4 @@
-/* NetHack 3.7	libnhmain.c	$NHDT-Date: 1596498297 2020/08/03 23:44:57 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.87 $ */
+/* NetHack 3.7	libnhmain.c	$NHDT-Date: 1693359589 2023/08/30 01:39:49 $  $NHDT-Branch: keni-crashweb2 $:$NHDT-Revision: 1.106 $ */
 /* Copyright (c) Stichting Mathematisch Centrum, Amsterdam, 1985. */
 /*-Copyright (c) Robert Patrick Rankin, 2011. */
 /* NetHack may be freely redistributed.  See license for details. */
@@ -50,7 +50,6 @@ extern void init_linux_cons(void);
 #endif
 
 static void wd_message(void);
-static boolean wiz_error_flag = FALSE;
 static struct passwd *get_unix_pw(void);
 
 #ifdef __EMSCRIPTEN__
@@ -68,7 +67,7 @@ nhmain(int argc, char *argv[])
 #endif /* __EMSCRIPTEN__ */
 {
 #ifdef CHDIR
-    register char *dir;
+    char *dir;
 #endif
     NHFILE *nhfp;
     boolean exact_username;
@@ -79,7 +78,7 @@ nhmain(int argc, char *argv[])
     //     printf ("argv[%d]: %s\n", i, argv[i]);
     // }
 
-    early_init();
+    early_init(argc, argv);
 
     gh.hname = argv[0];
     gh.hackpid = getpid();
@@ -102,6 +101,11 @@ nhmain(int argc, char *argv[])
     if (argc > 1) {
         if (argcheck(argc, argv, ARG_VERSION) == 2)
             exit(EXIT_SUCCESS);
+
+#ifdef CRASHREPORT
+	if (argcheck(argc, argv, ARG_BIDSHOW))
+	    exit(EXIT_SUCCESS);
+#endif
 
         if (argcheck(argc, argv, ARG_SHOWPATHS) == 2) {
 #ifdef CHDIR
@@ -291,7 +295,7 @@ nhmain(int argc, char *argv[])
             wd_message();
             if (discover || wizard) {
                 /* this seems like a candidate for paranoid_confirmation... */
-                if (yn("Do you want to keep the save file?") == 'n') {
+                if (y_n("Do you want to keep the save file?") == 'n') {
                     (void) delete_savefile();
                 } else {
                     (void) chmod(fq_save, FCMASK); /* back to readable */
@@ -531,7 +535,7 @@ whoami(void)
      * somebody else's name.
      */
     if (!*gp.plname) {
-        register const char *s;
+        const char *s;
 
         s = nh_getenv("USER");
         if (!s || !*s)
@@ -592,28 +596,48 @@ port_help(void)
 boolean
 authorize_wizard_mode(void)
 {
-    struct passwd *pw = get_unix_pw();
-
-    if (pw && sysopt.wizards && sysopt.wizards[0]) {
+    if (sysopt.wizards && sysopt.wizards[0]) {
         if (check_user_string(sysopt.wizards))
             return TRUE;
     }
-    wiz_error_flag = TRUE; /* not being allowed into wizard mode */
+    iflags.wiz_error_flag = TRUE; /* not being allowed into wizard mode */
     return FALSE;
+}
+
+/* similar to above, validate explore mode access */
+boolean
+authorize_explore_mode(void)
+{
+#ifdef SYSCF
+    if (sysopt.explorers && sysopt.explorers[0]) {
+        if (check_user_string(sysopt.explorers))
+            return TRUE;
+    }
+    iflags.explore_error_flag = TRUE; /* not allowed into explore mode */
+    return FALSE;
+#else
+    return TRUE; /* if sysconf disabled, no restrictions on explore mode */
+#endif
 }
 
 static void
 wd_message(void)
 {
-    if (wiz_error_flag) {
+    if (iflags.wiz_error_flag) {
         if (sysopt.wizards && sysopt.wizards[0]) {
             char *tmp = build_english_list(sysopt.wizards);
             pline("Only user%s %s may access debug (wizard) mode.",
                   strchr(sysopt.wizards, ' ') ? "s" : "", tmp);
             free(tmp);
-        } else
+        } else {
+            You("cannot access debug (wizard) mode.");
+        }
+        wizard = FALSE; /* (paranoia) */
+        if (!iflags.explore_error_flag)
             pline("Entering explore/discovery mode instead.");
-        wizard = 0, discover = 1; /* (paranoia) */
+    } else if (iflags.explore_error_flag) {
+        You("cannot access explore mode."); /* same as enter_explore_mode */
+        discover = iflags.deferred_X = FALSE; /* (more paranoia) */
     } else if (discover)
         You("are in non-scoring explore/discovery mode.");
 }
@@ -1011,11 +1035,12 @@ void js_constants_init() {
     SET_CONSTANT("COLORS", CLR_MAX);
 
     // color attributes (?)
-    SET_CONSTANT("COLOR_ATTR", HL_ATTCLR_DIM);
-    SET_CONSTANT("COLOR_ATTR", HL_ATTCLR_BLINK);
-    SET_CONSTANT("COLOR_ATTR", HL_ATTCLR_ULINE);
-    SET_CONSTANT("COLOR_ATTR", HL_ATTCLR_INVERSE);
     SET_CONSTANT("COLOR_ATTR", HL_ATTCLR_BOLD);
+    SET_CONSTANT("COLOR_ATTR", HL_ATTCLR_DIM);
+    SET_CONSTANT("COLOR_ATTR", HL_ATTCLR_ITALIC);
+    SET_CONSTANT("COLOR_ATTR", HL_ATTCLR_ULINE);
+    SET_CONSTANT("COLOR_ATTR", HL_ATTCLR_BLINK);
+    SET_CONSTANT("COLOR_ATTR", HL_ATTCLR_INVERSE);
     SET_CONSTANT("COLOR_ATTR", BL_ATTCLR_MAX);
 }
 

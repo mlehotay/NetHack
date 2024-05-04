@@ -22,9 +22,9 @@ $(TARGETPFX)tile.o : tile.c
 $(TARGETPFX)exceptn.o : ../lib/djgpp/djgpp-patch/src/libc/go32/exceptn.S
 	$(TARGET_CC) -c -o $@ ../lib/djgpp/djgpp-patch/src/libc/go32/exceptn.S
 	$(TARGET_AR) ru ../lib/djgpp/i586-pc-msdosdjgpp/lib/libc.a $(TARGETPFX)exceptn.o
-$(GAMEBIN) : $(HOBJ) $(LUACROSSLIB)
+$(GAMEBIN) : $(HOBJ) $(HACKLIB) $(LUACROSSLIB)
 	$(TARGET_LINK) $(TARGET_LFLAGS) -o $(GAMEBIN) \
-	$(HOBJ) $(WINLIB) $(TARGET_LIBS)
+	$(HOBJ) $(HACKLIB) $(WINLIB) $(TARGET_LIBS)
 $(DOSFONT)/ter-u16b.psf: $(FONTTOP)/ter-u16b.bdf $(DOSFONT)/nh-u16b.bdf $(DOSFONT)/makefont.lua $(LUABIN)
 	$(LUABIN) $(DOSFONT)/makefont.lua $(FONTTOP)/ter-u16b.bdf $(DOSFONT)/nh-u16b.bdf $@
 $(DOSFONT)/ter-u16v.psf: $(FONTTOP)/ter-u16v.bdf $(DOSFONT)/nh-u16v.bdf $(DOSFONT)/makefont.lua $(LUABIN)
@@ -65,6 +65,11 @@ dospkg: dodata dosfonts $(GAMEBIN) $(TARGETPFX)recover.exe ../dat/nhtiles.bmp
 	cp $(DOSFONT)/ter-u28b.psf $(TARGETPFX)pkg/TER-U28B.PSF
 	cp $(DOSFONT)/ter-u32b.psf $(TARGETPFX)pkg/TER-U32B.PSF
 	cp  ../lib/djgpp/cwsdpmi/bin/CWSDPMI.EXE $(TARGETPFX)pkg/CWSDPMI.EXE
+	( if [ -f ../lib/djgpp/symify/simify.exe ]; then \
+	      cp  ../lib/djgpp/symify/simify.exe $(TARGETPFX)pkg/SYMIFY.EXE; \
+          else \
+              pwd; echo "../lib/djgpp/symify/symify.exe not found"; \
+	  fi; )
 	-touch $(TARGETPFX)pkg/RECORD
 	cd $(TARGETPFX)pkg ; zip -9 ../NH370DOS.ZIP * ; cd ../../..
 	@echo msdos package zip file $(TARGETPFX)NH370DOS.ZIP
@@ -144,6 +149,10 @@ $(TARGETPFX)recover.exe : $(TARGETPFX)recover.o
 	$(TARGET_LINK) $(TARGET_LFLAGS) $(TARGETPFX)recover.o -o $@
 endif  # CROSS_SHARED
 #
+ifdef CROSS
+$(TARGETPFX)hacklib.a: $(TARGETPFX)hacklib.o
+	$(TARGET_AR) $(TARGET_ARFLAGS) $@ $(TARGETPFX)hacklib.o
+endif
 ifdef BUILD_TARGET_LUA
 # Lua lib
 $(LUACROSSLIB): $(LUALIBOBJS)
@@ -264,6 +273,9 @@ $(TARGETPFX)pdckbd.o : $(PDCPORT)/pdckbd.c
 $(TARGETPFX)pdcscrn.o : $(PDCPORT)/pdcscrn.c
 $(TARGETPFX)pdcsetsc.o : $(PDCPORT)/pdcsetsc.c
 $(TARGETPFX)pdcutil.o : $(PDCPORT)/pdcutil.c
+	$(TARGET_CC) $(PDCINCL) $(PDC_TARGET_CFLAGS) \
+		-Wno-sign-compare -o$@  $(PDCPORT)/pdcutil.c
+# -Wno-sign-compare
 endif  # BUILD_PDCURSES
 #
 # End of cross-compiling -POST section

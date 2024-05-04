@@ -36,6 +36,7 @@
 /* color aliases used in monsters.h and display.c  */
 #define HI_DOMESTIC CLR_WHITE /* for player + pets */
 #define HI_LORD CLR_MAGENTA /* for high-end monsters */
+#define HI_OVERLORD CLR_BRIGHT_MAGENTA /* for few uniques */
 
 /* these can be configured */
 #define HI_OBJ CLR_MAGENTA
@@ -53,4 +54,25 @@
 #define DRAGON_SILVER CLR_BRIGHT_CYAN
 #define HI_ZAP CLR_BRIGHT_BLUE
 
+#define NH_BASIC_COLOR  0x1000000
+#define NH_ALTPALETTE   0x2000000
+#define COLORVAL(x) ((x) & 0xFFFFFF)
+
+enum nhcolortype { no_color, nh_color, rgb_color };
+
+struct nethack_color {
+    enum nhcolortype colortyp;
+    int tableindex;
+    int rgbindex;
+    const char *name;
+    const char *hexval;
+    long r, g, b;
+};
+
+typedef struct color_and_attr {
+           int color, attr;
+} color_attr;
+
 #endif /* COLOR_H */
+
+/*color.h*/

@@ -1,4 +1,4 @@
-/* NetHack 3.7	wizard.c	$NHDT-Date: 1646688073 2022/03/07 21:21:13 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.85 $ */
+/* NetHack 3.7	wizard.c	$NHDT-Date: 1705357487 2024/01/15 22:24:47 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.105 $ */
 /* Copyright (c) Stichting Mathematisch Centrum, Amsterdam, 1985. */
 /*-Copyright (c) Robert Patrick Rankin, 2016. */
 /* NetHack may be freely redistributed.  See license for details. */
@@ -10,13 +10,16 @@
 
 #include "hack.h"
 
-static short which_arti(int);
-static boolean mon_has_arti(struct monst *, short);
-static struct monst *other_mon_has_arti(struct monst *, short);
-static struct obj *on_ground(short);
-static boolean you_have(int);
-static unsigned long target_on(int, struct monst *);
-static unsigned long strategy(struct monst *);
+staticfn short which_arti(int);
+staticfn boolean mon_has_arti(struct monst *, short) NONNULLARG1;
+/* other_mon_has_arti() won't blow up if passed a NULL monst,
+ * but its caller target_on() passes it a nonnull monst;
+ * it may return a NULL monst pointer */
+staticfn struct monst *other_mon_has_arti(struct monst *, short) NONNULLARG1;
+staticfn struct obj *on_ground(short);  /* might return NULL obj pointer */
+staticfn boolean you_have(int);
+staticfn unsigned long target_on(int, struct monst *) NONNULLARG2;
+staticfn unsigned long strategy(struct monst *) NONNULLARG1;
 
 /* adding more neutral creatures will tend to reduce the number of monsters
    summoned by nasty(); adding more lawful creatures will reduce the number
@@ -91,7 +94,7 @@ amulet(void)
             continue;
         if (mtmp->iswiz && mtmp->msleeping && !rn2(40)) {
             mtmp->msleeping = 0;
-            if (!next2u(mtmp->mx, mtmp->my))
+            if (!m_next2u(mtmp))
                 You(
       "get the creepy feeling that somebody noticed your taking the Amulet.");
             return;
@@ -102,7 +105,7 @@ amulet(void)
 int
 mon_has_amulet(struct monst *mtmp)
 {
-    register struct obj *otmp;
+    struct obj *otmp;
 
     for (otmp = mtmp->minvent; otmp; otmp = otmp->nobj)
         if (otmp->otyp == AMULET_OF_YENDOR)
@@ -113,7 +116,7 @@ mon_has_amulet(struct monst *mtmp)
 int
 mon_has_special(struct monst *mtmp)
 {
-    register struct obj *otmp;
+    struct obj *otmp;
 
     for (otmp = mtmp->minvent; otmp; otmp = otmp->nobj)
         if (otmp->otyp == AMULET_OF_YENDOR
@@ -138,7 +141,7 @@ mon_has_special(struct monst *mtmp)
 
 #define M_Wants(mask) (mtmp->data->mflags3 & (mask))
 
-static short
+staticfn short
 which_arti(int mask)
 {
     switch (mask) {
@@ -161,10 +164,10 @@ which_arti(int mask)
  *      since bell, book, candle, and amulet are all objects, not really
  *      artifacts right now.  [MRS]
  */
-static boolean
+staticfn boolean
 mon_has_arti(struct monst *mtmp, short otyp)
 {
-    register struct obj *otmp;
+    struct obj *otmp;
 
     for (otmp = mtmp->minvent; otmp; otmp = otmp->nobj) {
         if (otyp) {
@@ -176,10 +179,14 @@ mon_has_arti(struct monst *mtmp, short otyp)
     return 0;
 }
 
-static struct monst *
+/*
+ * Returns some monster other than mtmp that
+ * has artifact, or NULL monst pointer.
+ */
+staticfn struct monst *
 other_mon_has_arti(struct monst *mtmp, short otyp)
 {
-    register struct monst *mtmp2;
+    struct monst *mtmp2;
 
     for (mtmp2 = fmon; mtmp2; mtmp2 = mtmp2->nmon)
         /* no need for !DEADMONSTER check here since they have no inventory */
@@ -190,10 +197,14 @@ other_mon_has_arti(struct monst *mtmp, short otyp)
     return (struct monst *) 0;
 }
 
-static struct obj *
+/*
+ * Returns obj of type specified if there is one
+ * on the ground, otherwise returns NULL obj pointer.
+ */
+staticfn struct obj *
 on_ground(short otyp)
 {
-    register struct obj *otmp;
+    struct obj *otmp;
 
     for (otmp = fobj; otmp; otmp = otmp->nobj)
         if (otyp) {
@@ -204,7 +215,7 @@ on_ground(short otyp)
     return (struct obj *) 0;
 }
 
-static boolean
+staticfn boolean
 you_have(int mask)
 {
     switch (mask) {
@@ -224,12 +235,12 @@ you_have(int mask)
     return 0;
 }
 
-static unsigned long
+staticfn unsigned long
 target_on(int mask, struct monst *mtmp)
 {
-    register short otyp;
-    register struct obj *otmp;
-    register struct monst *mtmp2;
+    short otyp;
+    struct obj *otmp;
+    struct monst *mtmp2;
 
     if (!M_Wants(mask))
         return (unsigned long) STRAT_NONE;
@@ -250,7 +261,7 @@ target_on(int mask, struct monst *mtmp)
     return (unsigned long) STRAT_NONE;
 }
 
-static unsigned long
+staticfn unsigned long
 strategy(struct monst *mtmp)
 {
     unsigned long strat, dstrat;
@@ -361,6 +372,10 @@ tactics(struct monst *mtmp)
     switch (strat) {
     case STRAT_HEAL: /* hide and recover */
         mx = mtmp->mx, my = mtmp->my;
+
+        if (u.uswallow && u.ustuck == mtmp)
+            expels(mtmp, mtmp->data, TRUE);
+
         /* if wounded, hole up on or near the stairs (to block them) */
         choose_stairs(&sx, &sy, (mtmp->m_id % 2));
         mtmp->mavenge = 1; /* covetous monsters attack while fleeing */
@@ -403,7 +418,9 @@ tactics(struct monst *mtmp)
         }
         if (u_at(tx, ty) || where == STRAT_PLAYER) {
             /* player is standing on it (or has it) */
-            mnexto(mtmp, RLOC_MSG);
+            mx = mtmp->mx, my = mtmp->my;
+            if (!mnearto(mtmp, tx, ty, FALSE, RLOC_MSG))
+                rloc_to(mtmp, mx, my); /* no room? stay put */
             return 0;
         }
         if (where == STRAT_GROUND) {
@@ -464,7 +481,7 @@ has_aggravatables(struct monst *mon)
 void
 aggravate(void)
 {
-    register struct monst *mtmp;
+    struct monst *mtmp;
     boolean in_w_tower = In_W_tower(u.ux, u.uy, &u.uz);
 
     for (mtmp = fmon; mtmp; mtmp = mtmp->nmon) {
@@ -487,7 +504,7 @@ aggravate(void)
 void
 clonewiz(void)
 {
-    register struct monst *mtmp2;
+    struct monst *mtmp2;
 
     if ((mtmp2 = makemon(&mons[PM_WIZARD_OF_YENDOR], u.ux, u.uy, MM_NOWAIT))
         != 0) {
@@ -498,7 +515,7 @@ clonewiz(void)
         }
         if (!Protection_from_shape_changers) {
             mtmp2->m_ap_type = M_AP_MONSTER;
-            mtmp2->mappearance = wizapp[rn2(SIZE(wizapp))];
+            mtmp2->mappearance = ROLL_FROM(wizapp);
         }
         newsym(mtmp2->mx, mtmp2->my);
     }
@@ -509,7 +526,7 @@ int
 pick_nasty(
     int difcap) /* if non-zero, try to make difficulty be lower than this */
 {
-    int alt, res = nasties[rn2(SIZE(nasties))];
+    int alt, res = ROLL_FROM(nasties);
 
     /* To do?  Possibly should filter for appropriate forms when
      * in the elemental planes or surrounded by water or lava.
@@ -518,8 +535,8 @@ pick_nasty(
      * but we don't try very hard.
      */
     if (Is_rogue_level(&u.uz)
-        && !('A' <= mons[res].mlet && mons[res].mlet <= 'Z'))
-        res = nasties[rn2(SIZE(nasties))];
+        && !('A' <= monsym(&mons[res]) && monsym(&mons[res]) <= 'Z'))
+        res = ROLL_FROM(nasties);
 
     /* if genocided or too difficult or out of place, try a substitute
        when a suitable one exists
@@ -593,7 +610,7 @@ nasty(struct monst *summoner)
              * and 20 are neutral.  [These numbers are up date for
              * 3.7.0; the ones in the next paragraph are not....]
              *
-             * Neutral caster, used for late-game harrassment,
+             * Neutral caster, used for late-game harassment,
              * has 18/42 chance to stop the inner loop on each
              * critter, 24/42 chance for another iteration.
              * Lawful caster has 28/42 chance to stop unless the
@@ -818,20 +835,20 @@ cuss(struct monst *mtmp)
         } else if (u.uhave.amulet && !rn2(SIZE(random_insult))) {
             SetVoice(mtmp, 0, 80, 0);
             verbalize("Relinquish the amulet, %s!",
-                      random_insult[rn2(SIZE(random_insult))]);
+                      ROLL_FROM(random_insult));
         } else if (u.uhp < 5 && !rn2(2)) { /* Panic */
             SetVoice(mtmp, 0, 80, 0);
             verbalize(rn2(2) ? "Even now thy life force ebbs, %s!"
                              : "Savor thy breath, %s, it be thy last!",
-                      random_insult[rn2(SIZE(random_insult))]);
+                      ROLL_FROM(random_insult));
         } else if (mtmp->mhp < 5 && !rn2(2)) { /* Parthian shot */
             SetVoice(mtmp, 0, 80, 0);
             verbalize(rn2(2) ? "I shall return." : "I'll be back.");
         } else {
             SetVoice(mtmp, 0, 80, 0);
             verbalize("%s %s!",
-                      random_malediction[rn2(SIZE(random_malediction))],
-                      random_insult[rn2(SIZE(random_insult))]);
+                      ROLL_FROM(random_malediction),
+                      ROLL_FROM(random_insult));
         }
     } else if (is_lminion(mtmp)
                && !(mtmp->isminion && EMIN(mtmp)->renegade)) {
