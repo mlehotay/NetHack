@@ -1,4 +1,4 @@
-/* NetHack 3.7	winprocs.h	$NHDT-Date: 1683748057 2023/05/10 19:47:37 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.74 $ */
+/* NetHack 3.7	winprocs.h	$NHDT-Date: 1725653017 2024/09/06 20:03:37 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.81 $ */
 /* Copyright (c) David Cohrs, 1992                                */
 /* NetHack may be freely redistributed.  See license for details. */
 
@@ -16,7 +16,7 @@ enum wp_ids { wp_tty = 1, wp_X11, wp_Qt, wp_mswin, wp_curses,
 #ifdef OUTDATED_STUFF
               wp_mac, wp_Gem, wp_Gnome, wp_amii, wp_amiv,
 #endif
-	      wp_trace	// XXX do we need this?  should chainin/out get an id? TBD
+              wp_trace	// XXX do we need this?  should chainin/out get an id? TBD
 };
 
 /* NB: this MUST match chain_procs below */
@@ -420,7 +420,8 @@ struct chain_procs {
                               unsigned long *);
     boolean (*win_can_suspend)(CARGS);
     void (*win_update_inventory)(CARGS, int);
-    win_request_info *(*win_ctrl_nhwindow)(CARGS, winid, int, win_request_info *);
+    win_request_info *(*win_ctrl_nhwindow)(CARGS, winid, int,
+                                           win_request_info *);
 };
 #endif /* WINCHAIN */
 

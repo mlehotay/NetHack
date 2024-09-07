@@ -1,4 +1,4 @@
-/* NetHack 3.7	monmove.c	$NHDT-Date: 1701435190 2023/12/01 12:53:10 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.229 $ */
+/* NetHack 3.7	monmove.c	$NHDT-Date: 1722116054 2024/07/27 21:34:14 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.255 $ */
 /* Copyright (c) Stichting Mathematisch Centrum, Amsterdam, 1985. */
 /*-Copyright (c) Michael Allison, 2006. */
 /* NetHack may be freely redistributed.  See license for details. */
@@ -18,9 +18,9 @@ staticfn boolean holds_up_web(coordxy, coordxy);
 staticfn int count_webbing_walls(coordxy, coordxy);
 staticfn boolean soko_allow_web(struct monst *);
 staticfn boolean m_search_items(struct monst *, coordxy *, coordxy *, int *,
-                              int *);
+                                int *) NONNULLPTRS;
 staticfn int postmov(struct monst *, struct permonst *, coordxy, coordxy, int,
-                              boolean, boolean, boolean, boolean);
+                     unsigned, boolean, boolean, boolean) NONNULLPTRS;
 staticfn boolean leppie_avoidance(struct monst *);
 staticfn void leppie_stash(struct monst *);
 staticfn boolean m_balks_at_approaching(struct monst *);
@@ -55,7 +55,7 @@ mb_trapped(struct monst *mtmp, boolean canseeit)
 {
     if (flags.verbose) {
         if (canseeit && !Unaware)
-            pline("KABOOM!!  You see a door explode.");
+            pline_mon(mtmp, "KABOOM!!  You see a door explode.");
         else if (!Deaf)
             You_hear("a %s explosion.",
                      (mdistu(mtmp) > 7 * 7) ? "distant" : "nearby");
@@ -110,7 +110,7 @@ mon_yells(struct monst *mon, const char *shout)
             /* Sidenote on "A watchman angrily waves her arms!"
              * Female being called watchman is correct (career name).
              */
-            pline("%s angrily %s %s %s!",
+            pline_mon(mon, "%s angrily %s %s %s!",
                 Amonnam(mon),
                 nolimbs(mon->data) ? "shakes" : "waves",
                 mhis(mon),
@@ -118,7 +118,7 @@ mon_yells(struct monst *mon, const char *shout)
                                    : makeplural(mbodypart(mon, ARM)));
     } else {
         if (canspotmon(mon)) {
-            pline("%s yells:", Amonnam(mon));
+            pline_mon(mon, "%s yells:", Amonnam(mon));
         } else {
             /* Soundeffect(se_someone_yells, 75); */
             You_hear("someone yell:");
@@ -146,14 +146,28 @@ m_break_boulder(struct monst *mtmp, coordxy x, coordxy y)
 
     if (m_can_break_boulder(mtmp) && ((otmp = sobj_at(BOULDER, x, y)) != 0)) {
         if (!is_rider(mtmp->data)) {
-            if (!Deaf && (mdistu(mtmp) < 4*4))
+            if (!Deaf && (mdistu(mtmp) < 4*4)) {
+                if (canspotmon(mtmp))
+                    set_msg_xy(mtmp->mx, mtmp->my);
                 pline("%s mutters %s.",
                       Monnam(mtmp),
                       mtmp->ispriest ? "a prayer" : "an incantation");
+            }
             mtmp->mspec_used += rn1(20, 10);
         }
-        if (cansee(x, y))
+        if (cansee(x, y)) {
+            set_msg_xy(x, y);
             pline_The("boulder falls apart.");
+        }
+
+        /* boulders pushed onto shop's boundary or free spot are cases where
+           an item not in hero's inventory can have its unpaid flag set;
+           if the boulder isn't already on the bill, don't charge for it */
+        if (otmp->unpaid) {
+            /* remove original from bill + add cloned copy to used-up bill */
+            bill_dummy_object(otmp);
+        }
+        /* fracturing keeps otmp, changing its otyp from BOULDER to ROCK */
         fracture_rock(otmp);
     }
 }
@@ -179,8 +193,8 @@ watch_on_duty(struct monst *mtmp)
             }
         } else if (is_digging()) {
             /* chewing, wand/spell of digging are checked elsewhere */
-            watch_dig(mtmp, gc.context.digging.pos.x, gc.context.digging.pos.y,
-                      FALSE);
+            watch_dig(mtmp, svc.context.digging.pos.x,
+                      svc.context.digging.pos.y, FALSE);
         }
     }
 }
@@ -282,7 +296,7 @@ void
 mon_regen(struct monst *mon, boolean digest_meal)
 {
     if (mon->mhp < mon->mhpmax
-        && (gm.moves % 20 == 0 || regenerates(mon->data)))
+        && (svm.moves % 20 == 0 || regenerates(mon->data)))
         mon->mhp++;
     if (mon->mspec_used)
         mon->mspec_used--;
@@ -352,7 +366,7 @@ find_pmmonst(int pm)
 {
     struct monst *mtmp = 0;
 
-    if ((gm.mvitals[pm].mvflags & G_GENOD) == 0)
+    if ((svm.mvitals[pm].mvflags & G_GENOD) == 0)
         for (mtmp = fmon; mtmp; mtmp = mtmp->nmon) {
             if (DEADMONSTER(mtmp))
                 continue;
@@ -378,7 +392,7 @@ bee_eat_jelly(struct monst *mon, struct obj *obj)
         if (obj->quan > 1L)
             obj = splitobj(obj, 1L);
         if (canseemon(mon))
-            pline("%s eats %s.", Monnam(mon), an(xname(obj)));
+            pline_mon(mon, "%s eats %s.", Monnam(mon), an(xname(obj)));
         delobj(obj);
 
         if ((int) mon->m_lev < mons[PM_QUEEN_BEE].mlevel - 1)
@@ -440,11 +454,12 @@ monflee(
                sleep and temporary paralysis, so both conditions
                receive the same alternate message */
             if (!mtmp->mcanmove || !mtmp->data->mmove) {
-                pline("%s seems to flinch.", Adjmonnam(mtmp, "immobile"));
+                pline_mon(mtmp, "%s seems to flinch.",
+                          Adjmonnam(mtmp, "immobile"));
             } else if (flees_light(mtmp)) {
                 if (Unaware) {
                     /* tell the player even if the hero is unconscious */
-                    pline("%s is frightened.", Monnam(mtmp));
+                    pline_mon(mtmp, "%s is frightened.", Monnam(mtmp));
                 } else if (rn2(10) || Deaf) {
                     /* via flees_light(), will always be either via uwep
                        (Sunsword) or uarm (gold dragon scales/mail) or both;
@@ -456,14 +471,14 @@ monflee(
                                          ? yname(uarm)
                                          : "[its imagination?]";
 
-                    pline("%s flees from the painful light of %s.",
+                    pline_mon(mtmp, "%s flees from the painful light of %s.",
                           Monnam(mtmp), lsrc);
                 } else {
                     SetVoice(mtmp, 0, 80, 0);
                     verbalize("Bright light!");
                 }
             } else {
-                pline("%s turns to flee.", Monnam(mtmp));
+                pline_mon(mtmp, "%s turns to flee.", Monnam(mtmp));
             }
         }
 
@@ -534,7 +549,7 @@ mind_blast(struct monst *mtmp)
     struct monst *m2, *nmon = (struct monst *) 0;
 
     if (canseemon(mtmp))
-        pline("%s concentrates.", Monnam(mtmp));
+        pline_mon(mtmp, "%s concentrates.", Monnam(mtmp));
     if (mdistu(mtmp) > BOLT_LIM * BOLT_LIM) {
         You("sense a faint wave of psychic energy.");
         return;
@@ -593,19 +608,20 @@ mind_blast(struct monst *mtmp)
     }
 }
 
-/* called every turn for each living monster on the map,
-   and the hero */
+/* called every turn for each living monster on the map, and the hero;
+   caller makes sure that we're not called for DEADMONSTER() */
 void
 m_everyturn_effect(struct monst *mtmp)
 {
     boolean is_u = (mtmp == &gy.youmonst) ? TRUE : FALSE;
     coordxy x = is_u ? u.ux : mtmp->mx,
-        y = is_u ? u.uy : mtmp->my;
+            y = is_u ? u.uy : mtmp->my;
 
     if (mtmp->data == &mons[PM_FOG_CLOUD]) {
-        NhRegion *reg = visible_region_at(x, y);
-
-        if (!reg)
+        /* don't leave a vapor cloud if some other gas cloud is already
+           present, or when flowing under closed doors so that visibility
+           changes aren't mixed with messages about doing such */
+        if (!closed_door(x, y) && !visible_region_at(x, y))
             create_gas_cloud(x, y, 1, 0); /* harmless vapor */
     }
 }
@@ -621,7 +637,7 @@ m_postmove_effect(struct monst *mtmp)
 {
     boolean is_u = (mtmp == &gy.youmonst) ? TRUE : FALSE;
     coordxy x = is_u ? u.ux0 : mtmp->mx,
-        y = is_u ? u.uy0 : mtmp->my;
+            y = is_u ? u.uy0 : mtmp->my;
 
     /* Hezrous create clouds of stench. This does not cost a move. */
     if (mtmp->data == &mons[PM_HEZROU]) /* stench */
@@ -770,6 +786,8 @@ dochug(struct monst *mtmp)
             } else {
                 mtmp->minvis = mtmp->perminvis = 0;
                 /* Why?  For the same reason in real demon talk */
+                if (canseemon(mtmp))
+                    set_msg_xy(mtmp->mx, mtmp->my);
                 pline("%s gets angry!", Amonnam(mtmp));
                 mtmp->mpeaceful = 0;
                 set_malign(mtmp);
@@ -992,7 +1010,7 @@ mon_would_consume_item(struct monst *mtmp, struct obj *otmp)
 
     if (mtmp->mtame && has_edog(mtmp) /* has_edog(): not guardian angel */
         && (ftyp = dogfood(mtmp, otmp)) < MANFOOD
-        && (ftyp < ACCFOOD || EDOG(mtmp)->hungrytime <= gm.moves))
+        && (ftyp < ACCFOOD || EDOG(mtmp)->hungrytime <= svm.moves))
         return TRUE;
 
     return FALSE;
@@ -1002,7 +1020,7 @@ boolean
 itsstuck(struct monst *mtmp)
 {
     if (sticks(gy.youmonst.data) && mtmp == u.ustuck && !u.uswallow) {
-        pline("%s cannot escape from you!", Monnam(mtmp));
+        pline_mon(mtmp, "%s cannot escape from you!", Monnam(mtmp));
         return TRUE;
     }
     return FALSE;
@@ -1209,7 +1227,7 @@ maybe_spin_web(struct monst *mtmp)
                 char mbuf[BUFSZ];
 
                 Strcpy(mbuf, canspotmon(mtmp) ? y_monnam(mtmp) : something);
-                pline("%s spins a web.", upstart(mbuf));
+                pline_mon(mtmp, "%s spins a web.", upstart(mbuf));
                 trap->tseen = 1;
             }
             if (*in_rooms(mtmp->mx, mtmp->my, SHOPBASE))
@@ -1229,6 +1247,21 @@ m_avoid_kicked_loc(struct monst *mtmp, coordxy nx, coordxy ny)
         && isok(gk.kickedloc.x, gk.kickedloc.y)
         && nx == gk.kickedloc.x && ny == gk.kickedloc.y
         && next2u(nx, ny))
+        return TRUE;
+    return FALSE;
+}
+
+/* monster avoids a location nx, ny, if we're in sokoban, and
+   there's a boulder between the location and hero */
+boolean
+m_avoid_soko_push_loc(struct monst *mtmp, coordxy nx, coordxy ny)
+{
+    if (Sokoban
+        && (mtmp->mpeaceful || mtmp->mtame)
+        && !mtmp->mconf && !mtmp->mstun
+        && !Conflict
+        && (dist2(nx, ny, u.ux, u.uy) == 4)
+        && sobj_at(BOULDER, nx + sgn(u.ux - nx), ny + sgn(u.uy - ny)))
         return TRUE;
     return FALSE;
 }
@@ -1316,7 +1349,7 @@ m_search_items(
             costly = costly_spot(xx, yy);
 
             /* look through the items on this location */
-            for (otmp = gl.level.objects[xx][yy];
+            for (otmp = svl.level.objects[xx][yy];
                  otmp; otmp = otmp->nexthere) {
                 /* monsters may pick rocks up, but won't go out of their way
                    to grab them; this might hamper sling wielders, but it cuts
@@ -1349,7 +1382,7 @@ m_search_items(
         }
     }
 
-finish_search:
+ finish_search:
     if (minr < SQSRCHRADIUS && *appr == -1) {
         if (distmin(omx, omy, mtmp->mux, mtmp->muy) <= 3) {
             *ggx = mtmp->mux;
@@ -1368,7 +1401,7 @@ postmov(
     struct permonst *ptr,
     coordxy omx, coordxy omy,
     int mmoved,
-    boolean sawmon,
+    unsigned seenflgs,
     boolean can_tunnel,
     boolean can_unlock,
     boolean can_open)
@@ -1397,15 +1430,18 @@ postmov(
             && IS_DOOR(levl[nix][niy].typ)
             && ((levl[nix][niy].doormask & (D_LOCKED | D_CLOSED)) != 0)
             && can_fog(mtmp)) {
-            if (sawmon) {
+            /* note: remove_monster()+place_monster is not right for
+               long worms but they won't reach here */
+            if (seenflgs) {
                 remove_monster(nix, niy);
                 place_monster(mtmp, omx, omy);
                 newsym(nix, niy), newsym(omx, omy);
             }
-            if (vamp_shift(mtmp, &mons[PM_FOG_CLOUD], sawmon)) {
+            if (vamp_shift(mtmp, &mons[PM_FOG_CLOUD],
+                           ((seenflgs & 1) != 0) ? TRUE : FALSE)) {
                 ptr = mtmp->data; /* update cached value */
             }
-            if (sawmon) {
+            if (seenflgs) {
                 remove_monster(omx, omy);
                 place_monster(mtmp, nix, niy);
                 newsym(omx, omy), newsym(nix, niy);
@@ -1453,7 +1489,7 @@ postmov(
             if ((here->doormask & (D_LOCKED | D_CLOSED)) != 0
                 && amorphous(ptr)) {
                 if (flags.verbose && canseemon(mtmp))
-                    pline("%s %s under the door.", Monnam(mtmp),
+                    pline_mon(mtmp, "%s %s under the door.", YMonnam(mtmp),
                           (ptr == &mons[PM_FOG_CLOUD]
                            || ptr->mlet == S_LIGHT) ? "flows" : "oozes");
             } else if (here->doormask & D_LOCKED && can_unlock) {
@@ -1469,7 +1505,7 @@ postmov(
                     Soundeffect(se_door_unlock_and_open, 50);
                     if (flags.verbose) {
                         if (canseeit && canspotmon(mtmp)) {
-                            pline("%s unlocks and opens a door.",
+                            pline_mon(mtmp, "%s unlocks and opens a door.",
                                   Monnam(mtmp));
                         } else if (canseeit) {
                             You_see("a door unlock and open.");
@@ -1487,7 +1523,7 @@ postmov(
                     Soundeffect(se_door_open, 100);
                     if (flags.verbose) {
                         if (canseeit && canspotmon(mtmp)) {
-                            pline("%s opens a door.", Monnam(mtmp));
+                            pline_mon(mtmp, "%s opens a door.", Monnam(mtmp));
                         } else if (canseeit) {
                             You_see("a door open.");
                         } else if (!Deaf) {
@@ -1511,7 +1547,8 @@ postmov(
                     Soundeffect(se_door_crash_open, 50);
                     if (flags.verbose) {
                         if (canseeit && canspotmon(mtmp)) {
-                            pline("%s smashes down a door.", Monnam(mtmp));
+                            pline_mon(mtmp, "%s smashes down a door.",
+                                      Monnam(mtmp));
                         } else if (canseeit) {
                             You_see("a door crash open.");
                         } else if (!Deaf) {
@@ -1533,7 +1570,8 @@ postmov(
                 && (dmgtype(ptr, AD_RUST) || dmgtype(ptr, AD_CORR)
                     || metallivorous(ptr))) {
                 if (canseemon(mtmp))
-                    pline("%s eats through the iron bars.", Monnam(mtmp));
+                    pline_mon(mtmp, "%s eats through the iron bars.",
+                              Monnam(mtmp));
                 dissolve_bars(mtmp->mx, mtmp->my);
                 return MMOVE_DONE;
             } else if (flags.verbose && canseemon(mtmp))
@@ -1625,7 +1663,7 @@ m_move(struct monst *mtmp, int after)
     boolean getitems = FALSE;
     boolean avoid = FALSE;
     boolean better_with_displacing = FALSE;
-    boolean sawmon = canspotmon(mtmp); /* before it moved */
+    unsigned seenflgs;
     struct permonst *ptr;
     int chi, mmoved = MMOVE_NOTHING; /* not strictly nec.: chi >= 0 will do */
     long info[9];
@@ -1651,8 +1689,12 @@ m_move(struct monst *mtmp, int after)
         return MMOVE_DONE; /* still eating */
     }
     if (hides_under(ptr) && OBJ_AT(mtmp->mx, mtmp->my)
-        && can_hide_under_obj(gl.level.objects[mtmp->mx][mtmp->my]) && rn2(10))
+        && can_hide_under_obj(svl.level.objects[mtmp->mx][mtmp->my])
+        && rn2(10))
         return MMOVE_NOTHING; /* do not leave hiding place */
+
+    /* set up pre-move visibility flags */
+    seenflgs = (canseemon(mtmp) ? 1 : 0) | (canspotmon(mtmp) ? 2 : 0);
 
     /* Where does 'mtmp' think you are?  Not necessary if m_move() called
        from this file, but needed for other calls of m_move(). */
@@ -1669,7 +1711,7 @@ m_move(struct monst *mtmp, int after)
     /* my dog gets special treatment */
     if (mtmp->mtame) {
         return postmov(mtmp, ptr, omx, omy, dog_move(mtmp, after),
-                       sawmon, can_tunnel, can_unlock, can_open);
+                       seenflgs, can_tunnel, can_unlock, can_open);
     }
 
     /* and the acquisitive monsters get special treatment */
@@ -1698,7 +1740,7 @@ m_move(struct monst *mtmp, int after)
             mmoved = MMOVE_NOTHING;
         }
         return postmov(mtmp, ptr, omx, omy, mmoved,
-                       sawmon, can_tunnel, can_unlock, can_open);
+                       seenflgs, can_tunnel, can_unlock, can_open);
     }
 
     /* likewise for shopkeeper, guard, or priest */
@@ -1720,7 +1762,7 @@ m_move(struct monst *mtmp, int after)
         case 1:
             return postmov(mtmp, ptr, omx, omy,
                            (xm != 1) ? MMOVE_NOTHING : MMOVE_MOVED,
-                           sawmon, can_tunnel, can_unlock, can_open);
+                           seenflgs, can_tunnel, can_unlock, can_open);
         }
     }
 
@@ -1743,7 +1785,7 @@ m_move(struct monst *mtmp, int after)
         else
             mnexto(mtmp, RLOC_MSG);
         return postmov(mtmp, ptr, omx, omy, MMOVE_MOVED,
-                       sawmon, can_tunnel, can_unlock, can_open);
+                       seenflgs, can_tunnel, can_unlock, can_open);
     }
  not_special:
     if (u.uswallow && !mtmp->mflee && u.ustuck != mtmp)
@@ -1790,7 +1832,8 @@ m_move(struct monst *mtmp, int after)
     if ((!mtmp->mpeaceful || !rn2(10)) && (!Is_rogue_level(&u.uz))) {
         boolean in_line = (lined_up(mtmp)
              && (distmin(mtmp->mx, mtmp->my, mtmp->mux, mtmp->muy)
-                 <= (throws_rocks(gy.youmonst.data) ? 20 : ACURRSTR / 2 + 1)));
+                 <= (throws_rocks(gy.youmonst.data) ? 20
+                                                    : (ACURRSTR / 2 + 1))));
 
         if (appr != 1 || !in_line) {
             /* Monsters in combat won't pick stuff up, avoiding the
@@ -1803,7 +1846,7 @@ m_move(struct monst *mtmp, int after)
 
     if (getitems && m_search_items(mtmp, &ggx, &ggy, &mmoved, &appr))
         return postmov(mtmp, ptr, omx, omy, mmoved,
-                       sawmon, can_tunnel, can_unlock, can_open);
+                       seenflgs, can_tunnel, can_unlock, can_open);
 
     /* don't tunnel if hostile and close enough to prefer a weapon */
     if (can_tunnel && needspick(ptr)
@@ -1832,7 +1875,7 @@ m_move(struct monst *mtmp, int after)
         chi = -1;
         nidist = dist2(nix, niy, ggx, ggy);
         /* allow monsters be shortsighted on some levels for balance */
-        if (!mtmp->mpeaceful && gl.level.flags.shortsighted
+        if (!mtmp->mpeaceful && svl.level.flags.shortsighted
             && nidist > (couldsee(nix, niy) ? 144 : 36) && appr == 1)
             appr = 0;
         if (is_unicorn(ptr) && noteleport_level(mtmp)) {
@@ -1966,7 +2009,7 @@ m_move(struct monst *mtmp, int after)
             worm_nomove(mtmp);
     }
     return postmov(mtmp, ptr, omx, omy, mmoved,
-                   sawmon, can_tunnel, can_unlock, can_open);
+                   seenflgs, can_tunnel, can_unlock, can_open);
 }
 
 /* The part of m_move that deals with a monster attacking another monster (and
@@ -2259,12 +2302,15 @@ can_ooze(struct monst *mtmp)
 boolean
 can_fog(struct monst *mtmp)
 {
-    if (!(gm.mvitals[PM_FOG_CLOUD].mvflags & G_GENOD) && is_vampshifter(mtmp)
+    if (!(svm.mvitals[PM_FOG_CLOUD].mvflags & G_GENOD) && is_vampshifter(mtmp)
         && !Protection_from_shape_changers && !stuff_prevents_passage(mtmp))
         return TRUE;
     return FALSE;
 }
 
+/* this is called when a vampire turns into a fog cloud in order to move
+   under a closed door; if it was sensed via telepathy or seen via
+   infravision, its new fog cloud shape will disappear */
 staticfn int
 vamp_shift(
     struct monst *mon,
@@ -2272,34 +2318,16 @@ vamp_shift(
     boolean domsg)
 {
     int reslt = 0;
-    char oldmtype[BUFSZ];
-    boolean sawmon = canseemon(mon); /* before shape change */
-
-    /* remember current monster type before shapechange */
-    Strcpy(oldmtype, domsg ? noname_monnam(mon, ARTICLE_THE) : "");
 
     if (mon->data == ptr) {
         /* already right shape */
         reslt = 1;
-        domsg = FALSE;
     } else if (is_vampshifter(mon)) {
-        reslt = newcham(mon, ptr, NO_NC_FLAGS);
-    }
-
-    if (reslt && domsg) {
-        /* might have seen vampire/bat/wolf with infravision then be
-           unable to see the same creature when it turns into a fog cloud */
-        if (canspotmon(mon))
-            You("%s %s where %s was.",
-                !canseemon(mon) ? "now detect" : "observe",
-                noname_monnam(mon, ARTICLE_A), oldmtype);
-        else
-            You("can no longer %s %s.", sawmon ? "see" : "sense", oldmtype);
-        /* this message is given when it turns into a fog cloud
-           in order to move under a closed door */
+        reslt = newcham(mon, ptr, domsg ? NC_SHOW_MSG : NO_NC_FLAGS);
+        /* shape-change message is given when vampshifter turns into a
+           fog cloud in order to move under a closed door */
         display_nhwindow(WIN_MESSAGE, FALSE);
     }
-
     return reslt;
 }
 

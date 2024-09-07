@@ -24,6 +24,7 @@ staticfn boolean m_sees_sleepy_soldier(struct monst *);
 staticfn void m_tele(struct monst *, boolean, boolean, int);
 staticfn boolean m_next2m(struct monst *);
 staticfn void reveal_trap(struct trap *, boolean);
+staticfn int mon_escape(struct monst *, boolean);
 staticfn boolean linedup_chk_corpse(coordxy, coordxy);
 staticfn void m_use_undead_turning(struct monst *, struct obj *);
 staticfn boolean hero_behind_chokepoint(struct monst *);
@@ -67,8 +68,8 @@ precheck(struct monst *mon, struct obj *obj)
         struct monst *mtmp;
 
         if (objdescr_is(obj, "milky")) {
-            if (!(gm.mvitals[PM_GHOST].mvflags & G_GONE)
-                && !rn2(POTION_OCCUPANT_CHANCE(gm.mvitals[PM_GHOST].born))) {
+            if (!(svm.mvitals[PM_GHOST].mvflags & G_GONE)
+                && !rn2(POTION_OCCUPANT_CHANCE(svm.mvitals[PM_GHOST].born))) {
                 if (!enexto(&cc, mon->mx, mon->my, &mons[PM_GHOST]))
                     return 0;
                 mquaffmsg(mon, obj);
@@ -84,7 +85,8 @@ precheck(struct monst *mon, struct obj *obj)
                               mon_nam(mon),
                               Hallucination ? rndmonnam(NULL)
                                             : (const char *) "ghost");
-                        pline("%s is frightened to death, and unable to move.",
+                        pline("%s is frightened to death,"
+                              " and unable to move.",
                               Monnam(mon));
                     }
                     paralyze_monst(mon, 3);
@@ -93,8 +95,8 @@ precheck(struct monst *mon, struct obj *obj)
             }
         }
         if (objdescr_is(obj, "smoky")
-            && !(gm.mvitals[PM_DJINNI].mvflags & G_GONE)
-            && !rn2(POTION_OCCUPANT_CHANCE(gm.mvitals[PM_DJINNI].born))) {
+            && !(svm.mvitals[PM_DJINNI].mvflags & G_GONE)
+            && !rn2(POTION_OCCUPANT_CHANCE(svm.mvitals[PM_DJINNI].born))) {
             if (!enexto(&cc, mon->mx, mon->my, &mons[PM_DJINNI]))
                 return 0;
             mquaffmsg(mon, obj);
@@ -597,7 +599,7 @@ find_defensive(struct monst *mtmp, boolean tryescape)
                or some other monster is there */
             if (u_at(xx, yy)
                 || (xx != x && yy != y && !diag_ok)
-                || (gl.level.monsters[xx][yy] && !(xx == x && yy == y)))
+                || (svl.level.monsters[xx][yy] && !(xx == x && yy == y)))
                 continue;
             /* skip if there's no trap or can't/won't move onto trap */
             if ((t = t_at(xx, yy)) == 0
@@ -756,6 +758,28 @@ reveal_trap(struct trap *t, boolean seeit)
         seetrap(t);
 }
 
+/* Monsters without the Amulet escape the dungeon and
+ * are gone for good when they leave up the up stairs.
+ * A monster with the Amulet would leave it behind
+ * (mongone -> mdrop_special_objs) but we force any
+ * monster who manages to acquire it or the invocation
+ * tools to stick around instead of letting it escape.
+ * Don't let the Wizard escape even when not carrying
+ * anything of interest unless there are more than 1
+ * of him.
+ */
+staticfn int
+mon_escape(struct monst *mtmp, boolean vismon)
+{
+    if (mon_has_special(mtmp)
+        || (mtmp->iswiz && svc.context.no_of_wizards < 2))
+        return 0;
+    if (vismon)
+        pline("%s escapes the dungeon!", Monnam(mtmp));
+    mongone(mtmp);
+    return 2;
+}
+
 /* Perform a defensive action for a monster.  Must be called immediately
  * after find_defensive().  Return values are 0: did something, 1: died,
  * 2: did something and can't attack again (i.e. teleported).
@@ -899,6 +923,7 @@ use_defensive(struct monst *mtmp)
                 pline("%s has made a pit in the %s.", Monnam(mtmp),
                       surface(mtmp->mx, mtmp->my));
             }
+            fill_pit(mtmp->mx, mtmp->my);
             return (mintrap(mtmp, FORCEBUNGLE) == Trap_Killed_Mon) ? 1 : 2;
         }
         t = maketrap(mtmp->mx, mtmp->my, HOLE);
@@ -915,6 +940,7 @@ use_defensive(struct monst *mtmp)
             You_hear("%s crash through the %s.", something,
                      surface(mtmp->mx, mtmp->my));
         }
+        fill_pit(mtmp->mx, mtmp->my);
         /* we made sure that there is a level for mtmp to go to */
         migrate_to_level(mtmp, ledger_no(&u.uz) + 1, MIGR_RANDOM,
                          (coord *) 0);
@@ -1012,7 +1038,8 @@ use_defensive(struct monst *mtmp)
         if (!stway)
             return 0;
         if (ledger_no(&u.uz) == 1)
-            goto escape; /* impossible; level 1 upstairs are SSTAIRS */
+            /* impossible; level 1 upstairs are SSTAIRS */
+            return mon_escape(mtmp, vismon);
         if (Inhell && mon_has_amulet(mtmp) && !rn2(4)
             && (dunlev(&u.uz) < dunlevs_in_dungeon(&u.uz) - 3)) {
             if (vismon)
@@ -1068,24 +1095,7 @@ use_defensive(struct monst *mtmp)
         if (!stway)
             return 0;
         if (ledger_no(&u.uz) == 1) {
- escape:
-            /* Monsters without the Amulet escape the dungeon and
-             * are gone for good when they leave up the up stairs.
-             * A monster with the Amulet would leave it behind
-             * (mongone -> mdrop_special_objs) but we force any
-             * monster who manages to acquire it or the invocation
-             * tools to stick around instead of letting it escape.
-             * Don't let the Wizard escape even when not carrying
-             * anything of interest unless there are more than 1
-             * of him.
-             */
-            if (mon_has_special(mtmp)
-                || (mtmp->iswiz && gc.context.no_of_wizards < 2))
-                return 0;
-            if (vismon)
-                pline("%s escapes the dungeon!", Monnam(mtmp));
-            mongone(mtmp);
-            return 2;
+            return mon_escape(mtmp, vismon);
         }
         if (vismon)
             pline("%s escapes %sstairs!", Monnam(mtmp),
@@ -1602,7 +1612,7 @@ mbhitm(struct monst *mtmp, struct obj *otmp)
                 /* context.bypasses=True: if resist() happens to be fatal,
                    make_corpse() will set obj->bypass on the new corpse
                    so that mbhito() will skip it instead of reviving it */
-                gc.context.bypasses = TRUE; /* for make_corpse() */
+                svc.context.bypasses = TRUE; /* for make_corpse() */
                 (void) resist(mtmp, WAND_CLASS, rnd(8), NOTELL);
             }
             if (wake) {
@@ -1636,7 +1646,7 @@ fhito_loc(struct obj *obj,
     if (!fhito || !OBJ_AT(tx, ty))
         return FALSE;
 
-    for (otmp = gl.level.objects[tx][ty]; otmp; otmp = next_obj) {
+    for (otmp = svl.level.objects[tx][ty]; otmp; otmp = next_obj) {
         next_obj = otmp->nexthere;
 
         if (otmp->where != OBJ_FLOOR || otmp->ox != tx || otmp->oy != ty)
@@ -1918,8 +1928,8 @@ use_offensive(struct monst *mtmp)
          */
         if (cansee(mtmp->mx, mtmp->my)) {
             otmp->dknown = 1;
-            pline_xy(mtmp->mx, mtmp->my,
-                     "%s hurls %s!", Monnam(mtmp), singular(otmp, doname));
+            pline_mon(mtmp, "%s hurls %s!",
+                      Monnam(mtmp), singular(otmp, doname));
         }
         m_throw(mtmp, mtmp->mx, mtmp->my, sgn(mtmp->mux - mtmp->mx),
                 sgn(mtmp->muy - mtmp->my),
@@ -2029,7 +2039,7 @@ find_misc(struct monst *mtmp)
             for (yy = y - 1; yy <= y + 1; yy++)
                 if (isok(xx, yy) && !u_at(xx, yy)
                     && (diag_ok || xx == x || yy == y)
-                    && ((xx == x && yy == y) || !gl.level.monsters[xx][yy]))
+                    && ((xx == x && yy == y) || !svl.level.monsters[xx][yy]))
                     if ((t = t_at(xx, yy)) != 0
                         && (ignore_boulders || !sobj_at(BOULDER, xx, yy))
                         && !onscary(xx, yy, mtmp)) {
@@ -2839,14 +2849,14 @@ mon_consume_unstone(
     if (mon->mtame && !mon->isminion && nutrit > 0) {
         struct edog *edog = EDOG(mon);
 
-        if (edog->hungrytime < gm.moves)
-            edog->hungrytime = gm.moves;
+        if (edog->hungrytime < svm.moves)
+            edog->hungrytime = svm.moves;
         edog->hungrytime += nutrit;
         mon->mconf = 0;
     }
     /* use up monster's next move */
     mon->movement -= NORMAL_SPEED;
-    mon->mlstmv = gm.moves;
+    mon->mlstmv = svm.moves;
 }
 
 /* decide whether obj can cure petrification; also used when picking up */
@@ -3105,7 +3115,7 @@ muse_unslime(
     }
     /* use up monster's next move */
     mon->movement -= NORMAL_SPEED;
-    mon->mlstmv = gm.moves;
+    mon->mlstmv = svm.moves;
     return res;
 }
 
@@ -3148,7 +3158,8 @@ green_mon(struct monst *mon)
         /* approximation */
         if (strstri(ptr->pmnames[NEUTRAL], "green")
             || (ptr->pmnames[MALE] && strstri(ptr->pmnames[MALE], "green"))
-            || (ptr->pmnames[FEMALE] && strstri(ptr->pmnames[FEMALE], "green")))
+            || (ptr->pmnames[FEMALE]
+                && strstri(ptr->pmnames[FEMALE], "green")))
             return TRUE;
         switch (monsndx(ptr)) {
         case PM_FOREST_CENTAUR:

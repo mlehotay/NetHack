@@ -1,4 +1,4 @@
-/* NetHack 3.7	wizcmds.c	$NHDT-Date: 1709675219 2024/03/05 21:46:59 $  $NHDT-Branch: keni-mdlib-followup $:$NHDT-Revision: 1.713 $ */
+/* NetHack 3.7	wizcmds.c	$NHDT-Date: 1723580901 2024/08/13 20:28:21 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.12 $ */
 /*-Copyright (c) Robert Patrick Rankin, 2024. */
 /* NetHack may be freely redistributed.  See license for details. */
 
@@ -76,9 +76,9 @@ makemap_unmakemon(struct monst *mtmp, boolean migratory)
     /* uncreate any unique monster so that it is eligible to be remade
        on the new incarnation of the level; ignores DEADMONSTER() [why?] */
     if (mtmp->data->geno & G_UNIQ)
-        gm.mvitals[ndx].mvflags &= ~G_EXTINCT;
-    if (gm.mvitals[ndx].born)
-        gm.mvitals[ndx].born--;
+        svm.mvitals[ndx].mvflags &= ~G_EXTINCT;
+    if (svm.mvitals[ndx].born)
+        svm.mvitals[ndx].born--;
 
     /* vault is going away; get rid of guard who might be in play or
        be parked at <0,0>; for the latter, might already be flagged as
@@ -276,8 +276,8 @@ wiz_kill(void)
                 Sprintf(qbuf, "%s?", Role_if(PM_SAMURAI) ? "Perform seppuku"
                                                          : "Commit suicide");
                 if (paranoid_query(TRUE, qbuf)) {
-                    Sprintf(gk.killer.name, "%s own player", uhis());
-                    gk.killer.format = KILLED_BY;
+                    Sprintf(svk.killer.name, "%s own player", uhis());
+                    svk.killer.format = KILLED_BY;
                     done(DIED);
                 }
                 break;
@@ -318,12 +318,12 @@ wiz_kill(void)
                    gas spore whose explosion kills any other monsters we
                    need to have the mon_moving flag be True in order to
                    avoid blaming or crediting hero for their deaths */
-                gc.context.mon_moving = TRUE;
+                svc.context.mon_moving = TRUE;
                 pline("%s is %s.", upstart(Mn),
                       nonliving(mtmp->data) ? "destroyed" : "killed");
                 /* Null second arg suppresses the usual message */
                 monkilled(mtmp, (char *) 0, AD_PHYS);
-                gc.context.mon_moving = FALSE;
+                svc.context.mon_moving = FALSE;
             }
             /* end targetting loop if an engulfer dropped hero onto a level-
                changing trap */
@@ -736,48 +736,48 @@ wiz_map_levltyp(void)
             /* alignment currently omitted to save space */
         }
         /* level features */
-        if (gl.level.flags.nfountains)
+        if (svl.level.flags.nfountains)
             Sprintf(eos(dsc), " %c:%d", defsyms[S_fountain].sym,
-                    (int) gl.level.flags.nfountains);
-        if (gl.level.flags.nsinks)
+                    (int) svl.level.flags.nfountains);
+        if (svl.level.flags.nsinks)
             Sprintf(eos(dsc), " %c:%d", defsyms[S_sink].sym,
-                    (int) gl.level.flags.nsinks);
-        if (gl.level.flags.has_vault)
+                    (int) svl.level.flags.nsinks);
+        if (svl.level.flags.has_vault)
             Strcat(dsc, " vault");
-        if (gl.level.flags.has_shop)
+        if (svl.level.flags.has_shop)
             Strcat(dsc, " shop");
-        if (gl.level.flags.has_temple)
+        if (svl.level.flags.has_temple)
             Strcat(dsc, " temple");
-        if (gl.level.flags.has_court)
+        if (svl.level.flags.has_court)
             Strcat(dsc, " throne");
-        if (gl.level.flags.has_zoo)
+        if (svl.level.flags.has_zoo)
             Strcat(dsc, " zoo");
-        if (gl.level.flags.has_morgue)
+        if (svl.level.flags.has_morgue)
             Strcat(dsc, " morgue");
-        if (gl.level.flags.has_barracks)
+        if (svl.level.flags.has_barracks)
             Strcat(dsc, " barracks");
-        if (gl.level.flags.has_beehive)
+        if (svl.level.flags.has_beehive)
             Strcat(dsc, " hive");
-        if (gl.level.flags.has_swamp)
+        if (svl.level.flags.has_swamp)
             Strcat(dsc, " swamp");
         /* level flags */
-        if (gl.level.flags.noteleport)
+        if (svl.level.flags.noteleport)
             Strcat(dsc, " noTport");
-        if (gl.level.flags.hardfloor)
+        if (svl.level.flags.hardfloor)
             Strcat(dsc, " noDig");
-        if (gl.level.flags.nommap)
+        if (svl.level.flags.nommap)
             Strcat(dsc, " noMMap");
-        if (!gl.level.flags.hero_memory)
+        if (!svl.level.flags.hero_memory)
             Strcat(dsc, " noMem");
-        if (gl.level.flags.shortsighted)
+        if (svl.level.flags.shortsighted)
             Strcat(dsc, " shortsight");
-        if (gl.level.flags.graveyard)
+        if (svl.level.flags.graveyard)
             Strcat(dsc, " graveyard");
-        if (gl.level.flags.is_maze_lev)
+        if (svl.level.flags.is_maze_lev)
             Strcat(dsc, " maze");
-        if (gl.level.flags.is_cavernous_lev)
+        if (svl.level.flags.is_cavernous_lev)
             Strcat(dsc, " cave");
-        if (gl.level.flags.arboreal)
+        if (svl.level.flags.arboreal)
             Strcat(dsc, " tree");
         if (Sokoban)
             Strcat(dsc, " sokoban-rules");
@@ -806,7 +806,7 @@ wiz_map_levltyp(void)
             Strcat(dsc, " endgame");
         else {
             /* somebody's added a dungeon branch we're not expecting */
-            const char *brname = gd.dungeons[u.uz.dnum].dname;
+            const char *brname = svd.dungeons[u.uz.dnum].dname;
 
             if (!brname || !*brname)
                 brname = "unknown";
@@ -1047,9 +1047,9 @@ wiz_intrinsic(void)
                 break;
             case WARN_OF_MON:
                 if (!Warn_of_mon) {
-                    gc.context.warntype.speciesidx = PM_GRID_BUG;
-                    gc.context.warntype.species
-                                       = &mons[gc.context.warntype.speciesidx];
+                    svc.context.warntype.speciesidx = PM_GRID_BUG;
+                    svc.context.warntype.species
+                                     = &mons[svc.context.warntype.speciesidx];
                 }
                 goto def_feedback;
             case GLIB:
@@ -1193,7 +1193,7 @@ contained_stats(
 
     count_obj(gi.invent, &count, &size, FALSE, TRUE);
     count_obj(fobj, &count, &size, FALSE, TRUE);
-    count_obj(gl.level.buriedobjlist, &count, &size, FALSE, TRUE);
+    count_obj(svl.level.buriedobjlist, &count, &size, FALSE, TRUE);
     count_obj(gm.migrating_objs, &count, &size, FALSE, TRUE);
     /* DEADMONSTER check not required in this loop since they have no
      * inventory */
@@ -1317,7 +1317,7 @@ misc_stats(
     }
 
     count = size = 0L;
-    for (sd = gl.level.damagelist; sd; sd = sd->next) {
+    for (sd = svl.level.damagelist; sd; sd = sd->next) {
         ++count;
         size += (long) sizeof *sd;
     }
@@ -1340,7 +1340,7 @@ misc_stats(
     }
 
     count = size = 0L;
-    for (k = gk.killer.next; k; k = k->next) {
+    for (k = svk.killer.next; k; k = k->next) {
         ++count;
         size += (long) sizeof *k;
     }
@@ -1354,7 +1354,7 @@ misc_stats(
     }
 
     count = size = 0L;
-    for (bi = gl.level.bonesinfo; bi; bi = bi->next) {
+    for (bi = svl.level.bonesinfo; bi; bi = bi->next) {
         ++count;
         size += (long) sizeof *bi;
     }
@@ -1401,6 +1401,24 @@ you_sanity_check(void)
         if (u.ustuck != mtmp)
             impossible("sanity_check: you over monster");
     }
+    /* [should we also check for (u.uhp < 1), (Upolyd && u.mh < 1),
+       and (u.uen < 0) here?] */
+    if (u.uhp > u.uhpmax) {
+        impossible("current hero health (%d) better than maximum? (%d)",
+                   u.uhp, u.uhpmax);
+        u.uhp = u.uhpmax;
+    }
+    if (Upolyd && u.mh > u.mhmax) {
+        impossible(
+              "current hero health as monster (%d) better than maximum? (%d)",
+                   u.mh, u.mhmax);
+        u.mh = u.mhmax;
+    }
+    if (u.uen > u.uenmax) {
+        impossible("current hero energy (%d) better than maximum? (%d)",
+                   u.uen, u.uenmax);
+        u.uen = u.uenmax;
+    }
 
     check_wornmask_slots();
     (void) check_invent_gold("invent");
@@ -1417,6 +1435,7 @@ sanity_check(void)
         iflags.sanity_no_check = FALSE;
         return;
     }
+    program_state.in_sanity_check++;
     you_sanity_check();
     obj_sanity_check();
     timer_sanity_check();
@@ -1425,6 +1444,7 @@ sanity_check(void)
     bc_sanity_check();
     trap_sanity_check();
     engraving_sanity_check();
+    program_state.in_sanity_check--;
 }
 
 /* qsort() comparison routine for use in list_migrating_mons() */
@@ -1579,7 +1599,7 @@ wiz_show_stats(void)
     obj_chain(win, "invent", gi.invent, TRUE,
               &total_obj_count, &total_obj_size);
     obj_chain(win, "fobj", fobj, TRUE, &total_obj_count, &total_obj_size);
-    obj_chain(win, "buried", gl.level.buriedobjlist, FALSE,
+    obj_chain(win, "buried", svl.level.buriedobjlist, FALSE,
               &total_obj_count, &total_obj_size);
     obj_chain(win, "migrating obj", gm.migrating_objs, FALSE,
               &total_obj_count, &total_obj_size);
@@ -1791,13 +1811,13 @@ wiz_migrate_mons(void)
     list_migrating_mons(&tolevel);
 
 #ifdef DEBUG_MIGRATING_MONS
-    inbuf[0] = '\033', inbuf[1] = '\0';
+    inbuf[0] = inbuf[1] = '\0';
     if (tolevel.dnum || tolevel.dlevel)
         getlin("How many random monsters to migrate to next level? [0]",
                inbuf);
     else
         pline("Can't get there from here.");
-    if (*inbuf == '\033')
+    if (*inbuf == '\033' || *inbuf == '\0')
         return ECMD_OK;
 
     mcount = atoi(inbuf);

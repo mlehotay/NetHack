@@ -1,4 +1,4 @@
-/* NetHack 3.7	invent.c	$NHDT-Date: 1702023269 2023/12/08 08:14:29 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.485 $ */
+/* NetHack 3.7	invent.c	$NHDT-Date: 1724094299 2024/08/19 19:04:59 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.516 $ */
 /* Copyright (c) Stichting Mathematisch Centrum, Amsterdam, 1985. */
 /*-Copyright (c) Derek S. Ray, 2015. */
 /* NetHack may be freely redistributed.  See license for details. */
@@ -355,7 +355,7 @@ loot_xname(struct obj *obj)
     if (wizard) { /* flags.debug */
         /* paranoia:  before toggling off wizard mode, guard against a
            panic in xname() producing a normal mode panic save file */
-        gp.program_state.something_worth_saving = 0;
+        program_state.something_worth_saving = 0;
         flags.debug = FALSE;
     }
 
@@ -363,7 +363,7 @@ loot_xname(struct obj *obj)
 
     if (save_debug) {
         flags.debug = TRUE;
-        gp.program_state.something_worth_saving = 1;
+        program_state.something_worth_saving = 1;
     }
     /* restore the object */
     if (obj->oclass == POTION_CLASS) {
@@ -404,7 +404,8 @@ invletter_value(char c)
            : ('A' <= c && c <= 'Z') ? (c - 'A' + 2 + 26)
              : (c == '$') ? 1
                : (c == '#') ? 1 + invlet_basic + 1
-                 : 1 + invlet_basic + 1 + 1; /* none of the above (shouldn't happen) */
+                 : 1 + invlet_basic + 1 + 1; /* none of the above 
+                                              * (shouldn't happen) */
 }
 
 /* qsort comparison routine for sortloot() */
@@ -1006,11 +1007,11 @@ addinv_core1(struct obj *obj)
        dumplog, originally just recorded in XLOGFILE */
     if (is_mines_prize(obj)) {
         record_achievement(ACH_MINE_PRIZE);
-        gc.context.achieveo.mines_prize_oid = 0; /* done with luckstone o_id */
+        svc.context.achieveo.mines_prize_oid = 0; /* done w/ luckstone o_id */
         obj->nomerge = 0; /* was set in create_object(sp_lev.c) */
     } else if (is_soko_prize(obj)) {
         record_achievement(ACH_SOKO_PRIZE);
-        gc.context.achieveo.soko_prize_oid = 0; /* done with bag/amulet o_id */
+        svc.context.achieveo.soko_prize_oid = 0; /* done w/ bag/amulet o_id */
         obj->nomerge = 0; /* (got set in sp_lev.c) */
     }
 }
@@ -1384,7 +1385,7 @@ delallobj(coordxy x, coordxy y)
 {
     struct obj *otmp, *otmp2;
 
-    for (otmp = gl.level.objects[x][y]; otmp; otmp = otmp2) {
+    for (otmp = svl.level.objects[x][y]; otmp; otmp = otmp2) {
         if (otmp == uball)
             unpunish();
         /* after unpunish(), or might get deallocated chain */
@@ -1437,7 +1438,7 @@ sobj_at(int otyp, coordxy x, coordxy y)
 {
     struct obj *otmp;
 
-    for (otmp = gl.level.objects[x][y]; otmp; otmp = otmp->nexthere)
+    for (otmp = svl.level.objects[x][y]; otmp; otmp = otmp->nexthere)
         if (otmp->otyp == otyp)
             break;
 
@@ -1561,7 +1562,7 @@ obj_here(struct obj *obj, coordxy x, coordxy y)
 {
     struct obj *otmp;
 
-    for (otmp = gl.level.objects[x][y]; otmp; otmp = otmp->nexthere)
+    for (otmp = svl.level.objects[x][y]; otmp; otmp = otmp->nexthere)
         if (obj == otmp)
             return TRUE;
     return FALSE;
@@ -1570,7 +1571,7 @@ obj_here(struct obj *obj, coordxy x, coordxy y)
 struct obj *
 g_at(coordxy x, coordxy y)
 {
-    struct obj *obj = gl.level.objects[x][y];
+    struct obj *obj = svl.level.objects[x][y];
 
     while (obj) {
         if (obj->oclass == COIN_CLASS)
@@ -1794,8 +1795,9 @@ getobj(
         *bp++ = ' '; /* put a space after the '-' in the prompt */
         break;
     case GETOBJ_DOWNPLAY: /* acceptable but not shown as likely choice */
-    case GETOBJ_EXCLUDE_INACCESS:   /* nothing currently gives this for '-' but
-                                     * theoretically could if wearing gloves */
+    case GETOBJ_EXCLUDE_INACCESS:   /* nothing currently gives this for '-'
+                                     * but theoretically could if wearing
+                                     * gloves */
     case GETOBJ_EXCLUDE_SELECTABLE: /* ditto, I think... */
         allownone = TRUE;
         *ap++ = HANDS_SYM;
@@ -2186,7 +2188,8 @@ ggetobj(const char *word, int (*fn)(OBJ_P), int mx,
         ofilter = not_fully_identified;
     }
 
-    iletct = collect_obj_classes(ilets, gi.invent, FALSE, ofilter, &itemcount);
+    iletct = collect_obj_classes(ilets, gi.invent, FALSE, ofilter,
+                                 &itemcount);
     unpaid = count_unpaid(gi.invent);
 
     if (ident && !iletct) {
@@ -2650,7 +2653,7 @@ update_inventory(void)
 {
     int save_suppress_price;
 
-    if (!gp.program_state.in_moveloop) /* not covered by suppress_map_output */
+    if (!program_state.in_moveloop) /* not covered by suppress_map_output */
         return;
     if (suppress_map_output()) /* despite name, used for perm_invent too */
         return;
@@ -2830,6 +2833,7 @@ enum item_action_actions {
     IA_DROP_OBJ, /* 'd' */
     IA_EAT_OBJ, /* 'e' */
     IA_ENGRAVE_OBJ, /* 'E' */
+    IA_FIRE_OBJ, /* 'f' */
     IA_ADJUST_OBJ, /* 'i' #adjust inventory letter */
     IA_ADJUST_STACK, /* 'I' #adjust with count to split stack */
     IA_SACRIFICE, /* 'O' offer sacrifice */
@@ -2870,8 +2874,8 @@ item_naming_classification(
         Sprintf(onamebuf, "%s %s %s",
                 (!has_oname(obj) || !*ONAME(obj)) ? Name : Rename,
                 the_unique_obj(obj) ? "the"
-                : !is_plural(obj) ? "this"
-                  : "these",
+                : !is_plural(obj) ? "this specific"
+                  : "this stack of", /*"these",*/
                 simpleonames(obj));
     }
     if (call_ok(obj) == GETOBJ_SUGGEST) {
@@ -2991,6 +2995,9 @@ itemactions_pushkeys(struct obj *otmp, int act)
         case IA_ENGRAVE_OBJ:
             cmdq_add_ec(CQ_CANNED, doengrave);
             cmdq_add_key(CQ_CANNED, otmp->invlet);
+            break;
+        case IA_FIRE_OBJ:
+            cmdq_add_ec(CQ_CANNED, dofire);
             break;
         case IA_ADJUST_OBJ:
             cmdq_add_ec(CQ_CANNED, doorganize); /* #adjust */
@@ -3115,11 +3122,13 @@ itemactions(struct obj *otmp)
     if (otmp->oclass == COIN_CLASS)
         ia_addmenu(win, IA_APPLY_OBJ, 'a', "Flip a coin");
     else if (otmp->otyp == CREAM_PIE)
-        ia_addmenu(win, IA_APPLY_OBJ, 'a', "Hit yourself with this cream pie");
+        ia_addmenu(win, IA_APPLY_OBJ, 'a',
+                   "Hit yourself with this cream pie");
     else if (otmp->otyp == BULLWHIP)
         ia_addmenu(win, IA_APPLY_OBJ, 'a', "Lash out with this whip");
     else if (otmp->otyp == GRAPPLING_HOOK)
-        ia_addmenu(win, IA_APPLY_OBJ, 'a', "Grapple something with this hook");
+        ia_addmenu(win, IA_APPLY_OBJ, 'a',
+                   "Grapple something with this hook");
     else if (otmp->otyp == BAG_OF_TRICKS && objects[otmp->otyp].oc_name_known)
         /* bag of tricks skips this unless discovered */
         ia_addmenu(win, IA_APPLY_OBJ, 'a', "Reach into this bag");
@@ -3183,7 +3192,8 @@ itemactions(struct obj *otmp)
         ia_addmenu(win, IA_APPLY_OBJ, 'a', "Make this figurine transform");
     else if (otmp->otyp == UNICORN_HORN)
         ia_addmenu(win, IA_APPLY_OBJ, 'a', "Use this unicorn horn");
-    else if (otmp->otyp == HORN_OF_PLENTY && objects[otmp->otyp].oc_name_known)
+    else if (otmp->otyp == HORN_OF_PLENTY
+             && objects[otmp->otyp].oc_name_known)
         ia_addmenu(win, IA_APPLY_OBJ, 'a', "Blow into the horn of plenty");
     else if (otmp->otyp >= WOODEN_FLUTE && otmp->otyp <= DRUM_OF_EARTHQUAKE)
         ia_addmenu(win, IA_APPLY_OBJ, 'a', "Play this musical instrument");
@@ -3205,27 +3215,54 @@ itemactions(struct obj *otmp)
     /* d: drop item, works on everything except worn items; those will
        always have a takeoff/remove choice so we don't have to worry
        about the menu maybe being empty when 'd' is suppressed */
-    if (!already_worn)
-        ia_addmenu(win, IA_DROP_OBJ, 'd', "Drop this item");
+    if (!already_worn) {
+        Sprintf(buf, "Drop this %s", (otmp->quan > 1L) ? "stack" : "item");
+        ia_addmenu(win, IA_DROP_OBJ, 'd', buf);
+    }
 
     /* e: eat item */
-    if (otmp->otyp == TIN && uwep && uwep->otyp == TIN_OPENER)
-        ia_addmenu(win, IA_EAT_OBJ, 'e',
-                   "Open and eat this tin with your tin opener");
-    else if (otmp->otyp == TIN)
-        ia_addmenu(win, IA_EAT_OBJ, 'e', "Open and eat this tin");
-    else if (is_edible(otmp))
-        ia_addmenu(win, IA_EAT_OBJ, 'e', "Eat this item");
+    if (otmp->otyp == TIN) {
+        Sprintf(buf, "Open %s%s and eat the contents",
+                (otmp->quan > 1L) ? "one of these tins" : "this tin",
+                (otmp->otyp == TIN && uwep && uwep->otyp == TIN_OPENER)
+                ? " with your tin opener" : "");
+        ia_addmenu(win, IA_EAT_OBJ, 'e', buf);
+    } else if (is_edible(otmp)) {
+        Sprintf(buf, "Eat %s", (otmp->quan > 1L) ? "one of these" : "this");
+        ia_addmenu(win, IA_EAT_OBJ, 'e', buf);
+    }
 
     /* E: engrave with item */
-    if (otmp->otyp == TOWEL)
-        ia_addmenu(win, IA_ENGRAVE_OBJ, 'E', "Wipe the floor with this towel");
-    else if (otmp->otyp == MAGIC_MARKER)
-        ia_addmenu(win, IA_ENGRAVE_OBJ, 'E', "Scribble graffiti on the floor");
-    else if (otmp->oclass == WEAPON_CLASS || otmp->oclass == WAND_CLASS
-             || otmp->oclass == GEM_CLASS || otmp->oclass == RING_CLASS)
+    if (otmp->otyp == TOWEL) {
         ia_addmenu(win, IA_ENGRAVE_OBJ, 'E',
-                   "Write on the floor with this object");
+                   "Wipe the floor with this towel");
+    } else if (otmp->otyp == MAGIC_MARKER) {
+        ia_addmenu(win, IA_ENGRAVE_OBJ, 'E',
+                   "Scribble graffiti on the floor");
+    } else if (otmp->oclass == WEAPON_CLASS || otmp->oclass == WAND_CLASS
+             || otmp->oclass == GEM_CLASS || otmp->oclass == RING_CLASS) {
+        Sprintf(buf, "%s on the %s with %s",
+                (is_blade(otmp) || otmp->oclass == WAND_CLASS
+                 || ((otmp->oclass == GEM_CLASS || otmp->oclass == RING_CLASS)
+                     && objects[otmp->otyp].oc_tough)) ? "Engrave" : "Write",
+                surface(u.ux, u.uy),
+                (otmp->quan > 1L) ? "one of these items" : "this item");
+        ia_addmenu(win, IA_ENGRAVE_OBJ, 'E', buf);
+    }
+
+    /* f: fire quivered ammo */
+    if (otmp == uquiver) {
+        boolean shoot = ammo_and_launcher(otmp, uwep);
+
+        /* FIXME: see the multi-shot FIXME about "one of" for 't: throw' */
+        Sprintf(buf, "%s %s", shoot ? "Shoot" : "Throw",
+                (otmp->quan > 1L) ? "one of these" : "this");
+        if (shoot) {
+            assert(uwep != NULL);
+            Sprintf(eos(buf), " with your wielded %s", simpleonames(uwep));
+        }
+        ia_addmenu(win, IA_FIRE_OBJ, 'f', buf);
+    }
 
     /* i: #adjust inventory letter; gold can't be adjusted unless there
        is some in a slot other than '$' (which shouldn't be possible) */
@@ -3255,8 +3292,11 @@ itemactions(struct obj *otmp)
         /* FIXME: should also handle player owned container (so not
            flagged 'unpaid') holding shop owned items */
         && (mtmp = shop_keeper(*in_rooms(u.ux, u.uy, SHOPBASE))) != 0
-        && inhishop(mtmp))
-        ia_addmenu(win, IA_BUY_OBJ, 'p', "Buy this unpaid item");
+        && inhishop(mtmp)) {
+        Sprintf(buf, "Buy this unpaid %s",
+                (otmp->quan > 1L) ? "stack" : "item");
+        ia_addmenu(win, IA_BUY_OBJ, 'p', buf);
+    }
 
     /* P: put on accessory */
     if (!already_worn) {
@@ -3272,14 +3312,20 @@ itemactions(struct obj *otmp)
     }
 
     /* q: drink item */
-    if (otmp->oclass == POTION_CLASS)
-        ia_addmenu(win, IA_QUAFF_OBJ, 'q', "Quaff this potion");
+    if (otmp->oclass == POTION_CLASS) {
+        Sprintf(buf, "Quaff (drink) %s",
+                (otmp->quan > 1L) ? "one of these potions" : "this potion");
+        ia_addmenu(win, IA_QUAFF_OBJ, 'q', buf);
+    }
 
     /* Q: quiver throwable item */
     if ((otmp->oclass == GEM_CLASS || otmp->oclass == WEAPON_CLASS)
-        && otmp != uquiver)
-        ia_addmenu(win, IA_QUIVER_OBJ, 'Q',
-                   "Quiver this item for easy throwing");
+        && otmp != uquiver) {
+        Sprintf(buf, "Quiver this %s for easy %s with \'f\'ire",
+                (otmp->quan > 1L) ? "stack" : "item",
+                ammo_and_launcher(otmp, uwep) ? "shooting" : "throwing");
+        ia_addmenu(win, IA_QUIVER_OBJ, 'Q', buf);
+    }
 
     /* r: read item */
     if (item_reading_classification(otmp, buf) == IA_READ_OBJ)
@@ -3297,7 +3343,7 @@ itemactions(struct obj *otmp)
 
     /* t: throw item */
     if (!already_worn) {
-        const char *verb = ammo_and_launcher(otmp, uwep) ? "Shoot" : "Throw";
+        boolean shoot = ammo_and_launcher(otmp, uwep);
 
         /*
          * FIXME:
@@ -3307,10 +3353,17 @@ itemactions(struct obj *otmp)
          *  volley count and that could randomly yield 1 here and 2..N
          *  while throwing or vice versa.
          */
-        Sprintf(buf, "%s %s", verb,
+        Sprintf(buf, "%s %s%s", shoot ? "Shoot" : "Throw",
                 (otmp->quan == 1L) ? "this item"
                 : (otmp->otyp == GOLD_PIECE) ? "them"
-                  : "one of these");
+                  : "one of these",
+                /* if otmp is quivered, we've already listed
+                   'f - shoot|throw this item' as a choice;
+                   if 't' is duplicating that, say so ('t' and 'f'
+                   behavior differs for throwing a stack of gold) */
+                (otmp == uquiver && (otmp->otyp != GOLD_PIECE
+                                     || otmp->quan == 1L))
+                ? " (same as 'f')" : "");
         ia_addmenu(win, IA_THROW_OBJ, 't', buf);
     }
 
@@ -3333,17 +3386,28 @@ itemactions(struct obj *otmp)
 
     /* w: wield, hold in hands, works on everything but with different
        advice text; not mentioned for things that are already wielded */
-    if (otmp == uwep)
-        ;
-    else if (otmp->oclass == WEAPON_CLASS || is_weptool(otmp)
-             || is_wet_towel(otmp))
-        ia_addmenu(win, IA_WIELD_OBJ, 'w', "Wield this as your weapon");
-    else if (otmp->otyp == TIN_OPENER)
-        ia_addmenu(win, IA_WIELD_OBJ, 'w', "Hold the tin opener to open tins");
-    else if (!already_worn)
-        /* FIXME: there's no concept of "holding an item" that's any
-           different from having it in inventory; 'w' means wield as weapon */
-        ia_addmenu(win, IA_WIELD_OBJ, 'w', "Hold this item in your hands");
+    if (otmp == uwep || cantwield(gy.youmonst.data)) {
+        ; /* either already wielded or can't wield anything; skip 'w' */
+    } else if (otmp->oclass == WEAPON_CLASS || is_weptool(otmp)
+               || is_wet_towel(otmp) || otmp->otyp == HEAVY_IRON_BALL) {
+        Sprintf(buf, "Wield this %s as your weapon",
+                (otmp->quan > 1L) ? "stack" : "item");
+        ia_addmenu(win, IA_WIELD_OBJ, 'w', buf);
+    } else if (otmp->otyp == TIN_OPENER) {
+        ia_addmenu(win, IA_WIELD_OBJ, 'w',
+                   "Wield the tin opener to easily open tins");
+    } else if (!already_worn) {
+        /* originally this was using "hold this item in your hands" but
+           there's no concept of "holding an item", plus it unwields
+           whatever item you already have wielded so use "wield this item" */
+        Sprintf(buf, "Wield this %s in your %s",
+                (otmp->quan > 1L) ? "stack" : "item",
+                /* only two-handed weapons and unicorn horns care about
+                   pluralizing "hand" and they won't reach here, but plural
+                   sounds better when poly'd into something with "claw" */
+                makeplural(body_part(HAND)));
+        ia_addmenu(win, IA_WIELD_OBJ, 'w', buf);
+    }
 
     /* W: wear armor */
     if (!already_worn) {
@@ -3359,7 +3423,8 @@ itemactions(struct obj *otmp)
         ia_addmenu(win, IA_SWAPWEAPON, 'x',
                    "Ready this as an alternate weapon");
     else if (otmp == uswapwep)
-        ia_addmenu(win, IA_SWAPWEAPON, 'x', "Swap this with your main weapon");
+        ia_addmenu(win, IA_SWAPWEAPON, 'x',
+                   "Swap this with your main weapon");
 
     /* this is based on TWOWEAPOK() in wield.c; we don't call can_two_weapon()
        because it is very verbose; attempting to two-weapon might be rejected
@@ -3387,12 +3452,15 @@ itemactions(struct obj *otmp)
 
     /* z: Zap wand */
     if (otmp->oclass == WAND_CLASS)
-        ia_addmenu(win, IA_ZAP_OBJ, 'z', "Zap this wand to release its magic");
+        ia_addmenu(win, IA_ZAP_OBJ, 'z',
+                   "Zap this wand to release its magic");
 
     /* ?: Look up an item in the game's database */
-    if (ia_checkfile(otmp))
-        ia_addmenu(win, IA_WHATIS_OBJ, '/',
-                   "Look up information about this item");
+    if (ia_checkfile(otmp)) {
+        Sprintf(buf, "Look up information about %s",
+                (otmp->quan > 1L) ? "these" : "this");
+        ia_addmenu(win, IA_WHATIS_OBJ, '/', buf);
+    }
 
     Sprintf(buf, "Do what with %s?", the(cxname(otmp)));
     end_menu(win, buf);
@@ -3936,7 +4004,8 @@ display_used_invlets(char avoidlet)
                     tmpglyph = obj_to_glyph(otmp, rn2_on_display_rng);
                     map_glyphinfo(0, 0, tmpglyph, 0U, &tmpglyphinfo);
                     add_menu(win, &tmpglyphinfo, &any, ilet, 0,
-                             ATR_NONE, clr, doname(otmp), MENU_ITEMFLAGS_NONE);
+                             ATR_NONE, clr, doname(otmp),
+                             MENU_ITEMFLAGS_NONE);
                 }
             }
             if (flags.sortpack && *++invlet)
@@ -4286,7 +4355,7 @@ dotypeinv(void)
     title[0] = '\0';
     u_carried = count_unpaid(gi.invent);
     u_floor = count_unpaid(fobj);
-    u_buried = count_unpaid(gl.level.buriedobjlist);
+    u_buried = count_unpaid(svl.level.buriedobjlist);
     any_unpaid = u_carried + u_floor + u_buried;
     tally_BUCX(gi.invent, FALSE, &bcnt, &ucnt, &ccnt, &xcnt, &ocnt, &jcnt);
 
@@ -4597,10 +4666,25 @@ look_here(
         }
         return (!!Blind ? ECMD_TIME : ECMD_OK);
     }
-    if (!skip_objects && (trap = t_at(u.ux, u.uy)) && trap->tseen)
-        There("is %s here.", an(trapname(trap->ttyp, FALSE)));
+    if (!skip_objects) {
+        NhRegion *reg;
+        char regbuf[QBUFSZ];
 
-    otmp = gl.level.objects[u.ux][u.uy];
+        regbuf[0] = '\0';
+        if ((reg = visible_region_at(u.ux, u.uy)) != 0)
+            Sprintf(regbuf, "a %s cloud",
+                    reg_damg(reg) ? "poison gas" : "vapor");
+        if ((trap = t_at(u.ux, u.uy)) != 0 && !trap->tseen)
+            trap = (struct trap *) NULL;
+
+        if (reg || trap)
+            There("is %s%s%s here.",
+                  reg ? regbuf : "",
+                  (reg && trap) ? " and " : "",
+                  trap ? an(trapname(trap->ttyp, FALSE)) : "");
+    }
+
+    otmp = svl.level.objects[u.ux][u.uy];
     dfeature = dfeature_at(u.ux, u.uy, fbuf2);
     if (dfeature && !strcmp(dfeature, "pool of water") && Underwater)
         dfeature = 0;
@@ -4790,7 +4874,8 @@ stackobj(struct obj *obj)
 {
     struct obj *otmp;
 
-    for (otmp = gl.level.objects[obj->ox][obj->oy]; otmp; otmp = otmp->nexthere)
+    for (otmp = svl.level.objects[obj->ox][obj->oy]; otmp;
+         otmp = otmp->nexthere)
         if (otmp != obj && merged(&obj, &otmp))
             break;
     return;
@@ -5188,7 +5273,7 @@ useupf(struct obj *obj, long numused)
         otmp = splitobj(obj, numused);
     else
         otmp = obj;
-    if (!gc.context.mon_moving && costly_spot(otmp->ox, otmp->oy)) {
+    if (!svc.context.mon_moving && costly_spot(otmp->ox, otmp->oy)) {
         if (strchr(u.urooms, *in_rooms(otmp->ox, otmp->oy, 0)))
             addtobill(otmp, FALSE, FALSE, FALSE);
         else
@@ -5489,7 +5574,7 @@ doorganize_core(struct obj *obj)
     char let;
 #define GOLD_INDX   0
 #define GOLD_OFFSET 1
-#define OVRFLW_INDX (GOLD_OFFSET + invlet_basic) /* past gold & 2*26 letters */
+#define OVRFLW_INDX (GOLD_OFFSET + invlet_basic) /* past gold+2*26 letters */
     char lets[1 + invlet_basic + 1 + 1]; /* room for '$a-zA-Z#\0' */
     char qbuf[QBUFSZ];
     char *objname, *otmpname;
@@ -5595,7 +5680,9 @@ doorganize_core(struct obj *obj)
 
     collect = (let == obj->invlet);
     /* change the inventory and print the resulting item */
-    adj_type = collect ? "Collecting:" : !splitting ? "Moving:" : "Splitting:";
+    adj_type = collect ? "Collecting:"
+               : !splitting ? "Moving:"
+                 : "Splitting:";
 
     /*
      * don't use freeinv/addinv to avoid double-touching artifacts,
@@ -5914,7 +6001,7 @@ display_binventory(coordxy x, coordxy y, boolean as_if_seen)
        should use the normal look_here command instead of probing (caller
        has already used bhitpile() which will have set dknown on all items) */
     if (is_pool_or_lava(x, y) && !Underwater
-        && (obj = gl.level.objects[x][y]) != 0) {
+        && (obj = svl.level.objects[x][y]) != 0) {
         const char *real_liquid = is_pool(x, y) ? "water" : "lava",
                    *seen_liquid = hliquid(real_liquid);
 
@@ -5930,7 +6017,7 @@ display_binventory(coordxy x, coordxy y, boolean as_if_seen)
             underwhat = more_than_1 ? "under them" : "beneath it";
         } else {
             Sprintf(qbuf, "Things that are under the %s here:", seen_liquid);
-            if (query_objlist(qbuf, &gl.level.objects[x][y], BY_NEXTHERE,
+            if (query_objlist(qbuf, &svl.level.objects[x][y], BY_NEXTHERE,
                               &selected, PICK_NONE, allow_all) > 0)
                 free((genericptr_t) selected), selected = 0;
             for (n2 = 0; obj; obj = obj->nexthere)
@@ -5940,7 +6027,7 @@ display_binventory(coordxy x, coordxy y, boolean as_if_seen)
     }
 
     /* count # of buried objects here */
-    for (n = 0, obj = gl.level.buriedobjlist; obj; obj = obj->nobj)
+    for (n = 0, obj = svl.level.buriedobjlist; obj; obj = obj->nobj)
         if (obj->ox == x && obj->oy == y) {
             if (as_if_seen)
                 obj->dknown = 1;
@@ -5952,7 +6039,7 @@ display_binventory(coordxy x, coordxy y, boolean as_if_seen)
         go.only.y = y;
         /* "buried here", but vary if we've already shown underwater items */
         Sprintf(qbuf, "Things that are buried %s:", underwhat);
-        if (query_objlist(qbuf, &gl.level.buriedobjlist, INVORDER_SORT,
+        if (query_objlist(qbuf, &svl.level.buriedobjlist, INVORDER_SORT,
                           &selected, PICK_NONE, only_here) > 0)
             free((genericptr_t) selected);
         go.only.x = go.only.y = 0;
@@ -6059,7 +6146,7 @@ sync_perminvent(void)
         WIN_INVEN = create_nhwindow(NHW_MENU);
     }
 
-    if (WIN_INVEN != WIN_ERR && gp.program_state.beyond_savefile_load) {
+    if (WIN_INVEN != WIN_ERR && program_state.beyond_savefile_load) {
         gi.in_sync_perminvent = 1;
         (void) display_inventory((char *) 0, FALSE);
         gi.in_sync_perminvent = 0;

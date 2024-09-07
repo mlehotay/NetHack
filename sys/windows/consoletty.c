@@ -936,7 +936,7 @@ void buffer_fill_to_end(cell_t * buffer, cell_t * fill, int x, int y)
     while (dst != sentinel)
         *dst++ = *fill;
 
-    if ((iflags.debug.immediateflips || !gp.program_state.in_moveloop)
+    if ((iflags.debug.immediateflips || !program_state.in_moveloop)
         && buffer == console.back_buffer)
         back_buffer_flip();
 }
@@ -952,7 +952,7 @@ static void buffer_clear_to_end_of_line(cell_t * buffer, int x, int y)
     while (dst != sentinel)
         *dst++ = clear_cell;
 
-    if (iflags.debug.immediateflips || !gp.program_state.in_moveloop)
+    if (iflags.debug.immediateflips || !program_state.in_moveloop)
         back_buffer_flip();
 }
 
@@ -964,7 +964,7 @@ void buffer_write(cell_t * buffer, cell_t * cell, COORD pos)
     cell_t * dst = buffer + (console.width * pos.Y) + pos.X;
     *dst = *cell;
 
-    if ((iflags.debug.immediateflips || !gp.program_state.in_moveloop)
+    if ((iflags.debug.immediateflips || !program_state.in_moveloop)
         && buffer == console.back_buffer)
         back_buffer_flip();
 }
@@ -1149,7 +1149,7 @@ tgetch(void)
         numpad |= 0x10;
 #endif
 
-    return (gp.program_state.done_hup)
+    return (program_state.done_hup)
                ? '\033'
                : keyboard_handling.pCheckInput(
                    console.hConIn, &ir, &count, numpad, 0, &mod, &cc);
@@ -1177,7 +1177,7 @@ console_poskey(coordxy *x, coordxy *y, int *mod)
     if (gc.Cmd.swap_yz)
         numpad |= 0x10;
 #endif
-    ch = (gp.program_state.done_hup)
+    ch = (program_state.done_hup)
              ? '\033'
              : keyboard_handling.pCheckInput(
                    console.hConIn, &ir, &count, numpad, 1, mod, &cc);
@@ -2097,16 +2097,20 @@ static int CALLBACK EnumFontCallback(
 void
 check_and_set_font(void)
 {
+#ifndef VIRTUAL_TERMINAL_SEQUENCES
     if (!check_font_widths()) {
-        const char *msg = "WARNING: glyphs too wide in console font."
-                          " Changing code page to 437 and font to Consolas";
+        if (wizard) {
+            const char *msg = "WARNING: glyphs too wide in console font."
+                             " Changing code page to 437 and font to Consolas";
 
-        if (iflags.window_inited)
-            pline ("%s", msg);
-        else
-            raw_printf("%s\n", msg);
+            if (iflags.window_inited)
+                pline ("%s", msg);
+            else
+                raw_printf("%s\n", msg);
+        }
         set_known_good_console_font();
     }
+#endif
 }
 
 /* check_font_widths returns TRUE if all glyphs in current console font
