@@ -262,8 +262,8 @@ moveloop_core(void)
                     u.ublesscnt--;
 
 #ifdef EXTRAINFO_FN
-                if ((prev_dgl_extrainfo == 0) || (prev_dgl_extrainfo < (gm.moves + 250))) {
-                    prev_dgl_extrainfo = gm.moves;
+                if ((prev_dgl_extrainfo == 0) || (prev_dgl_extrainfo < (svm.moves + 250))) {
+                    prev_dgl_extrainfo = svm.moves;
                     mk_dgl_extrainfo();
                 }
 #endif

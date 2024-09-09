@@ -1407,8 +1407,8 @@ petmon:
         if (!Stone_resistance
             && !(poly_when_stoned(gy.youmonst.data)
                  && polymon(PM_STONE_GOLEM))) {
-            Sprintf(gk.killer.name, "petting %s", a_monnam(mtmp));
-            gk.killer.format = KILLED_BY;
+            Sprintf(svk.killer.name, "petting %s", a_monnam(mtmp));
+            svk.killer.format = KILLED_BY;
             You("turn to stone.");
             done(STONING);
         }
