@@ -14,6 +14,7 @@ staticfn void slime_dialogue(void);
 staticfn void slimed_to_death(struct kinfo *) NO_NNARGS;
 staticfn void sickness_dialogue(void);
 staticfn void phaze_dialogue(void);
+staticfn void region_dialogue(void);
 staticfn void done_timeout(int, int);
 staticfn void slip_or_trip(void);
 staticfn void see_lamp_flicker(struct obj *, const char *) NONNULLPTRS;
@@ -549,15 +550,15 @@ static NEARDATA const char *const region_texts[] = {
 staticfn void
 region_dialogue(void)
 {
-    boolean breathless, in_poison_gas_cloud;
+    boolean no_need_to_breathe, in_poison_gas_cloud;
     long r = (HMagical_breathing & TIMEOUT), i = r / 2L;
 
     /* might have poly'd into non-breather or moved out of gas cloud */
     HMagical_breathing &= ~TIMEOUT;
-    breathless = breathless(&mons[u.umonnum]);
+    no_need_to_breathe = Breathless;
     in_poison_gas_cloud = region_danger();
     HMagical_breathing |= r;
-    if (breathless || !in_poison_gas_cloud)
+    if (no_need_to_breathe || !in_poison_gas_cloud)
         return;
 
     if ((r % 2L) && i > 0L && i <= SIZE(region_texts))
