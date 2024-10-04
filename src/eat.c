@@ -2952,11 +2952,10 @@ doeat(void)
            if (otmp->otyp == PANCAKE || otmp->otyp == FORTUNE_COOKIE
                || otmp->otyp == CREAM_PIE || otmp->otyp == CANDY_BAR
                || otmp->otyp == CRAM_RATION) { /* lembas are gluten-free */
-               if (!u.uconduct.gluten++ && !ll_conduct) {
+               if (!u.uconduct.gluten++) {
                    livelog_printf(LL_CONDUCT,
-                          "violated gluten-free conduct for the first time, by eating %s",
+                          "consumed gluten for the first time, by eating %s",
                                   an(food_xname(otmp, FALSE)));
-                   ll_conduct++;
                }
            }
 
