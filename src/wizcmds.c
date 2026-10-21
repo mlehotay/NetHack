@@ -1,4 +1,4 @@
-/* NetHack 3.7	wizcmds.c	$NHDT-Date: 1723580901 2024/08/13 20:28:21 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.12 $ */
+/* NetHack 3.7	wizcmds.c	$NHDT-Date: 1736530208 2025/01/10 09:30:08 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.21 $ */
 /*-Copyright (c) Robert Patrick Rankin, 2024. */
 /* NetHack may be freely redistributed.  See license for details. */
 
@@ -20,6 +20,7 @@ staticfn void mon_chain(winid, const char *, struct monst *, boolean, long *,
 staticfn void contained_stats(winid, const char *, long *, long *);
 staticfn void misc_stats(winid, long *, long *);
 staticfn void you_sanity_check(void);
+staticfn void levl_sanity_check(void);
 staticfn void makemap_unmakemon(struct monst *, boolean);
 staticfn int QSORTCALLBACK migrsort_cmp(const genericptr, const genericptr);
 staticfn void list_migrating_mons(d_level *);
@@ -36,7 +37,7 @@ wiz_wish(void) /* Unlimited wishes for debug mode by Paul Polderman */
         flags.verbose = FALSE;
         makewish();
         flags.verbose = save_verbose;
-        (void) encumber_msg();
+        encumber_msg();
     } else
         pline(unavailcmd, ecname_from_fn(wiz_wish));
     return ECMD_OK;
@@ -68,7 +69,7 @@ RESTORE_WARNING_FORMAT_NONLITERAL
 
 /* used when wiz_makemap() gets rid of monsters for the old incarnation of
    a level before creating a new incarnation of it */
-void
+staticfn void
 makemap_unmakemon(struct monst *mtmp, boolean migratory)
 {
     int ndx = monsndx(mtmp->data);
@@ -551,8 +552,14 @@ wiz_fuzzer(void)
         pline("The fuzz tester will make NetHack execute random keypresses.");
         There("is no conventional way out of this mode.");
     }
-    if (paranoid_query(TRUE, "Do you want to start fuzz testing?"))
-        iflags.debug_fuzzer = TRUE; /* Thoth, take the reins */
+    if (paranoid_query(TRUE, "Do you want to start fuzz testing?")) {
+        /* Thoth, take the reins */
+        if (y_n("Do you want to call panic() after impossible()?") == 'n') {
+            iflags.debug_fuzzer = fuzzer_impossible_continue;
+        } else {
+            iflags.debug_fuzzer = fuzzer_impossible_panic;
+        }
+    }
     return ECMD_OK;
 }
 
@@ -1059,6 +1066,7 @@ wiz_intrinsic(void)
                    so needs more than simple incr_itimeout() but we want
                    the pline() issued with that */
                 make_glib((int) newtimeout);
+                FALLTHROUGH;
                 /*FALLTHRU*/
             default:
  def_feedback:
@@ -1074,6 +1082,10 @@ wiz_intrinsic(void)
                 float_vs_flight();
             else if (p == PROT_FROM_SHAPE_CHANGERS)
                 rescham();
+            if (p == WWALKING || p == LEVITATION || p == FLYING) {
+                if (u.uinwater)
+                    (void) pooleffects(FALSE);
+            }
         }
         if (n >= 1)
             free((genericptr_t) pick_list);
@@ -1234,6 +1246,8 @@ size_monst(struct monst *mtmp, boolean incl_wsegs)
             sz += (int) sizeof (struct emin);
         if (EDOG(mtmp))
             sz += (int) sizeof (struct edog);
+        if (EBONES(mtmp))
+            sz += (int) sizeof (struct ebones);
         /* mextra->mcorpsenm doesn't point to more memory */
     }
     return sz;
@@ -1426,6 +1440,22 @@ you_sanity_check(void)
     (void) check_invent_gold("invent");
 }
 
+staticfn void
+levl_sanity_check(void)
+{
+    coordxy x, y;
+
+    if (Underwater)
+        return; /* Underwater uses different vision */
+
+    for (y = 0; y < ROWNO; y++) {
+        for (x = 1; x < COLNO; x++) {
+            if ((does_block(x, y, &levl[x][y]) ? 1 : 0) != get_viz_clear(x, y))
+                impossible("levl[%i][%i] vision blocking", x, y);
+        }
+    }
+}
+
 void
 sanity_check(void)
 {
@@ -1446,6 +1476,7 @@ sanity_check(void)
     bc_sanity_check();
     trap_sanity_check();
     engraving_sanity_check();
+    levl_sanity_check();
     program_state.in_sanity_check--;
 }
 
@@ -1745,9 +1776,15 @@ wiz_display_macros(void)
     destroy_nhwindow(win);
     return ECMD_OK;
 }
-#endif /* (NH_DEVEL_STATUS != NH_STATUS_RELEASED) || defined(DEBUG) */
 
-#if (NH_DEVEL_STATUS != NH_STATUS_RELEASED) || defined(DEBUG)
+/* the #wizshownhuuid command */
+int
+wiz_show_nhuuid(void)
+{
+    pline("The NHUUID for this game is { %s }.", svn.nhuuid);
+    return ECMD_OK;
+}
+
 /* the #wizmondiff command */
 int
 wiz_mon_diff(void)
@@ -1789,6 +1826,46 @@ wiz_mon_diff(void)
     destroy_nhwindow(win);
     return ECMD_OK;
 }
+
+/* the #wizobjprobs command */
+int
+wiz_objprobs(void)
+{
+    int win;
+    char buf[BUFSZ];
+    int probsum[MAXOCLASSES];
+    int otyp;
+    int oclass = objects[FIRST_OBJECT].oc_class;
+    memset(probsum, 0, sizeof probsum);
+
+    for (otyp = FIRST_OBJECT; otyp < NUM_OBJECTS; otyp++) {
+        probsum[(int) objects[otyp].oc_class] += objects[otyp].oc_prob;
+    }
+
+    win = create_nhwindow(NHW_TEXT);
+    for (otyp = FIRST_OBJECT; otyp < NUM_OBJECTS; otyp++) {
+        /* placeholders for extra descriptions aren't generatable objects */
+        if (!OBJ_NAME(objects[otyp]))
+            continue;
+
+        if ((int) objects[otyp].oc_class != oclass) {
+            putstr(win, 0, "");
+        }
+        oclass = objects[otyp].oc_class;
+
+        Snprintf(buf, sizeof buf, "%4d / %4d (%6.2f%%): %s",
+                 objects[otyp].oc_prob,
+                 probsum[oclass],
+                 (float) objects[otyp].oc_prob * 100.f /
+                 (float) probsum[oclass],
+                 OBJ_NAME(objects[otyp]));
+        putstr(win, 0, buf);
+    }
+    display_nhwindow(win, FALSE);
+    destroy_nhwindow(win);
+
+    return ECMD_OK;
+}
 #endif /* (NH_DEVEL_STATUS != NH_STATUS_RELEASED) || defined(DEBUG) */
 
 /* #migratemons command */
@@ -1800,6 +1877,8 @@ wiz_migrate_mons(void)
     char inbuf[BUFSZ];
     struct permonst *ptr;
     struct monst *mtmp;
+    boolean use_random_mon = TRUE;
+    boolean mongen_saved = iflags.debug_mongen;
 #endif
     d_level tolevel;
 
@@ -1823,19 +1902,29 @@ wiz_migrate_mons(void)
         return ECMD_OK;
 
     mcount = atoi(inbuf);
+    if (mcount < 0) {
+        use_random_mon = FALSE;
+        mcount *= -1;
+    }
     if (mcount < 1)
         mcount = 0;
     else if (mcount > ((COLNO - 1) * ROWNO))
         mcount = (COLNO - 1) * ROWNO;
 
+    iflags.debug_mongen = FALSE;
     while (mcount > 0) {
-        ptr = rndmonst();
-        mtmp = makemon(ptr, 0, 0, MM_NOMSG);
+        if (use_random_mon) {
+            ptr = rndmonst();
+            mtmp = makemon(ptr, 0, 0, MM_NOMSG);
+        } else {
+            mtmp = fmon;
+        }
         if (mtmp)
             migrate_to_level(mtmp, ledger_no(&tolevel), MIGR_RANDOM,
-                             (coord *) 0);
+                                 (coord *) 0);
         mcount--;
     }
+    iflags.debug_mongen = mongen_saved;
 #endif /* DEBUG_MIGRATING_MONS */
     return ECMD_OK;
 }
@@ -1849,7 +1938,7 @@ wiz_custom(void)
     if (wizard) {
         static const char wizcustom[] = "#wizcustom";
         winid win;
-        char buf[BUFSZ], bufa[BUFSZ];  
+        char buf[BUFSZ], bufa[BUFSZ];
         int n;
 #if 0
         int j, glyph;

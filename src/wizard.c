@@ -1,4 +1,4 @@
-/* NetHack 3.7	wizard.c	$NHDT-Date: 1718303204 2024/06/13 18:26:44 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.110 $ */
+/* NetHack 3.7	wizard.c	$NHDT-Date: 1741407262 2025/03/07 20:14:22 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.116 $ */
 /* Copyright (c) Stichting Mathematisch Centrum, Amsterdam, 1985. */
 /*-Copyright (c) Robert Patrick Rankin, 2016. */
 /* NetHack may be freely redistributed.  See license for details. */
@@ -135,9 +135,6 @@ mon_has_special(struct monst *mtmp)
  *      The strategy section decides *what* the monster is going
  *      to attempt, the tactics section implements the decision.
  */
-#define STRAT(w, x, y, typ)                            \
-    ((unsigned long) (w) | ((unsigned long) (x) << 16) \
-     | ((unsigned long) (y) << 8) | (unsigned long) (typ))
 
 #define M_Wants(mask) (mtmp->data->mflags3 & (mask))
 
@@ -247,17 +244,25 @@ target_on(int mask, struct monst *mtmp)
 
     otyp = which_arti(mask);
     if (!mon_has_arti(mtmp, otyp)) {
-        if (you_have(mask))
-            return STRAT(STRAT_PLAYER, u.ux, u.uy, mask);
-        else if ((otmp = on_ground(otyp)))
-            return STRAT(STRAT_GROUND, otmp->ox, otmp->oy, mask);
-        else if ((mtmp2 = other_mon_has_arti(mtmp, otyp)) != 0
+        if (you_have(mask)) {
+            mtmp->mgoal.x = u.ux;
+            mtmp->mgoal.y = u.uy;
+            return (STRAT_PLAYER | mask);
+        } else if ((otmp = on_ground(otyp))) {
+            mtmp->mgoal.x = otmp->ox;
+            mtmp->mgoal.y = otmp->oy;
+            return (STRAT_GROUND | mask);
+        } else if ((mtmp2 = other_mon_has_arti(mtmp, otyp)) != 0
                  /* when seeking the Amulet, avoid targeting the Wizard
                     or temple priests (to protect Moloch's high priest) */
                  && (otyp != AMULET_OF_YENDOR
-                     || (!mtmp2->iswiz && !inhistemple(mtmp2))))
-            return STRAT(STRAT_MONSTR, mtmp2->mx, mtmp2->my, mask);
+                     || (!mtmp2->iswiz && !inhistemple(mtmp2)))) {
+            mtmp->mgoal.x = mtmp2->mx;
+            mtmp->mgoal.y = mtmp2->my;
+            return (STRAT_MONSTR | mask);
+        }
     }
+    mtmp->mgoal.x = mtmp->mgoal.y = 0;
     return (unsigned long) STRAT_NONE;
 }
 
@@ -284,8 +289,8 @@ strategy(struct monst *mtmp)
     case 1: /* the wiz is less cautious */
         if (mtmp->data != &mons[PM_WIZARD_OF_YENDOR])
             return (unsigned long) STRAT_HEAL;
-    /* else fall through */
-
+        FALLTHROUGH;
+        /* FALLTHRU */
     case 2:
         dstrat = STRAT_HEAL;
         break;
@@ -381,10 +386,12 @@ tactics(struct monst *mtmp)
         mtmp->mavenge = 1; /* covetous monsters attack while fleeing */
         if (In_W_tower(mx, my, &u.uz)
             || (mtmp->iswiz && !sx && !mon_has_amulet(mtmp))) {
-            if (!rn2(3 + mtmp->mhp / 10))
+            if (!noteleport_level(mtmp) &&
+                !rn2(3 + mtmp->mhp / 10))
                 (void) rloc(mtmp, RLOC_MSG);
         } else if (sx && (mx != sx || my != sy)) {
-            if (!mnearto(mtmp, sx, sy, TRUE, RLOC_MSG)) {
+            if (!noteleport_level(mtmp) &&
+                !mnearto(mtmp, sx, sy, TRUE, RLOC_MSG)) {
                 /* couldn't move to the target spot for some reason,
                    so stay where we are (don't actually need rloc_to()
                    because mtmp is still on the map at <mx,my>... */
@@ -396,30 +403,34 @@ tactics(struct monst *mtmp)
         /* if you're not around, cast healing spells */
         if (distu(mx, my) > (BOLT_LIM * BOLT_LIM))
             if (mtmp->mhp <= mtmp->mhpmax - 8) {
-                mtmp->mhp += rnd(8);
+                healmon(mtmp, rnd(8), 0);
                 return 1;
             }
+        FALLTHROUGH;
         /*FALLTHRU*/
 
     case STRAT_NONE: /* harass */
-        if (!rn2(!mtmp->mflee ? 5 : 33))
+        if (!noteleport_level(mtmp) && !rn2(!mtmp->mflee ? 5 : 33))
             mnexto(mtmp, RLOC_MSG);
         return 0;
 
     default: /* kill, maim, pillage! */
     {
         long where = (strat & STRAT_STRATMASK);
-        coordxy tx = STRAT_GOALX(strat), ty = STRAT_GOALY(strat);
+        coordxy tx = mtmp->mgoal.x, ty = mtmp->mgoal.y;
         int targ = (int) (strat & STRAT_GOAL);
         struct obj *otmp;
 
-        if (!targ) { /* simply wants you to close */
+        if (!targ || !isok(tx, ty)) { /* simply wants you to close */
             return 0;
         }
+        if (noteleport_level(mtmp) && !monnear(mtmp, tx, ty))
+            return 0;
         if (u_at(tx, ty) || where == STRAT_PLAYER) {
             /* player is standing on it (or has it) */
             mx = mtmp->mx, my = mtmp->my;
-            if (!mnearto(mtmp, tx, ty, FALSE, RLOC_MSG))
+            if (noteleport_level(mtmp) ||
+                !mnearto(mtmp, tx, ty, FALSE, RLOC_MSG))
                 rloc_to(mtmp, mx, my); /* no room? stay put */
             return 0;
         }
@@ -439,13 +450,14 @@ tactics(struct monst *mtmp)
                     return 0;
             } else {
                 /* a monster is standing on it - cause some trouble */
-                if (!rn2(5))
+                if (!rn2(5) && !noteleport_level(mtmp))
                     mnexto(mtmp, RLOC_MSG);
                 return 0;
             }
         } else { /* a monster has it - 'port beside it. */
             mx = mtmp->mx, my = mtmp->my;
-            if (!mnearto(mtmp, tx, ty, FALSE, RLOC_MSG))
+            if (!noteleport_level(mtmp) &&
+                !mnearto(mtmp, tx, ty, FALSE, RLOC_MSG))
                 rloc_to(mtmp, mx, my); /* no room? stay put */
             return 0;
         }
@@ -625,7 +637,7 @@ nasty(struct monst *summoner)
              * randomized so it won't always do so.
              */
             for (j = 0; j < 20; j++) {
-                /* Don't create more spellcasters of the monsters' level or
+                /* Don't create more spellcasters of the monster's level or
                  * higher--avoids chain summoners filling up the level.
                  */
                 trylimit = 10 + 1; /* 10 tries */
@@ -656,6 +668,9 @@ nasty(struct monst *summoner)
                                         bypos.x, bypos.y, mmflags)) != 0) {
                         m_cls = mtmp->data->mlet;
                         if ((difcap > 0 && mtmp->data->difficulty >= difcap
+                             /* always capping for substitutes made wanton
+                                genocide become too strong in the endgame */
+                             && rn2(In_endgame(&u.uz) ? 3 : 7) /* usually */
                              && attacktype(mtmp->data, AT_MAGC))
                             || (s_cls == S_DEMON && m_cls == S_ANGEL)
                             || (s_cls == S_ANGEL && m_cls == S_DEMON))
@@ -664,10 +679,11 @@ nasty(struct monst *summoner)
                 }
 
                 if (mtmp) {
-                    /* create at most one arch-lich or Archon regardless
-                       of who is doing the summoning (note: Archon is
-                       not in nasties[] but could be chosen as random
-                       replacement for a genocided selection) */
+                    /* if creating an arch-lich or Archon, further directly
+                       selected nasties will have to be less difficult, and
+                       substitues for geno victims will usually be less
+                       (note: Archon is not in nasties[] but could be chosen
+                       as random replacement for a genocided selection) */
                     if (mtmp->data == &mons[PM_ARCH_LICH]
                         || mtmp->data == &mons[PM_ARCHON]) {
                         tmp = min(mons[PM_ARCHON].difficulty, /* A:26 */
@@ -694,7 +710,7 @@ nasty(struct monst *summoner)
     return count;
 }
 
-/* Let's resurrect the wizard, for some unexpected fun. */
+/* Let's resurrect the Wizard, for some unexpected fun. */
 void
 resurrect(void)
 {
@@ -734,7 +750,7 @@ resurrect(void)
                     if (!mtmp->mx)
                         mtmp = 0;
                     /* note: there might be a second Wizard; if so,
-                       he'll have to wait til the next resurrection */
+                       he'll have to wait until the next resurrection */
                     break;
                 }
             }

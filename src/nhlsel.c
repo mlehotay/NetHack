@@ -1,4 +1,4 @@
-/* NetHack 3.7	nhlua.c	$NHDT-Date: 1704225560 2024/01/02 19:59:20 $  $NHDT-Branch: keni-luabits2 $:$NHDT-Revision: 1.61 $ */
+/* NetHack 3.7	nhlua.c	$NHDT-Date: 1769840272 2026/01/30 22:17:52 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.69 $ */
 /*      Copyright (c) 2018 by Pasi Kallinen */
 /* NetHack may be freely redistributed.  See license for details. */
 
@@ -33,6 +33,7 @@ staticfn int l_selection_circle(lua_State *);
 staticfn int l_selection_ellipse(lua_State *);
 staticfn int l_selection_gradient(lua_State *);
 staticfn int l_selection_iterate(lua_State *);
+staticfn int l_selection_size_description(lua_State *L);
 staticfn int l_selection_gc(lua_State *);
 staticfn int l_selection_not(lua_State *);
 staticfn int l_selection_and(lua_State *);
@@ -266,7 +267,7 @@ l_selection_not(lua_State *L)
         sel = l_selection_check(L, 1);
         selection_clear(sel, 1);
     } else {
-        sel = l_selection_check(L, 1);
+        (void) l_selection_check(L, 1);
         (void) l_selection_clone(L);
         sel2 = l_selection_check(L, 2);
         selection_not(sel2);
@@ -629,15 +630,17 @@ l_selection_randline(lua_State *L)
 staticfn int
 l_selection_grow(lua_State *L)
 {
-    const char *const growdirs[] = {
+    static const char *const growdirs[] = {
         "all", "random", "north", "west", "east", "south", NULL
     };
-    const int growdirs2i[] = {
+    static const int growdirs2i[] = {
         W_ANY, W_RANDOM, W_NORTH, W_WEST, W_EAST, W_SOUTH, 0
     };
-    int argc = lua_gettop(L);
-    struct selectionvar *sel = l_selection_check(L, 1);
-    int dir = growdirs2i[luaL_checkoption(L, 2, "all", growdirs)];
+    struct selectionvar *sel;
+    int dir, argc = lua_gettop(L);
+
+    (void) l_selection_check(L, 1);
+    dir = growdirs2i[luaL_checkoption(L, 2, "all", growdirs)];
 
     if (argc == 2)
         lua_pop(L, 1); /* get rid of growdir */
@@ -706,6 +709,10 @@ l_selection_match(lua_State *L)
     for (y = 0; y <= sel->hei; y++)
         for (x = 1; x < sel->wid; x++)
             selection_setpoint(x, y, sel, mapfrag_match(mf, x,y) ? 1 : 0);
+
+    /* unless the (0, 1) coordinate is a match, this would wind up with a
+       selection with lx=COLNO, hx=0, etc, so fix the boundaries */
+    selection_recalc_bounds(sel);
 
     mapfrag_free(&mf);
 
@@ -907,6 +914,8 @@ l_selection_gradient(lua_State *L)
     return 1;
 }
 
+DISABLE_WARNING_UNREACHABLE_CODE
+
 /* sel:iterate(function(x,y) ... end);
  * The x, y coordinates passed to the function are map- or room-relative
  * rather than absolute, unless there has been no previous map or room
@@ -923,7 +932,7 @@ l_selection_iterate(lua_State *L)
     if (argc == 2 && lua_type(L, 2) == LUA_TFUNCTION) {
         sel = l_selection_check(L, 1);
         selection_getbounds(sel, &rect);
-        for (y = rect.ly; y <= rect.hy; y++)
+        for (y = rect.ly; y <= rect.hy; y++) {
             for (x = max(1,rect.lx); x <= rect.hx; x++)
                 if (selection_getpoint(x, y, sel)) {
                     coordxy tmpx = x, tmpy = y;
@@ -937,6 +946,8 @@ l_selection_iterate(lua_State *L)
                         goto out;
                     }
                 }
+            lua_gc(L, LUA_GCCOLLECT, 0);
+        }
     } else {
         nhl_error(L, "wrong parameters");
         /*NOTREACHED*/
@@ -945,6 +956,27 @@ l_selection_iterate(lua_State *L)
     return 0;
 }
 
+/* local txt = sel:describe_size(); */
+/* gives a textual description of the selection size */
+staticfn int
+l_selection_size_description(lua_State *L)
+{
+    int argc = lua_gettop(L);
+
+    if (argc == 1) {
+        struct selectionvar *sel = l_selection_check(L, 1);
+        char buf[BUFSZ];
+
+        lua_pushstring(L, selection_size_description(sel, buf));
+        return 1;
+    } else {
+        nhl_error(L, "wrong parameters");
+        /*NOTREACHED*/
+    }
+    return 0;
+}
+
+RESTORE_WARNING_UNREACHABLE_CODE
 
 static const struct luaL_Reg l_selection_methods[] = {
     { "new", l_selection_new },
@@ -970,6 +1002,7 @@ static const struct luaL_Reg l_selection_methods[] = {
     { "iterate", l_selection_iterate },
     { "bounds", l_selection_getbounds },
     { "room", l_selection_room },
+    { "describe_size", l_selection_size_description },
     { NULL, NULL }
 };
 

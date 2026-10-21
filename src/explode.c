@@ -1,4 +1,4 @@
-/* NetHack 3.7	explode.c	$NHDT-Date: 1619553210 2021/04/27 19:53:30 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.77 $ */
+/* NetHack 3.7	explode.c	$NHDT-Date: 1736530208 2025/01/10 09:30:08 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.122 $ */
 /*      Copyright (C) 1990 by Ken Arromdee */
 /* NetHack may be freely redistributed.  See license for details. */
 
@@ -718,10 +718,11 @@ struct scatter_chain {
 
 /* returns number of scattered objects */
 long
-scatter(coordxy sx, coordxy sy,  /* location of objects to scatter */
-        int blastforce,  /* force behind the scattering */
-        unsigned int scflags,
-        struct obj *obj) /* only scatter this obj        */
+scatter(
+    coordxy sx, coordxy sy,  /* location of objects to scatter */
+    int blastforce,          /* force behind the scattering */
+    unsigned int scflags,
+    struct obj *obj)         /* only scatter this obj */
 {
     struct obj *otmp;
     int tmp;
@@ -794,7 +795,7 @@ scatter(coordxy sx, coordxy sy,  /* location of objects to scatter */
                 if (cansee(sx, sy)) {
                     pline("%s.", Tobjnam(otmp, "crumble"));
                 } else {
-                    Soundeffect(se_stone_crumbling, 100); 
+                    Soundeffect(se_stone_crumbling, 100);
                     You_hear("stone crumbling.");
                 }
                 (void) break_statue(otmp);
@@ -807,7 +808,7 @@ scatter(coordxy sx, coordxy sy,  /* location of objects to scatter */
         } else if ((scflags & MAY_DESTROY) != 0
                    && (!rn2(10) || (objects[otmp->otyp].oc_material == GLASS
                                     || otmp->otyp == EGG))) {
-            if (breaks(otmp, (coordxy) sx, (coordxy) sy))
+            if (breaks(otmp, sx, sy))
                 used_up = TRUE;
         }
 
@@ -864,14 +865,15 @@ scatter(coordxy sx, coordxy sy,  /* location of objects to scatter */
                     }
                 } else if (u_at(gb.bhitpos.x, gb.bhitpos.y)) {
                     if (scflags & MAY_HITYOU) {
-                        int hitvalu, hitu;
+                        int dam, hitvalu, hitu;
 
                         if (gm.multi)
                             nomul(0);
+                        dam = dmgval(stmp->obj, &gy.youmonst);
                         hitvalu = 8 + stmp->obj->spe;
                         if (bigmonst(gy.youmonst.data))
                             hitvalu++;
-                        hitu = thitu(hitvalu, dmgval(stmp->obj, &gy.youmonst),
+                        hitu = thitu(hitvalu, Maybe_Half_Phys(dam),
                                      &stmp->obj, (char *) 0);
                         if (!stmp->obj)
                             stmp->stopped = TRUE;
@@ -976,6 +978,7 @@ explode_oil(struct obj *obj, coordxy x, coordxy y)
     if (!obj->lamplit)
         impossible("exploding unlit oil");
     end_burn(obj, TRUE);
+    obj->how_lost = LOST_EXPLODING;
     splatter_burning_oil(x, y, diluted_oil);
 }
 

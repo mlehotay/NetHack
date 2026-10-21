@@ -26,8 +26,6 @@ extern WINDOW *activemenu;         /* curses window for menu requesting a
 #define SCROLLBAR_BACK_COLOR CLR_BLACK
 #define HIGHLIGHT_COLOR CLR_WHITE
 #define MORECOLOR CLR_ORANGE
-#define STAT_UP_COLOR CLR_GREEN
-#define STAT_DOWN_COLOR CLR_RED
 #define MESSAGE_WIN 1
 #define STATUS_WIN  2
 #define MAP_WIN     3
@@ -108,8 +106,6 @@ extern void curses_getlin(const char *question, char *input);
 extern int curses_get_ext_cmd(void);
 extern void curses_number_pad(int state);
 extern void curses_delay_output(void);
-extern void curses_start_screen(void);
-extern void curses_end_screen(void);
 extern void curses_outrip(winid wid, int how, time_t when);
 extern void genl_outrip(winid tmpwin, int how, time_t when);
 extern void curses_preference_update(const char *pref);

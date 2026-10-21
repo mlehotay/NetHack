@@ -1,4 +1,4 @@
-MAKEDEFS(6)                                                        MAKEDEFS(6)
+MAKEDEFS(6)                      Games Manual                      MAKEDEFS(6)
 
 
 
@@ -31,14 +31,14 @@ SHORT COMMANDS
               the MDGREP FUNCTIONS section below for details.
 
        -m     Generate  date.h and options file. It will read dat/gitinfo.txt,
-              only if it is present, to obtain githash= and gitbranch=
-               info and include related preprocessor #defines in date.h  file.
+              only if it is present, to obtain githash=  and  gitbranch=  info
+              and include related preprocessor #defines in date.h file.
 
        -p     Generate pm.h
 
        -q     Generate the rumors file.
 
-       -s     Generate the bogusmon , engrave and epitaph files.
+       -s     Generate the bogusmon, engrave, and epitaph files.
 
        -1     Generate the epitaph file.
 
@@ -143,10 +143,10 @@ AUTHOR
        The NetHack Development Team
 
 COPYRIGHT
-       This file is Copyright (C) Kenneth Lorber, 2022 for version keni-crash-
-       web2:1.21.   NetHack  may  be  freely  redistributed.   See license for
-       details.
+       This  file  is  Copyright  (C)  Kenneth  Lorber,   2024   for   version
+       NetHack-3.7:1.22.   NetHack  may  be freely redistributed.  See license
+       for details.
 
 
 
-NETHACK                         8 February 2022                    MAKEDEFS(6)
+NETHACK                        25 December 2024                    MAKEDEFS(6)

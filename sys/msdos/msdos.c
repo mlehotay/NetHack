@@ -15,7 +15,6 @@
 #include "pcvideo.h"
 
 #include <dos.h>
-#include <ctype.h>
 
 /*
  * MS-DOS functions
@@ -450,7 +449,7 @@ filesize_nh(char *file)
  * Chdrive() changes the default drive.
  */
 void
-chdrive(char *str)
+chdrive(const char *str)
 {
 #define SELECTDISK 0x0E
     char *ptr;

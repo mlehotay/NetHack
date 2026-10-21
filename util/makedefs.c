@@ -23,15 +23,15 @@
 #include "dlb.h"
 #include "hacklib.h"
 
-#ifdef MAC
+#ifdef MACOS9
 #if defined(__SC__) || defined(__MRC__) /* MPW compilers */
 #define MPWTOOL
 #include <CursorCtl.h>
 #include <string.h>
-#else /* MAC without MPWTOOL */
+#else /* MACOS9 without MPWTOOL */
 #define MACsansMPWTOOL
 #endif
-#endif /* MAC */
+#endif /* MACOS9 */
 
 #ifndef MPWTOOL
 #define SpinCursor(x)
@@ -78,7 +78,7 @@
 #define DGN_TEMPLATE "NH:dat/%s" /* where dungeon.pdf file goes */
 #endif /* OLD_MAKEDEFS_OPTIONS */
 #else /* not AMIGA */
-#if defined(MAC) && !defined(__MACH__)
+#if defined(MACOS9) && !defined(__MACH__)
 /* MacOS 9 or earlier */
 #define SOURCE_TEMPLATE ":src:%s"
 #if __SC__ || __MRC__
@@ -91,7 +91,7 @@
 #define INCLUDE_TEMPLATE ":include:%s"
 #define DGN_TEMPLATE ":dat:%s" /* where dungeon.pdf file goes */
 #endif /* OLD_MAKEDEFS_OPTIONS */
-#else /* neither AMIGA nor MAC */
+#else /* neither AMIGA nor MACOS9 */
 #ifdef OS2
 #define SOURCE_TEMPLATE "..\\src\\%s"
 #define DATA_TEMPLATE "..\\dat\\%s"
@@ -100,7 +100,7 @@
 #define INCLUDE_TEMPLATE "..\\include\\%s"
 #define DGN_TEMPLATE "..\\dat\\%s" /* where dungeon.pdf file goes */
 #endif /* OLD_MAKEDEFS_OPTIONS */
-#else /* not AMIGA, MAC, or OS2 */
+#else /* not AMIGA, MACOS9, or OS2 */
 #define SOURCE_TEMPLATE "../src/%s"
 #define DATA_TEMPLATE "../dat/%s"
 #define DATA_IN_TEMPLATE "../dat/%s"
@@ -109,7 +109,7 @@
 #define DGN_TEMPLATE "../dat/%s" /* where dungeon.pdf file goes */
 #endif /* OLD_MAKEDEFS_OPTIONS */
 #endif /* else !OS2 */
-#endif /* else !MAC */
+#endif /* else !MACOS9 */
 #endif /* else !AMIGA */
 
 static const char
@@ -152,7 +152,6 @@ void do_oracles(void);
 void do_date(void);
 void do_dungeon(void);
 void do_options(void);
-void do_monstr(void);
 void do_objs(void);
 void do_permonst(void);
 void do_questtxt(void);
@@ -258,7 +257,7 @@ main(void)
     return 0;
 }
 
-#else /* ! MAC */
+#else /* ! MACOS9 */
 
 DISABLE_WARNING_UNREACHABLE_CODE
 
@@ -339,7 +338,7 @@ do_makedefs(char *options)
             rafile(*options);
             break;
 #if defined(OLD_MAKEDEFS_OPTIONS)
-	case 'o':
+        case 'o':
         case 'O':
             do_objs();
             break;
@@ -361,7 +360,7 @@ do_makedefs(char *options)
             do_questtxt();
             break;
 #else
-	case 'o': case 'O': case 'e': case 'E': case 'v': case 'V':
+        case 'o': case 'O': case 'e': case 'E': case 'v': case 'V':
         case 'p': case 'P': case 'q': case 'Q':
             Fprintf(stderr, "Old makedefs option.\n"
                 "Rebuild makedefs with '-DOLD_MAKEDEFS_OPTIONS'"
@@ -393,7 +392,7 @@ oldfunctionality(char sought)
         char ucoflet;
         const char *ofnam;
     } ofn[] = {
-	{ 'e', 'E', DGN_O_FILE },
+        { 'e', 'E', DGN_O_FILE },
         { 'o', 'O', ONAME_FILE },
         { 'p', 'P', MONST_FILE },
         { 'q', 'Q', QTXT_O_FILE },
@@ -482,7 +481,7 @@ getfp(const char *template, const char *tag, const char *mode, int flg)
         err = tmpfile_s(&rv);
 #if defined(MSDOS) || defined(WIN32)
         if (!err && (!strcmp(mode, WRTMODE) || !strcmp(mode, RDTMODE))) {
-           _setmode(fileno(rv), O_TEXT);
+            (void) _setmode(fileno(rv), O_TEXT);
         }
 #endif
     } else
@@ -661,15 +660,15 @@ do_ext_makedefs(int argc, char **argv)
             }
             CONTINUE;
         }
-	IS_OPTION("grep-defined"){
-	    struct grep_var *p;
+        IS_OPTION("grep-defined"){
+            struct grep_var *p;
 
-	    CONSUME;
-	    p = grepsearch(argv[0]);
-		// NB: Exit status is ready for the shell:
-		//     0=defined, 1=not defined
-	    makedefs_exit(!(p && p->is_defined));
-	}
+            CONSUME;
+            p = grepsearch(argv[0]);
+                // NB: Exit status is ready for the shell:
+                //     0=defined, 1=not defined
+            makedefs_exit(!(p && p->is_defined));
+        }
 #ifdef notyet
         IS_OPTION("help") {
         }
@@ -846,7 +845,8 @@ do_grep_control(char *buf)
         break;
     case '!': /* if not ID */
         isif = 0;
-    /* FALLTHROUGH */
+        FALLTHROUGH;
+    /* FALLTHRU */
     case '?': /* if ID */
         if (grep_sp == GREP_STACK_SIZE - 2) {
             Fprintf(stderr, "stack overflow at line %d.", grep_lineno);
@@ -1321,6 +1321,10 @@ do_data(void)
 
     /* reprocess the scratch file; 1st format an error msg, just in case */
     line = malloc(BUFSZ + MAXFNAMELEN);
+    if (!line) {
+        fprintf(stderr, "makedefs malloc() failure\n");
+        exit(EXIT_FAILURE);
+    }
     Sprintf(line, "rewind of \"%s\"", tempfile);
     if (rewind(tfp) != 0)
         goto dead_data;
@@ -1547,7 +1551,7 @@ do_oracles(void)
                 break;
             if (!(ok = (fscanf(ofp, "%5lx", &offset) == 1)))
                 break;
-#ifdef MAC
+#ifdef MACOS9
 #ifdef __MWERKS__
             /*
             MetroWerks CodeWarrior Pro 1's (AKA CW12) version of MSL
@@ -1864,18 +1868,6 @@ do_date(void)
     }
     Fprintf(ofp, "#define VERSION_SANITY1 0x%08lx%s\n", version.entity_count,
             ul_sfx);
-#ifndef __EMSCRIPTEN__
-    Fprintf(ofp, "#define VERSION_SANITY2 0x%08lx%s\n", version.struct_sizes1,
-            ul_sfx);
-    Fprintf(ofp, "#define VERSION_SANITY3 0x%08lx%s\n", version.struct_sizes2,
-            ul_sfx);
-#else /* __EMSCRIPTEN__ */
-    Fprintf(ofp, "#define VERSION_SANITY2 0x%08llx%s\n", version.struct_sizes1,
-            ul_sfx);
-    Fprintf(ofp, "#define VERSION_SANITY3 0x%08llx%s\n", version.struct_sizes2,
-            ul_sfx);
-#endif /* !__EMSCRIPTEN__ */
-
     Fprintf(ofp, "\n");
     Fprintf(ofp, "#define VERSION_STRING \"%s\"\n",
             mdlib_version_string(buf, "."));
@@ -2298,6 +2290,7 @@ do_objs(void)
                 n_glass_gems++;
                 break;
             }
+            FALLTHROUGH;
             /*FALLTHRU*/
         case VENOM_CLASS:
             /* fall-through from gem class is ok; objects[] used to have
@@ -2307,6 +2300,7 @@ do_objs(void)
                so strip the extra "splash of " off to keep same macros */
             if (!strncmp(objnam, "SPLASH_OF_", 10))
                 objnam += 10;
+            FALLTHROUGH;
             /*FALLTHRU*/
         default:
             Fprintf(ofp, "#define\t");

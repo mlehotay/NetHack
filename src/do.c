@@ -1,4 +1,4 @@
-/* NetHack 3.7	do.c	$NHDT-Date: 1704225560 2024/01/02 19:59:20 $  $NHDT-Branch: keni-luabits2 $:$NHDT-Revision: 1.376 $ */
+/* NetHack 3.7	do.c	$NHDT-Date: 1774269965 2026/03/23 04:46:05 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.404 $ */
 /* Copyright (c) Stichting Mathematisch Centrum, Amsterdam, 1985. */
 /*-Copyright (c) Derek S. Ray, 2015. */
 /* NetHack may be freely redistributed.  See license for details. */
@@ -20,8 +20,9 @@ staticfn NHFILE *currentlevel_rewrite(void);
 staticfn void familiar_level_msg(void);
 staticfn void final_level(void);
 staticfn void temperature_change_msg(schar);
+staticfn boolean better_not_try_to_drop_that(struct obj *);
 
-/* static boolean badspot(coordxy,coordxy); */
+    /* static boolean badspot(coordxy,coordxy); */
 
 /* the #drop command: drop one inventory item */
 int
@@ -47,9 +48,9 @@ dodrop(void)
  */
 boolean
 boulder_hits_pool(
-    struct obj *otmp,
-    coordxy rx, coordxy ry,
-    boolean pushing)
+    struct obj *otmp, /* the object falling into a pool or water or lava */
+    coordxy rx, coordxy ry, /* coordinates of the pool */
+    boolean pushing)  /* for a boulder, whether or not it is being pushed */
 {
     if (!otmp || otmp->otyp != BOULDER) {
         impossible("Not a boulder?");
@@ -74,6 +75,7 @@ boulder_hits_pool(
                 levl[rx][ry].drawbridgemask |= DB_FLOOR;
             } else {
                 levl[rx][ry].typ = ROOM, levl[rx][ry].flags = 0;
+                recalc_block_point(rx, ry);
             }
             /* 3.7: normally DEADMONSTER() is used when traversing the fmon
                list--dead monsters usually aren't still at specific map
@@ -137,8 +139,9 @@ boulder_hits_pool(
                 losehp(Maybe_Half_Phys(dmg), /* lava damage */
                        "molten lava", KILLED_BY);
             } else if (!fills_up && flags.verbose
-                       && (pushing ? !Blind : cansee(rx, ry)))
+                       && (pushing ? !Blind : cansee(rx, ry))) {
                 pline("It sinks without a trace!");
+            }
         }
 
         /* boulder is now gone */
@@ -156,7 +159,10 @@ boulder_hits_pool(
  * away.
  */
 boolean
-flooreffects(struct obj *obj, coordxy x, coordxy y, const char *verb)
+flooreffects(
+    struct obj *obj,      /* the object landing on the floor */
+    coordxy x, coordxy y, /* map coordinates for spot where it is landing */
+    const char *verb)     /* "fall", "drop", "land", &c */
 {
     struct trap *t;
     struct monst *mtmp;
@@ -218,6 +224,7 @@ flooreffects(struct obj *obj, coordxy x, coordxy y, const char *verb)
                     }
                     if (!DEADMONSTER(mtmp) && !is_whirly(mtmp->data))
                         res = FALSE; /* still alive, boulder still intact */
+                    nhUse(res);
                 }
                 mtmp->mtrapped = 0;
             } else {
@@ -235,12 +242,10 @@ flooreffects(struct obj *obj, coordxy x, coordxy y, const char *verb)
                 You_hear("a CRASH! beneath you.");
             } else if (!Blind && cansee(x, y)) {
                 pline_The("boulder %s%s.",
-                          (ttyp == TRAPDOOR && !tseen)
-                              ? "triggers and " : "",
-                          (ttyp == TRAPDOOR)
-                              ? "plugs a trap door"
-                              : (ttyp == HOLE) ? "plugs a hole"
-                                               : "fills a pit");
+                          (ttyp == TRAPDOOR && !tseen) ? "triggers and " : "",
+                          (ttyp == TRAPDOOR) ? "plugs a trap door"
+                          : (ttyp == HOLE) ? "plugs a hole"
+                            : "fills a pit");
             } else {
                 Soundeffect(se_boulder_drop, 100);
                 You_hear("a boulder %s.", verb);
@@ -251,10 +256,13 @@ flooreffects(struct obj *obj, coordxy x, coordxy y, const char *verb)
          *  || mondied) -> mondead -> m_detach -> fill_pit.
          */
  deletedwithboulder:
-        if ((t = t_at(x, y)) != 0)
-            deltrap(t);
-        if (u.utrap && u_at(x, y))
-            reset_utrap(FALSE);
+        /* creating a pit in ice results in that ice being turned into
+           floor so we shouldn't need any special ice handing here */
+        if ((t = t_at(x, y)) != 0) {
+            (void) delfloortrap(t);
+            if (u.utrap && u_at(x, y))
+                reset_utrap(FALSE);
+        }
         useupf(obj, 1L);
         bury_objs(x, y);
         newsym(x, y);
@@ -267,7 +275,7 @@ flooreffects(struct obj *obj, coordxy x, coordxy y, const char *verb)
          * noise.  Stuff dropped near fountains always misses */
         if ((Blind || (Levitation || Flying)) && !Deaf && u_at(x, y)) {
             if (!Underwater) {
-                if (weight(obj) > 9) {
+                if (weight(obj) > WT_SPLASH_THRESHOLD) {
                     pline("Splash!");
                 } else if (Levitation || Flying) {
                     pline("Plop!");
@@ -709,6 +717,8 @@ drop(struct obj *obj)
         return ECMD_FAIL;
     if (!canletgo(obj, "drop"))
         return ECMD_FAIL;
+    if (obj->otyp == CORPSE && better_not_try_to_drop_that(obj))
+        return ECMD_FAIL;
     if (obj == uwep) {
         if (welded(uwep)) {
             weldmsg(obj);
@@ -829,7 +839,7 @@ dropz(struct obj *obj, boolean with_impact)
             map_object(obj, 0);
         newsym(u.ux, u.uy); /* remap location under self */
     }
-    (void) encumber_msg();
+    encumber_msg();
 }
 
 /* when swallowed, move dropped object from OBJ_FREE to u.ustuck's inventory;
@@ -867,7 +877,7 @@ engulfer_digests_food(struct obj *obj)
         } else if (could_grow) {
             (void) grow_up(u.ustuck, (struct monst *) 0);
         } else if (could_heal) {
-            u.ustuck->mhp = u.ustuck->mhpmax;
+            healmon(u.ustuck, u.ustuck->mhpmax, 0);
             /* False: don't realize that sight is cured from inside */
             mcureblindness(u.ustuck, FALSE);
         }
@@ -933,6 +943,23 @@ doddrop(void)
     return result;
 }
 
+staticfn boolean
+better_not_try_to_drop_that(struct obj *otmp)
+{
+    char buf[BUFSZ];
+
+    /* u_safe_from_fatal_corpse() with st_all checks for gloves and stoning
+     *  resistance before bothering to prompt you.
+     */
+    if (otmp->otyp == CORPSE && !u_safe_from_fatal_corpse(otmp, st_all)) {
+        Snprintf(
+            buf, sizeof buf,
+            "Drop the %s corpse without %s protection on?",
+            obj_pmname(otmp), body_part(HAND));
+        return (paranoid_ynq(TRUE, buf, FALSE) != 'y');
+    }
+    return FALSE;
+}
 staticfn int /* check callers */
 menudrop_split(struct obj *otmp, long cnt)
 {
@@ -1681,7 +1708,6 @@ goto_level(
         }
         reseed_random(rn2);
         reseed_random(rn2_on_display_rng);
-        minit(); /* ZEROCOMP */
         getlev(nhfp, svh.hackpid, new_ledger);
         close_nhfile(nhfp);
         oinit(); /* reassign level dependent obj probabilities */
@@ -1916,11 +1942,26 @@ goto_level(
     if (new) {
         char dloc[QBUFSZ];
         /* Astral is excluded as a major event here because entry to it
-           is already one due to that being an achievement */
-        boolean major = In_endgame(&u.uz) && !Is_astralevel(&u.uz);
+           is already one such due to that being an achievement;
+           for the quest, listing the start, locate, and goal levels would
+           seem reasonable but all quest levels are included for simplicity--
+           level 2 (or 3 if hero level teleports after obtaining permission
+           to enter) is useful to show since it indicates that hero has
+           actually entered the quest rather than just received permission
+           to do so, and listing the goal level could be used to figure out
+           whether level 5 is the end or there's another level (ESP reveals
+           the same thing, but is part of normal game play as opposed to
+           #chronicle leaking information that hero hasn't discovered yet) */
+        boolean major = ((In_endgame(&u.uz) && !Is_astralevel(&u.uz))
+                         || In_quest(&u.uz));
 
         (void) describe_level(dloc, 2);
         livelog_printf(major ? LL_ACHIEVE : LL_DEBUG, "entered %s", dloc);
+
+        if (Role_if(PM_TOURIST)) {
+            more_experienced(level_difficulty(), 0);
+            newexplevel();
+        }
     }
 
     assign_level(&u.uz0, &u.uz); /* reset u.uz0 */
@@ -2192,6 +2233,7 @@ revive_corpse(struct obj *corpse)
                 fill_pit(mtmp->mx, mtmp->my);
                 break;
             }
+            FALLTHROUGH;
             /*FALLTHRU*/
         default:
             /* we should be able to handle the other cases... */
@@ -2216,7 +2258,8 @@ revive_mon(anything *arg, long timeout UNUSED)
     /* corpse will revive somewhere else if there is a monster in the way;
        Riders get a chance to try to bump the obstacle out of their way */
     if (is_displacer(mptr) && body->where == OBJ_FLOOR
-        && get_obj_location(body, &x, &y, 0) && (mtmp = m_at(x, y)) != 0) {
+        && get_obj_location(body, &x, &y, 0) && (mtmp = m_at(x, y)) != 0 &&
+        svl.level.flags.stasis_until < svm.moves) {
         boolean notice_it = canseemon(mtmp); /* before rloc() */
         char *monname = Monnam(mtmp);
 
@@ -2399,7 +2442,7 @@ set_wounded_legs(long side, int timex)
        direct assignment instead of bitwise-OR so getting wounded in
        one leg mysteriously healed the other */
     EWounded_legs |= side;
-    (void) encumber_msg();
+    encumber_msg();
 }
 
 void
@@ -2438,7 +2481,7 @@ heal_legs(
            more when steed becomes healthy, then possible floor
            feedback, then able to carry less when back on foot]. */
         if (how == 0)
-            (void) encumber_msg();
+            encumber_msg();
     }
 }
 

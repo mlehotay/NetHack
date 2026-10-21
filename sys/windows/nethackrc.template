@@ -57,6 +57,12 @@ OPTIONS=!autopickup
 # Set the default boulder symbol to '0'
 OPTIONS=boulder:0
 
+# Disable the prompt for a tutorial
+#OPTIONS=!tutorial
+
+# Disable game tips
+#OPTIONS=!tips
+
 # Highlight menu lines with different colors. You need to define the colors
 # with MENUCOLOR lines.
 #  Toggle menucolor use on or off
@@ -134,10 +140,6 @@ OPTIONS=hilite_pet,!toptenwin
 # highlighttext, inactiveborder, inactivecaption, menu, menutext, scrollbar,
 # window, windowframe, windowtext.
 #OPTIONS=windowcolors:status windowtext/window message windowtext/window
-
-# "Nethack mode" colors
-OPTIONS=windowcolors:status white/#000000 message white/#000000 text white/#000000 menu white/#000000 menutext white/#000000
-OPTIONS=vary_msgcount:4
 
 # *** LOCATIONS ***
 # IMPORTANT: If you change any of these locations, the directories they

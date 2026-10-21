@@ -1,4 +1,4 @@
-/* NetHack 3.7	display.c	$NHDT-Date: 1723834773 2024/08/16 18:59:33 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.244 $ */
+/* NetHack 3.7	display.c	$NHDT-Date: 1777000050 2026/04/23 19:07:30 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.263 $ */
 /* Copyright (c) Dean Luick, with acknowledgements to Kevin Darcy */
 /* and Dave Cohrs, 1990.                                          */
 /* NetHack may be freely redistributed.  See license for details. */
@@ -346,7 +346,7 @@ map_object(struct obj *obj, int show)
             neardist = (r * r) * 2 - r; /* same as r*r + r*(r-1) */
 
         if (distu(x, y) <= neardist) {
-            obj->dknown = 1;
+            observe_object(obj);
             glyph = obj_to_glyph(obj, newsym_rn2);
         }
     }
@@ -420,10 +420,13 @@ unmap_object(coordxy x, coordxy y)
         struct rm *lev = &levl[x][y];
 
         if (spot_shows_engravings(x, y)
-               && (ep = engr_at(x, y)) != 0 && !covers_traps(x, y))
+            && (ep = engr_at(x, y)) != 0 && !covers_traps(x, y)) {
+            if (cansee(x, y))
+                ep->erevealed = 1;
             map_engraving(ep, 0);
-        else
+        } else {
             map_background(x, y, 0);
+        }
 
         /* turn remembered dark room squares dark */
         if (!lev->waslit && lev->glyph == cmap_to_glyph(S_room)
@@ -443,26 +446,29 @@ unmap_object(coordxy x, coordxy y)
  * Internal to display.c, this is a #define for speed.
  */
 #define _map_location(x, y, show) \
-    do {                                                                    \
-        struct obj *obj;                                                    \
-        struct trap *trap;                                                  \
-        struct engr *ep;                                                    \
-        NhRegion *_ml_reg;                                                  \
-                                                                            \
-        if ((obj = vobj_at(x, y)) && !covers_objects(x, y))                 \
-            map_object(obj, show);                                          \
-        else if ((trap = t_at(x, y)) && trap->tseen && !covers_traps(x, y)) \
-            map_trap(trap, show);                                           \
-        else if (spot_shows_engravings(x, y)                                \
-                 && (ep = engr_at(x, y)) != 0                               \
-                 && !covers_traps(x, y))                                    \
-            map_engraving(ep, show);                                        \
-        else                                                                \
-            map_background(x, y, show);                                     \
-                                                                            \
-        update_lastseentyp(x, y);                                           \
-        if (show && !Blind && (_ml_reg = visible_region_at(x, y)) != 0)     \
-            show_region(_ml_reg, x, y);                                     \
+    do {                                                                \
+        struct obj *obj;                                                \
+        struct trap *trap;                                              \
+        struct engr *ml_ep;                                             \
+        NhRegion *_ml_reg;                                              \
+                                                                        \
+        if ((obj = vobj_at(x, y)) && !covers_objects(x, y)) {           \
+            map_object(obj, show);                                      \
+        } else if ((trap = t_at(x, y))                                  \
+                    && trap->tseen && !covers_traps(x, y)) {            \
+            map_trap(trap, show);                                       \
+        } else if (spot_shows_engravings(x, y)                          \
+                 && (ml_ep = engr_at(x, y)) != 0                        \
+                 && ml_ep->erevealed                                    \
+                 && !covers_traps(x, y)) {                              \
+            map_engraving(ml_ep, show);                                 \
+        } else {                                                        \
+            map_background(x, y, show);                                 \
+        }                                                               \
+                                                                        \
+        update_lastseentyp(x, y);                                       \
+        if (show && !Blind && (_ml_reg = visible_region_at(x, y)) != 0) \
+            show_region(_ml_reg, x, y);                                 \
     } while (0)
 
 void
@@ -528,6 +534,7 @@ display_monster(
         default:
             impossible("display_monster:  bad m_ap_type value [ = %d ]",
                        (int) mon->m_ap_type);
+            FALLTHROUGH;
             /*FALLTHRU*/
         case M_AP_NOTHING:
             show_glyph(x, y, mon_to_glyph(mon, newsym_rn2));
@@ -741,14 +748,14 @@ feel_location(coordxy x, coordxy y)
     struct rm *lev;
     struct obj *boulder;
     struct monst *mon;
+    struct engr *ep;
 
     /* replicate safeguards used by newsym(); might not be required here */
     if (_suppress_map_output())
         return;
-
     if (!isok(x, y))
         return;
-    lev = &(levl[x][y]);
+    lev = &levl[x][y];
     /* If hero's memory of an invisible monster is accurate, we want to keep
      * him from detecting the same monster over and over again on each turn.
      * We must return (so we don't erase the monster).  (We must also, in the
@@ -783,7 +790,7 @@ feel_location(coordxy x, coordxy y)
          *      + Room/water positions
          *      + Everything else (hallways!)
          */
-        if (IS_ROCK(lev->typ)
+        if (IS_OBSTRUCTED(lev->typ)
             || (IS_DOOR(lev->typ)
                 && (lev->doormask & (D_LOCKED | D_CLOSED)))) {
             map_background(x, y, 1);
@@ -850,6 +857,9 @@ feel_location(coordxy x, coordxy y)
                 show_glyph(x, y, lev->glyph = cmap_to_glyph(S_darkroom));
         }
     } else {
+        if ((ep = engr_at(x, y)) != 0 && engr_can_be_felt(ep))
+            ep->erevealed = 1;
+
         _map_location(x, y, 1);
 
         if (Punished) {
@@ -906,14 +916,24 @@ feel_location(coordxy x, coordxy y)
 void
 newsym(coordxy x, coordxy y)
 {
+    struct rm *lev;
+    struct engr *ep;
     struct monst *mon;
     int see_it;
     boolean worm_tail;
-    struct rm *lev = &(levl[x][y]);
 
     /* don't try to produce map output when level is in a state of flux */
     if (_suppress_map_output())
         return;
+    /* should never happen; same error handling as u_on_newpos() */
+    if (!isok(x, y)) {
+        void (*errfunc)(const char *, ...) PRINTF_F_PTR(1, 2);
+
+        errfunc = (x < 0 || y < 0 || x > COLNO - 1 || y > ROWNO - 1) ? panic
+                  : impossible; /* misuse of column 0 is less severe */
+        (*errfunc)("newsym: attempting screen update for <%d,%d>", x, y);
+        return;
+    }
 
     /* only permit updating the hero when swallowed */
     if (u.uswallow) {
@@ -927,6 +947,7 @@ newsym(coordxy x, coordxy y)
         if (!(is_pool_or_lava(x, y) || is_ice(x, y)) || !next2u(x, y))
             return;
     }
+    lev = &levl[x][y];
 
     /* Can physically see the location. */
     if (cansee(x, y)) {
@@ -948,6 +969,8 @@ newsym(coordxy x, coordxy y)
         mon = m_at(x, y);
         worm_tail = is_worm_tail(mon);
 
+        if ((ep = engr_at(x, y)) != 0)
+            ep->erevealed = 1; /* even when covered by objects or a monster */
         /*
          * Normal region shown only on accessible positions, but
          * poison clouds and steam clouds also shown above lava,
@@ -1008,8 +1031,9 @@ newsym(coordxy x, coordxy y)
                 display_warning(mon);
             } else if (glyph_is_invisible(lev->glyph)) {
                 map_invisible(x, y);
-            } else
+            } else {
                 _map_location(x, y, 1); /* map the location */
+            }
         }
 
     /* Can't see the location. */
@@ -1481,6 +1505,8 @@ see_monsters(void)
     for (mon = fmon; mon; mon = mon->nmon) {
         if (DEADMONSTER(mon))
             continue;
+        if ((mon->mstate & MON_STILL_ARRIVING) != 0)
+            continue;
         newsym(mon->mx, mon->my);
         if (mon->wormno)
             see_wsegs(mon);
@@ -1570,7 +1596,7 @@ see_nearby_objects(void)
             if (!cansee(ix, iy) || distu(ix, iy) > neardist)
                 continue;
 
-            obj->dknown = 1; /* near enough to see it */
+            observe_object(obj);
             /* operate on remembered glyph rather than current one */
             glyph = levl[ix][iy].glyph;
             if (glyph_is_generic_object(glyph))
@@ -1983,8 +2009,9 @@ show_glyph(coordxy x, coordxy y, int glyph)
     oldglyph = gg.gbuf[y][x].glyphinfo.glyph;
 
     if (a11y.glyph_updates && !a11y.mon_notices_blocked
-        && !program_state.in_docrt
-        && !program_state.in_getlev
+        && !program_state.in_docrt && !program_state.gameover
+        && !program_state.in_getlev && !program_state.stopprint
+        && !_suppress_map_output()
         && (oldglyph != glyph || gg.gbuf[y][x].gnew)) {
         int c = glyph_to_cmap(glyph);
 
@@ -2274,6 +2301,13 @@ back_to_glyph(coordxy x, coordxy y)
     case CORR:
         idx = (ptr->waslit || flags.lit_corridor) ? S_litcorr : S_corr;
         break;
+    case SDOOR:
+        if (ptr->arboreal_sdoor) {
+            idx = S_tree;
+            break;
+        }
+        FALLTHROUGH;
+        /*FALLTHRU*/
     case HWALL:
     case VWALL:
     case TLCORNER:
@@ -2285,7 +2319,6 @@ back_to_glyph(coordxy x, coordxy y)
     case TDWALL:
     case TLWALL:
     case TRWALL:
-    case SDOOR:
         idx = ptr->seenv ? wall_angle(ptr) : S_stone;
         break;
     case DOOR:
@@ -2634,7 +2667,7 @@ const int altarcolors[] = {
     altar_color_unaligned, altar_color_chaotic, altar_color_neutral,
     altar_color_lawful, altar_color_other
 };
-const int explodecolors[7] = {
+const int explodecolors[EXPL_MAX] = {
     explode_color_dark,   explode_color_noxious, explode_color_muddy,
     explode_color_wet,    explode_color_magical, explode_color_fiery,
     explode_color_frosty,
@@ -3101,7 +3134,8 @@ check_pos(coordxy x, coordxy y, int which)
     if (!isok(x, y))
         return which;
     type = levl[x][y].typ;
-    if (IS_ROCK(type) || type == CORR || type == SCORR)
+    /* Everything below POOL, excluding TREE */
+    if (IS_STWALL(type) || type == CORR || type == SCORR || IS_SDOOR(type))
         return which;
     return 0;
 }
@@ -3563,8 +3597,13 @@ wall_angle(struct rm *lev)
         break;
 
     case SDOOR:
+        if (lev->arboreal_sdoor) {
+            idx = S_tree;
+            break;
+        }
         if (lev->horizontal)
             goto horiz;
+        FALLTHROUGH;
         /*FALLTHRU*/
     case VWALL:
         switch (lev->wall_info & WM_MASK) {

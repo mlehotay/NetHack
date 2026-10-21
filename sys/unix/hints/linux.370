@@ -74,6 +74,9 @@ endif  # WANT_WIN_QT5
 ifdef WANT_WIN_QT6
 #if your Qt6 is elsewhere, change this to match
 QTDIR=/usr/local/qt6
+ifeq "$(GPPGTEQ14)" "1"
+CCXXFLAGS += -Wno-template-id-cdtor
+endif    # g++ greater than or equal to 14
 endif   # WANT_WIN_QT6
 endif  # WANT_WIN_QT
 
@@ -101,6 +104,7 @@ CURSESLIB = -lncurses -ltinfo
 ifdef MAKEFILE_SRC
 comma:=,
 NCURSES_LFLAGS = $(shell pkg-config ncursesw --libs)
+NCURSES_CFLAGS = $(shell pkg-config ncursesw --cflags)
 ifeq (,$(findstring ncursesw, $(NCURSES_LFLAGS)))
 ifeq (,$(findstring ncurses, $(NCURSES_LFLAGS)))
 #this indicates that pkg-config itself was unavailable
@@ -122,8 +126,33 @@ CURSESLIB = $(subst -Wl$(comma)-Bsymbolic-functions,,$(NCURSES_LFLAGS))
 else
 CURSESLIB = $(NCURSES_LFLAGS)
 endif
-#$(info $(CURSESLIB))
 endif      #HAVE_NCURSESW
+#$(info $(CURSESLIB))
+ifeq (,$(findstring ncursesw, $(NCURSES_LFLAGS)))
+ifeq (,$(findstring ncurses, $(NCURSES_LFLAGS)))
+#this indicates that pkg-config itself was unavailable
+NOPKGCONFIG = 1
+endif      #ncurses not in NCURSES_LFLAGS?
+endif      #ncursesw not in NCURSES_LFLAGS?
+#
+ifeq "$(NOPKGCONFIG)" "1"
+NCURSES_CFLAGS = -D_DEFAULT_SOURCE -D_XOPEN_SOURCE=600
+ifeq "$(HAVE_NCURSESW)" "1"
+ifeq (,$(wildcard /usr/include/ncursesw/curses.h))
+NCURSES_CFLAGS += -I/usr/include
+else
+NCURSES_CFLAGS += -I/usr/include/ncursesw
+endif
+NCURSES_LFLAGS = -lncursesw -ltinfo
+else       #HAVE_NCURSESW
+ifeq (,$(wildcard /usr/include/ncurses/curses.h))
+NCURSES_CFLAGS += -I/usr/include
+else
+NCURSES_CFLAGS += -I/usr/include/ncurses
+endif
+NCURSES_LFLAGS = -lncurses -ltinfo
+endif      #HAVE_NCURSESW
+endif      #NOPKGCONFIG
 endif      #MAKEFILE_SRC
 endif      #USE_CURSESLIB
 
@@ -149,6 +178,7 @@ NHCFLAGS+=-DCOMPRESS=\"/bin/gzip\" -DCOMPRESS_EXTENSION=\".gz\"
 #NHCFLAGS+=-DCHANGE_COLOR
 NHCFLAGS+=-DSELF_RECOVER
 ifdef WANT_WIN_CURSES
+NHCFLAGS+=$(NCURSES_CFLAGS)
 ifeq "$(HAVE_NCURSESW)" "1"
 NHCFLAGS+=-DCURSES_UNICODE
 else
@@ -162,17 +192,28 @@ endif   #WANT_WIN_CURSES
 #-INCLUDE multisnd1-pre.370
 #
 
+ifeq "$(CCISCLANG)" "1"
+# clang-specific starts
+# clang-specific ends
+else
+# gcc-specific starts
+LIBCFLAGS+=-DSIG_RET_TYPE=__sighandler_t
+# gcc-specific ends
+endif
+
 # WINCFLAGS set from multiw-2.370
 # SNDCFLAGS set from multisnd-pre.370
 CFLAGS+= $(WINCFLAGS)
 CFLAGS+= $(SNDCFLAGS)
 CFLAGS+= $(NHCFLAGS)
+CFLAGS+= $(LIBCFLAGS)
 
 # WINCFLAGS set from multiw-2.370
 # SNDCFLAGS set from multisnd-pre.370
 CCXXFLAGS+= $(WINCFLAGS)
 CCXXFLAGS+= $(SNDCFLAGS)
 CCXXFLAGS+= $(NHCFLAGS)
+CCXXFLAGS+= $(LIBCFLAGS)
 
 VARDATND =
 VARDATND0 =
@@ -186,7 +227,46 @@ ifdef MAKEFILE_SRC
 ifdef CURSESLIB
 WINLIB += $(CURSESLIB)
 endif   #CURSESLIB
-endif   #MAKEFILE_SRC
+
+ifneq "$(NO_NHUUID)" "1"
+UUID_LIB_CHECK := $(shell echo `/sbin/ldconfig -p | grep libuuid`)
+#$(info UUID_LIB_CHECK=$(UUID_LIB_CHECK))
+ifneq "$(UUID_LIB_CHECK)" ""
+UUID_LIB=1
+else
+UUID_LIB=0
+endif
+#$(info UUID_LIB=$(UUID_LIB))
+#
+# check for uuid development headers
+UUID_HEADERS_CHECK := $(wildcard /usr/include/uuid/uuid.h)
+#$(info UUID_HEADERS_CHECK=$(UUID_HEADERS_CHECK))
+ifneq "$(UUID_HEADERS_CHECK)" ""
+UUID_HEADERS = 1
+else
+UUID_HEADERS = 0
+endif
+#$(info UUID_HEADERS=$(UUID_HEADERS))
+
+ifeq "$(UUID_LIB)" "1"
+ifeq "$(UUID_HEADERS)" "1"
+ifndef WANT_NHUUID
+WANT_NHUUID=1
+endif
+endif
+endif
+else    # NO_NHUUID
+WANT_NHUUID=0
+endif   # NO_NHUUID
+
+ifeq "$(WANT_NHUUID)" "1"
+#$(info NHUUID support will be included)
+CFLAGS+= -DNHUUID
+LIBS+=-luuid
+else    # WANT_NHUUID
+$(info Attention - No NHUUID support will be included)
+endif   # WANT_NHUUID
+endif   # MAKEFILE_SRC
 
 ifdef WANT_WIN_X11
 USE_XPM=1
@@ -349,18 +429,20 @@ endif #?WANT_SOURCE_INSTALL
 INSTDIR=$(HACKDIR)
 VARDIR = $(HACKDIR)
 
-ifneq "$(CCISCLANG)" ""
-# gdb may not be installed if clang is chosen compiler so the game
-# won't start in that case due to a sysconf error. Comment out
-# relevant lines in sysconf.
-POSTINSTALL+= sed -i -e 's;^GDBPATH=/usr/bin/gdb;\#GDBPATH=/usr/bin/gdb;' \
+ifdef MAKEFILE_TOP
+TESTGDBPATH=/usr/bin/gdb
+POSTINSTALL+= test -f $(TESTGDBPATH) || \
+		sed -i -e 's;^GDBPATH=/usr/bin/gdb;\#GDBPATH=/usr/bin/gdb;' \
 		-e 's;PANICTRACE_GDB=1;PANICTRACE_GDB=0;' $(INSTDIR)/sysconf;
-endif
+POSTUPDATE+= test -f $(TESTGDBPATH) || \
+		sed -i -e 's;^GDBPATH=/usr/bin/gdb;\#GDBPATH=/usr/bin/gdb;' \
+		-e 's;PANICTRACE_GDB=1;PANICTRACE_GDB=0;' $(INSTDIR)/sysconf;
+endif  #MAKEFILE_TOP
 
-ifeq 'USENONOSTATICFN' '1'
+ifeq '$(USE_NONOSTATICFN)' '1'
 CFLAGS += -DNONOSTATICFN
 else
-ifeq 'USE_NOSTATICFN' '1'
+ifeq '$(USE_NOSTATICFN)' '1'
 CFLAGS += -DNOSTATICFN
 endif
 endif
@@ -372,7 +454,7 @@ endif
 SYSCFLAGS=-DLUA_USE_LINUX
 ifdef GITSUBMODULES
 LUAFLAGS=CC='$(CC)' SYSCFLAGS='$(SYSCFLAGS)'
-ifneq "$(CCISCLANG)" ""
+ifeq "$(CCISCLANG)" "1"
 # clang
 LUAFLAGS +=CWARNGCC=''
 endif   # clang
@@ -407,6 +489,10 @@ MANDIR=/usr/share/man/man6
 #-INCLUDE multisnd2-pre.370
 #
 
+#
+#-INCLUDE response.370
+#
+
 #-POST
 
 #
@@ -426,13 +512,14 @@ endif
 endif
 
 ifdef WANT_LIBNH
-$(TARGETPFX)libnh.a: $(HOBJ) $(LIBNHSYSOBJ) ../lib/lua/liblua.a
-	$(AR) rcs $@ $(HOBJ) $(LIBNHSYSOBJ) ../lib/lua/liblua.a
+$(TARGETPFX)libnh.a: $(HOBJ) $(LIBNHSYSOBJ) ../lib/lua/liblua-$(LUA_VERSION).a
+	$(AR) rcs $@ $(HOBJ) $(LIBNHSYSOBJ) ../lib/lua/liblua-$(LUA_VERSION).a
 	@echo "$@ built."
 $(TARGETPFX)libnhmain.o : ../sys/libnh/libnhmain.c $(HACK_H)
 	$(CC) $(CFLAGS) -c -o$@ $<
-$(TARGETPFX)winshim.o : ../win/shim/winshim.c $(HACK_H)
-	$(CC) $(CFLAGS) -c -o$@ $<
+#dependency tool added this to Makefile.src
+#$(TARGETPFX)winshim.o : ../win/shim/winshim.c $(HACK_H)
+#	$(CC) $(CFLAGS) -c -o$@ $<
 endif  # WANT_LIBNH
 
 #

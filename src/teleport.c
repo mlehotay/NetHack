@@ -1,4 +1,4 @@
-/* NetHack 3.7	teleport.c	$NHDT-Date: 1685863331 2023/06/04 07:22:11 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.206 $ */
+/* NetHack 3.7	teleport.c	$NHDT-Date: 1769342601 2026/01/25 04:03:21 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.239 $ */
 /* Copyright (c) Stichting Mathematisch Centrum, Amsterdam, 1985. */
 /*-Copyright (c) Robert Patrick Rankin, 2011. */
 /* NetHack may be freely redistributed.  See license for details. */
@@ -34,8 +34,13 @@ noteleport_level(struct monst *mon)
         if (get_iter_mons(m_blocks_teleporting))
             return TRUE;
 
-    /* natural no-teleport level */
-    if (svl.level.flags.noteleport)
+    /* natural no-teleport level; covetous monsters can bypass these */
+    if (svl.level.flags.noteleport && !is_covetous(mon->data))
+        return TRUE;
+
+    /* wand of stasis prevents teleportation while the effect is active
+       (even for covetous monsters) */
+    if (svl.level.flags.stasis_until >= svm.moves)
         return TRUE;
 
     return FALSE;
@@ -172,6 +177,9 @@ goodpos(
     /* skip boulder locations for most creatures */
     if (sobj_at(BOULDER, x, y) && (!mdat || !throws_rocks(mdat)))
         return FALSE;
+    /* pretend GP_AVOID_MONPOS == monster creation */
+    if (avoid_monpos && is_exclusion_zone(LR_MONGEN, x, y))
+        return FALSE;
 
     return TRUE;
 }
@@ -192,6 +200,17 @@ enexto(
 {
     return (enexto_core(cc, xx, yy, mdat, GP_CHECKSCARY)
             || enexto_core(cc, xx, yy, mdat, NO_MM_FLAGS));
+}
+
+boolean
+enexto_gpflags(
+    coord *cc,
+    coordxy xx, coordxy yy,
+    struct permonst *mdat,
+    mmflags_nht entflags)
+{
+    return (enexto_core(cc, xx, yy, mdat, GP_CHECKSCARY | entflags)
+            || enexto_core(cc, xx, yy, mdat, entflags));
 }
 
 #ifdef NEW_ENEXTO
@@ -448,7 +467,7 @@ teleds(coordxy nux, coordxy nuy, int teleds_flags)
      * otherwise they are teleporting, so unplacebc().
      * If they don't have to move the ball, then always "drag" whether or
      * not allow_drag is true, because we are calling that function, not
-     * to drag, but to move the chain.  *However* there are some dumb
+     * to drag, but to move the chain.  *However*, there are some dumb
      * special cases:
      *    0                          0
      *   _X  move east       ----->  X_
@@ -790,6 +809,34 @@ teleport_pet(struct monst *mtmp, boolean force_it)
     return TRUE;
 }
 
+/* teleport to random pet, if valid location next to it */
+void
+tele_to_rnd_pet(void)
+{
+    struct monst *mtmp, *pet = (struct monst *) 0;
+    int cnt = 0;
+
+    if (noteleport_level(&gy.youmonst)) {
+        impossible("%s", "attempt to teleport hero to be near a pet"
+                         " on no-teleport level");
+        return;
+    }
+
+    for (mtmp = fmon; mtmp; mtmp = mtmp->nmon)
+        if (!DEADMONSTER(mtmp) && mtmp->mtame && !mon_offmap(mtmp)) {
+            cnt++;
+            if (!rn2(cnt))
+                pet = mtmp;
+        }
+    if (pet && !m_next2u(pet)) {
+        coordxy tx = pet->mx + rn2(3) - 1,
+                ty = pet->my + rn2(3) - 1;
+
+        if (isok(tx, ty) && teleok(tx, ty, FALSE))
+            teleds(tx, ty, TELEDS_TELEPORT);
+    }
+}
+
 /* teleport the hero via some method other than scroll of teleport */
 void
 tele(void)
@@ -1096,12 +1143,14 @@ dotele(
     }
 
     if (next_to_u()) {
-        if (trap && trap_once)
+        if (trap && trap_once) {
             vault_tele();
-        else if (trap && isok(trap->teledest.x, trap->teledest.y))
+        } else if (trap && isok(trap->teledest.x, trap->teledest.y)) {
             teleds(trap->teledest.x, trap->teledest.y, TELEDS_TELEPORT);
-        else
+        } else {
+            iflags.travelcc.x = iflags.travelcc.y = 0;
             tele();
+        }
         (void) next_to_u();
     } else {
         You("%s", shudder_for_moment);
@@ -1315,7 +1364,7 @@ level_tele(void)
         d_level lsav;
 
         /* set specific death location; this also suppresses bones */
-        lsav = u.uz;   /* save current level, see below */
+        lsav = u.uz;   /* save current level; see below */
         u.uz.dnum = 0; /* main dungeon */
         u.uz.dlevel = (newlev <= -10) ? -10 : 0; /* heaven or surface */
         done(DIED);
@@ -1442,7 +1491,15 @@ domagicportal(struct trap *ttmp)
 void
 tele_trap(struct trap *trap)
 {
-    if (In_endgame(&u.uz) || Antimagic) {
+    /* a fixed-destination teleport trap could theoretically place hero onto a
+     * second teleport trap; prevent the recursive call from spoteffects() from
+     * triggering the trap at the destination */
+    static boolean in_tele_trap = FALSE;
+    if (in_tele_trap)
+        return;
+
+    in_tele_trap = TRUE;
+    if (In_endgame(&u.uz) || Antimagic || noteleport_level(&gy.youmonst)) {
         if (Antimagic)
             shieldeff(u.ux, u.uy);
         You_feel("a wrenching sensation.");
@@ -1462,13 +1519,19 @@ tele_trap(struct trap *trap)
                 /* could not find some other place to put mtmp; the level must
                  * be nearly or completely full */
                 You1(shudder_for_moment);
-                return;
             }
-            rloc_to(mtmp, cc.x, cc.y);
+            else {
+                rloc_to(mtmp, cc.x, cc.y);
+                mtmp = (struct monst *) 0; /* no longer a monster at dest */
+            }
         }
-        teleds(trap->teledest.x, trap->teledest.y, TELEDS_TELEPORT);
+        if (!mtmp) {
+            teleds(trap->teledest.x, trap->teledest.y, TELEDS_TELEPORT);
+        }
     } else
         tele();
+
+    in_tele_trap = FALSE;
 }
 
 void
@@ -1627,6 +1690,7 @@ rloc_to_core(
     if (u.ustuck == mtmp) {
         if (u.uswallow) {
             u_on_newpos(mtmp->mx, mtmp->my);
+            check_special_room(FALSE);
             docrt();
         } else if (!m_next2u(mtmp)) {
            unstuck(mtmp);
@@ -1636,14 +1700,16 @@ rloc_to_core(
     maybe_unhide_at(x, y);
     newsym(x, y);      /* update new location */
     set_apparxy(mtmp); /* orient monster */
-    if (domsg && (canspotmon(mtmp) || appearmsg)) {
+    if (domsg && (canspotmon(mtmp) || appearmsg || mtmp == u.ustuck)) {
         int du = distu(x, y), olddu;
         const char *next = (du <= 2) ? " next to you" : 0, /* next2u() */
                    *nearu = (du <= BOLT_LIM * BOLT_LIM) ? " close by" : 0;
 
         set_msg_xy(x, y);
         mtmp->mstrategy &= ~STRAT_APPEARMSG; /* one chance only */
-        if (telemsg && (couldsee(x, y) || sensemon(mtmp))) {
+        if (mtmp == u.ustuck && !u_at(u.ux0, u.uy0)) {
+            You("and %s teleport together.", mon_nam(mtmp));
+        } else if (telemsg && (couldsee(x, y) || sensemon(mtmp))) {
             pline("%s vanishes and reappears%s.",
                   Monnam(mtmp),
                   next ? next
@@ -1658,11 +1724,18 @@ rloc_to_core(
                   !Blind ? "appears" : "arrives",
                   next ? next : nearu ? nearu : "");
         }
+        /* wand discovery only happens if a messaage is delivered (bug?);
+           if spell or q.mechanic attack or artifact #invoke for banish
+           then current_wand will be Null */
+        if (gc.current_wand && gc.current_wand->otyp == WAN_TELEPORTATION)
+            makeknown(WAN_TELEPORTATION);
     }
 
     /* shopkeepers will only teleport if you zap them with a wand of
        teleportation or if they've been transformed into a jumpy monster;
-       the latter only happens if you've attacked them with polymorph */
+       the latter only happens if you've attacked them with polymorph
+       [FIXME? or they've been hit by a genetic engineer, which won't
+       necessarily be due to Conflict by hero] */
     if (resident_shk && !inhishop(mtmp))
         make_angry_shk(mtmp, oldx, oldy);
 
@@ -1890,8 +1963,11 @@ mtele_trap(struct monst *mtmp, struct trap *trap, int in_sight)
 {
     char *monname;
 
-    if (tele_restrict(mtmp))
+    /* don't print feedback here: a monster stepping on a trap and not
+       teleporting from it isn't visible */
+    if (noteleport_level(mtmp))
         return;
+
     if (teleport_pet(mtmp, FALSE)) {
         /* save name with pre-movement visibility */
         monname = Monnam(mtmp);
@@ -2063,9 +2139,10 @@ rloco(struct obj *obj)
                                            svd.dndest.nhx, svd.dndest.nhy)));
 
     if (flooreffects(obj, tx, ty, "fall")) {
-        /* update old location since flooreffects() couldn't;
+        /* update old location (if any) since flooreffects() couldn't;
            unblock_point() for boulder handled by obj_extract_self() */
-        newsym(otx, oty);
+        if (!(otx == 0 && oty == 0))
+            newsym(otx, oty);
         return FALSE;
     } else if (otx == 0 && oty == 0) {
         ; /* fell through a trap door; no update of old loc needed */
@@ -2183,11 +2260,18 @@ random_teleport_level(void)
 /* you teleport a monster (via wand, spell, or poly'd q.mechanic attack);
    return false iff the attempt fails */
 boolean
-u_teleport_mon(struct monst *mtmp, boolean give_feedback)
+u_teleport_mon(
+    struct monst *mtmp,
+    boolean give_feedback)
 {
     coord cc;
 
-    if (mtmp->ispriest && *in_rooms(mtmp->mx, mtmp->my, TEMPLE)) {
+    if (svl.level.flags.stasis_until >= svm.moves) {
+        if (give_feedback)
+            pline("A mysterious force prevents you teleporting %s!",
+                  mon_nam(mtmp));
+        return FALSE;
+    } else if (mtmp->ispriest && *in_rooms(mtmp->mx, mtmp->my, TEMPLE)) {
         if (give_feedback)
             pline("%s resists your magic!", Monnam(mtmp));
         return FALSE;
@@ -2198,10 +2282,12 @@ u_teleport_mon(struct monst *mtmp, boolean give_feedback)
         if (!rloc(mtmp, RLOC_MSG))
             m_into_limbo(mtmp);
     } else if ((is_rider(mtmp->data) || control_teleport(mtmp->data))
-               && rn2(13) && enexto(&cc, u.ux, u.uy, mtmp->data))
+               && rn2(13) && enexto(&cc, u.ux, u.uy, mtmp->data)) {
         rloc_to(mtmp, cc.x, cc.y);
-    else
-        (void) rloc(mtmp, RLOC_MSG);
+    } else {
+        if (!rloc(mtmp, RLOC_MSG))
+            return FALSE;
+    }
     return TRUE;
 }
 

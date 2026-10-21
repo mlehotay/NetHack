@@ -1,4 +1,4 @@
-/* NetHack 3.7	shknam.c	$NHDT-Date: 1715203028 2024/05/08 21:17:08 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.78 $ */
+/* NetHack 3.7	shknam.c	$NHDT-Date: 1764109114 2025/11/25 22:18:34 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.86 $ */
 /* Copyright (c) Stichting Mathematisch Centrum, Amsterdam, 1985. */
 /*-Copyright (c) Robert Patrick Rankin, 2011. */
 /* NetHack may be freely redistributed.  See license for details. */
@@ -128,7 +128,7 @@ static const char *const shktools[] = {
 #ifdef WIN32
     "Lexa", "Niod",
 #endif
-#ifdef MAC
+#ifdef MACOS9
     "Nhoj-lee", "Evad\'kh", "Ettaw-noj", "Tsew-mot", "Ydna-s", "Yao-hang",
     "Tonbar", "Kivenhoug", "Llardom",
 #endif
@@ -201,7 +201,7 @@ static const char *const shkhealthfoods[] = {
  * *_CLASS enum value) or a specific object enum value.
  * In the latter case, prepend it with a unary minus so the code can know
  * (by testing the sign) whether to use mkobj() or mksobj().
- * shtypes[] is externally referenced from mkroom.c, mon.c and shk.c. 
+ * shtypes[] is externally referenced from mkroom.c, mon.c and shk.c.
  *
  * The second, usually shorter, store type name is used in automatically
  * generated annotations for #overview.  If Null, the first name gets used.
@@ -411,8 +411,8 @@ shkveg(void)
     char oclass = FOOD_CLASS;
     int ok[NUM_OBJECTS];
 
+    (void) memset((genericptr_t) ok, 0, sizeof ok); /* lint suppression */
     j = maxprob = 0;
-    ok[0] = 0; /* lint suppression */
     for (i = svb.bases[(int) oclass]; i < NUM_OBJECTS; ++i) {
         if (objects[i].oc_class != oclass)
             break;
@@ -511,7 +511,7 @@ nameshk(struct monst *shk, const char *const *nlp)
 
         for (names_avail = 0; nlp[names_avail]; names_avail++)
             continue;
-
+        assert(names_avail > 0);
         name_wanted = name_wanted % names_avail;
 
         for (trycnt = 0; trycnt < 50; trycnt++) {
@@ -561,6 +561,7 @@ neweshk(struct monst *mtmp)
     if (!ESHK(mtmp))
         ESHK(mtmp) = (struct eshk *) alloc(sizeof(struct eshk));
     (void) memset((genericptr_t) ESHK(mtmp), 0, sizeof(struct eshk));
+    ESHK(mtmp)->parentmid = mtmp->m_id;
     ESHK(mtmp)->bill_p = (struct bill_x *) 0;
 }
 
@@ -681,6 +682,10 @@ shkinit(const struct shclass *shp, struct mkroom *sroom)
     mkmonmoney(shk, 1000L + 30L * (long) rnd(100)); /* initial capital */
     if (shp->shknms == shkrings)
         (void) mongets(shk, TOUCHSTONE);
+    if (shp->shknms == shktools || shp->shknms == shkwands ||
+        (shp->shknms == shkrings && rn2(2)) ||
+        (shp->shknms == shkgeneral && rn2(5)))
+        (void) mongets(shk, SCR_CHARGING);
     nameshk(shk, shp->shknms);
 
     return sh;
@@ -754,7 +759,7 @@ stock_room(int shp_indx, struct mkroom *sroom)
         else if (inside_shop(sx, sy - 1))
             n++;
         Sprintf(buf, "Closed for inventory");
-        make_engr_at(m, n, buf, 0L, DUST);
+        make_engr_at(m, n, buf, NULL, 0L, DUST);
         if (levl[m][n].typ != CORR && levl[m][n].typ != ROOM)
             levl[m][n].typ = (Is_special(&u.uz)
                               || *in_rooms(m, n, 0)) ? ROOM : CORR;

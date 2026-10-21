@@ -1,4 +1,4 @@
-/* NetHack 3.7	insight.c	$NHDT-Date: 1724094296 2024/08/19 19:04:56 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.115 $ */
+/* NetHack 3.7	insight.c	$NHDT-Date: 1777004419 2026/04/23 20:20:19 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.134 $ */
 /* Copyright (c) Stichting Mathematisch Centrum, Amsterdam, 1985. */
 /* NetHack may be freely redistributed.  See license for details. */
 
@@ -16,13 +16,14 @@
 
 staticfn void enlght_out(const char *);
 staticfn void enlght_line(const char *, const char *, const char *,
-                        const char *);
+                          const char *);
 staticfn char *enlght_combatinc(const char *, int, int, char *);
 staticfn void enlght_halfdmg(int, int);
 staticfn boolean walking_on_water(void);
 staticfn boolean cause_known(int);
 staticfn char *attrval(int, int, char *);
 staticfn char *fmt_elapsed_time(char *, int);
+staticfn char *N_times(long, char *) NONNULL NONNULLARG2;
 staticfn void background_enlightenment(int, int);
 staticfn void basics_enlightenment(int, int);
 staticfn void characteristics_enlightenment(int, int);
@@ -156,7 +157,11 @@ enlght_line(
 
 /* format increased chance to hit or damage or defense (Protection) */
 staticfn char *
-enlght_combatinc(const char *inctyp, int incamt, int final, char *outbuf)
+enlght_combatinc(
+    const char *inctyp, /* "to hit" or "damage" or "defense" */
+    int incamt,         /* amount of increment (negative if decrement) */
+    int final,          /* ENL_{GAMEINPROGRESS,GAMEOVERALIVE,GAMEOVERDEAD} */
+    char *outbuf)
 {
     const char *modif, *bonus;
     boolean invrt;
@@ -352,6 +357,28 @@ fmt_elapsed_time(char *outbuf, int final)
     return outbuf;
 }
 
+/* "once" vs "twice" vs "17 times", used in several places */
+staticfn char *
+N_times(long n, char *outbuf)
+{
+    switch (n) {
+    case 0:
+    default:
+        Sprintf(outbuf, "%ld times", n);
+        break;
+    case 1:
+        Strcpy(outbuf, "once");
+        break;
+    case 2:
+        Strcpy(outbuf, "twice");
+        break;
+    case 3:
+        Strcpy(outbuf, "thrice");
+        break;
+    }
+    return outbuf;
+}
+
 void
 enlightenment(
     int mode,  /* BASICENLIGHTENMENT | MAGICENLIGHTENMENT (| both) */
@@ -405,9 +432,13 @@ enlightenment(
         }
 
         if (!flags.bones) {
-            you_have_X("disabled loading of bones levels");
+            /* mention not saving bones iff hero just died */
+            Sprintf(buf, "disabled loading%s of bones levels",
+                    (final == ENL_GAMEOVERDEAD) ? " and storing" : "");
+            you_have_X(buf);
         } else if (!u.uroleplay.numbones) {
-            you_have_never("encountered a bones level");
+            enl_msg(You_, "haven't encountered", "didn't encounter",
+                    " any bones levels", "");
         } else {
             Sprintf(buf, "encountered %ld bones level%s",
                     u.uroleplay.numbones, plur(u.uroleplay.numbones));
@@ -1081,7 +1112,8 @@ status_enlightenment(int mode, int final)
                 || strcmp(MGIVENNAME(u.ustuck), "it") != 0))
             Strcpy(heldmon, "an unseen creature");
     }
-    if (u.uswallow) { /* implies u.ustuck is non-Null */
+    if (u.uswallow) {
+        assert(u.ustuck != NULL); /* implied by u.uswallow */
         Snprintf(buf, sizeof buf, "%s by %s",
                 digests(u.ustuck->data) ? "swallowed" : "engulfed",
                 heldmon);
@@ -1541,6 +1573,9 @@ attributes_enlightenment(
     /*** Vision and senses ***/
     if ((HBlinded || EBlinded) && BBlinded) /* blind w/ blindness blocked */
         you_can("see", from_what(-BLINDED)); /* Eyes of the Overworld */
+    if (Blnd_resist && !Blind) /* skip if no eyes or blindfolded */
+        you_are("not subject to light-induced blindness",
+                from_what(BLND_RES));
     if (See_invisible) {
         if (!Blind)
             enl_msg(You_, "see", "saw", " invisible", from_what(SEE_INVIS));
@@ -1642,7 +1677,7 @@ attributes_enlightenment(
     if (Stealth) {
         you_are("stealthy", from_what(STEALTH));
     } else if (BStealth && (HStealth || EStealth)) {
-        Sprintf(buf, " steathy%s",
+        Sprintf(buf, " stealthy%s",
                 (BStealth == FROMOUTSIDE) ? " if not mounted" : "");
         enl_msg(You_, "would be", "would have been", buf, "");
     }
@@ -1786,6 +1821,23 @@ attributes_enlightenment(
         enlght_halfdmg(HALF_SPDAM, final);
     if (Half_gas_damage)
         enl_msg(You_, "take", "took", " reduced poison gas damage", "");
+    if (spellid(0) > NO_SPELL) { /* skip if no spells are known yet */
+        /* greatly simplified edition of percent_success(spell.c)--may need
+           to be suppressed if oversimplification leads to player confusion */
+        char cast_adj[QBUFSZ];
+        boolean suit = uarm && is_metallic(uarm),
+                robe = uarmc && uarmc->otyp == ROBE;
+
+        *cast_adj = '\0';
+        if (suit) /* omit "wearing" to shorten the text */
+            Sprintf(cast_adj, " impaired by metallic armor%s",
+                    robe ? ", mitigated by your robe" : "");
+        else if (robe)
+            Strcpy(cast_adj, " enhanced by wearing a robe");
+
+        if (*cast_adj)
+            enl_msg("Your spell casting ", "is", "was", cast_adj, "");
+    }
     /* polymorph and other shape change */
     if (Protection_from_shape_changers)
         you_are("protected from shape changers",
@@ -1930,49 +1982,23 @@ attributes_enlightenment(
     }
 #endif
 
-    /* saving-grace: show during final disclosure, hide during normal play */
-    if (final || wizard || discover) {
-        static const char *verbchoices[2][2] = {
-            { "might avoid", "have avoided" },
-            { "could have avoided", "avoided" },
-        };
-        /* u.usaving_grace will always be 0 or 1; final is 0 (game in
-           progress), 1 (game over, survived), or 2 (game over, died) */
-        const char *verb = verbchoices[!!final][u.usaving_grace];
-
-        /* 'verb' has already been set for present or past but enl_msg()
-           needs it twice, one for in progress, the other for game over */
-        enl_msg(You_, verb, verb, " a one-shot death via saving-grace", "");
-    }
-
     {
         const char *p;
 
         buf[0] = '\0';
         if (final < 2) { /* still in progress, or quit/escaped/ascended */
             p = "survived after being killed ";
-            switch (u.umortality) {
-            case 0:
+            if (!u.umortality)
                 p = !final ? (char *) 0 : "survived";
-                break;
-            case 1:
-                Strcpy(buf, "once");
-                break;
-            case 2:
-                Strcpy(buf, "twice");
-                break;
-            case 3:
-                Strcpy(buf, "thrice");
-                break;
-            default:
-                Sprintf(buf, "%d times", u.umortality);
-                break;
-            }
+            else
+                (void) N_times((long) u.umortality, buf);
         } else { /* game ended in character's death */
             p = "are dead";
             switch (u.umortality) {
             case 0:
                 impossible("dead without dying?");
+                FALLTHROUGH;
+                /* FALLTHRU */
             case 1:
                 break; /* just "are dead" */
             default:
@@ -2070,12 +2096,25 @@ doconduct(void)
 void
 show_conduct(int final)
 {
-    char buf[BUFSZ];
+    char buf[BUFSZ], bufN[40];
     int ngenocided;
 
     /* Create the conduct window */
     ge.en_win = create_nhwindow(NHW_MENU);
     putstr(ge.en_win, 0, "Voluntary challenges:");
+
+    /* rerolling; "You <this or that>" is about the character, rerolling
+       is about the player so phrase it differently;
+       also, always use past tense since the chance to do something with it
+       is gone by time player can issue #conduct command or see disclosure */
+    if (!u.uroleplay.reroll)
+        Strcpy(buf, " Character rerolling was not enabled.");
+    else if (!u.uroleplay.numrerolls)
+        Strcpy(buf, " Your character was not rerolled.");
+    else
+        Sprintf(buf, " Your character was rerolled %s.",
+                N_times(u.uroleplay.numrerolls, bufN));
+    enlght_out(buf);
 
     if (u.uroleplay.blind)
         you_have_been("blind from birth");
@@ -2187,25 +2226,13 @@ show_conduct(int final)
     if (sokoban_in_play()) {
         const char *presentverb = "have violated", *pastverb = "violated";
 
-        Strcpy(buf, " the special Sokoban rules ");
-        switch (u.uconduct.sokocheat) {
-        case 0L:
+        if (!u.uconduct.sokocheat) {
             presentverb = "have not violated";
             pastverb = "did not violate";
             Strcpy(buf, " any of the special Sokoban rules");
-            break;
-        case 1L:
-            Strcat(buf, "once");
-            break;
-        case 2L:
-            Strcat(buf, "twice");
-            break;
-        case 3L:
-            Strcat(buf, "thrice");
-            break;
-        default:
-            Sprintf(eos(buf), "%ld times", u.uconduct.sokocheat);
-            break;
+        } else {
+            Strcpy(buf, " the special Sokoban rules ");
+            Strcat(buf, N_times(u.uconduct.sokocheat, bufN));
         }
         enl_msg(You_, presentverb, pastverb, buf, "");
     }
@@ -2559,7 +2586,7 @@ show_gamelog(int final)
             continue;
         if (!eventcnt++)
             putstr(win, 0, " Turn");
-        Sprintf(buf, "%5ld: %s", llmsg->turn, llmsg->text);
+        Snprintf(buf, sizeof buf, "%5ld: %s", llmsg->turn, llmsg->text);
         putstr(win, 0, buf);
     }
     /* since start of game is logged as a major event, 'eventcnt' should
@@ -2631,6 +2658,7 @@ vanqsort_cmp(
             res = uniq2 - uniq1;
             break;
         } /* else both unique or neither unique */
+        FALLTHROUGH;
         /*FALLTHRU*/
     case VANQ_ALPHA_MIX:
         name1 = mons[indx1].pmnames[NEUTRAL];
@@ -2871,19 +2899,9 @@ list_vanquished(char defquery, boolean ask)
                     Sprintf(buf, "%s%s",
                             !type_is_pname(&mons[i]) ? "the " : "",
                             mons[i].pmnames[NEUTRAL]);
-                    if (nkilled > 1) {
-                        switch (nkilled) {
-                        case 2:
-                            Sprintf(eos(buf), " (twice)");
-                            break;
-                        case 3:
-                            Sprintf(eos(buf), " (thrice)");
-                            break;
-                        default:
-                            Sprintf(eos(buf), " (%d times)", nkilled);
-                            break;
-                        }
-                    }
+                    if (nkilled > 1)
+                        Sprintf(eos(buf), " (%s)",
+                                N_times((long) nkilled, buftoo));
                     was_uniq = TRUE;
                 } else {
                     if (uniq_header && was_uniq) {
@@ -3024,12 +3042,14 @@ list_genocided(char defquery, boolean ask)
     ngone = num_gone(mvflags, mindx);
 
     /* genocided or extinct species list */
-    if (ngenocided != 0 || nextinct != 0) {
+    if (ngone > 0) {
         Sprintf(buf, "Do you want a list of %sspecies%s%s?",
                 (nextinct && !ngenocided) ? "extinct " : "",
                 (ngenocided) ? " genocided" : "",
                 (nextinct && ngenocided) ? " and extinct" : "");
-        c = ask ? yn_function(buf, ynaqchars, defquery, TRUE) : defquery;
+        c = ask ? yn_function(buf, (ngone > 1) ? "ynaq" : "ynq\033a",
+                              defquery, TRUE)
+                : defquery;
         if (c == 'q')
             done_stopprint++;
         if (c == 'y' || c == 'a') {
@@ -3379,7 +3399,7 @@ mstatusline(struct monst *mtmp)
 
     /* avoid "Status of the invisible newt ..., invisible" */
     /* and unlike a normal mon_nam, use "saddled" even if it has a name */
-    Strcpy(monnambuf, x_monnam(mtmp, ARTICLE_THE, (char *) 0,
+    Strcpy(monnambuf, x_monnam(mtmp, ARTICLE_YOUR, (char *) 0,
                                (SUPPRESS_IT | SUPPRESS_INVISIBLE), FALSE));
 
     pline("Status of %s (%s, %s):  Level %d  HP %d(%d)  AC %d%s.",

@@ -1,4 +1,4 @@
-/* NetHack 3.7	sounds.c	$NHDT-Date: 1674548234 2023/01/24 08:17:14 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.134 $ */
+/* NetHack 3.7	sounds.c	$NHDT-Date: 1736530208 2025/01/10 09:30:08 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.165 $ */
 /*      Copyright (c) 1989 Janet Walz, Mike Threepoint */
 /* NetHack may be freely redistributed.  See license for details. */
 
@@ -10,7 +10,6 @@ staticfn boolean morgue_mon_sound(struct monst *);
 staticfn boolean zoo_mon_sound(struct monst *);
 staticfn boolean temple_priest_sound(struct monst *);
 staticfn boolean mon_is_gecko(struct monst *);
-staticfn int domonnoise(struct monst *);
 staticfn int dochat(void);
 staticfn struct monst *responsive_mon_at(int, int);
 staticfn int mon_in_room(struct monst *, int);
@@ -264,6 +263,7 @@ dosounds(void)
                     break;
                 }
             }
+            FALLTHROUGH;
                 /*FALLTHRU*/
             case 0:
                 Soundeffect(se_guards_footsteps, 30);
@@ -323,6 +323,7 @@ dosounds(void)
                 "the chime of a cash register.", "Neiman and Marcus arguing!",
             };
             You_hear1(shop_msg[rn2(2) + hallu]);
+            noisy_shop(sroom);
         }
         return;
     }
@@ -631,7 +632,6 @@ cry_sound(struct monst *mtmp)
         ret = "hiss";
         break;
     case MS_ROAR: /* baby dragons; have them growl instead of roar */
-        /*FALLTHRU*/
     case MS_GROWL: /* (none) */
         ret = "growl";
         break;
@@ -675,7 +675,7 @@ mon_is_gecko(struct monst *mon)
 
 DISABLE_WARNING_FORMAT_NONLITERAL
 
-staticfn int /* check calls to this */
+int /* check calls to this */
 domonnoise(struct monst *mtmp)
 {
     char verbuf[BUFSZ];
@@ -870,6 +870,7 @@ domonnoise(struct monst *mtmp)
             }
             break;
         }
+        FALLTHROUGH;
         /*FALLTHRU*/
     case MS_GROWL:
         Soundeffect((mtmp->mpeaceful ? se_snarl : se_growl), 80);
@@ -1019,6 +1020,7 @@ domonnoise(struct monst *mtmp)
             }
             break;
         }
+        FALLTHROUGH;
         /*FALLTHRU*/
     case MS_HUMANOID:
         if (!mtmp->mpeaceful) {
@@ -1158,7 +1160,8 @@ domonnoise(struct monst *mtmp)
             (void) demon_talk(mtmp);
             break;
         }
-    /* fall through */
+        FALLTHROUGH;
+        /* FALLTHRU */
     case MS_CUSS:
         if (!mtmp->mpeaceful)
             cuss(mtmp);
@@ -1891,6 +1894,21 @@ get_soundlib_name(char *dest, int maxlen)
         *dest++ = *src++;
     }
     *dest = '\0';
+}
+
+enum soundlib_ids
+soundlib_id_from_opt(char *op)
+{
+    int idx;
+    struct sound_procs *defproc = &nosound_procs,
+                       *sp = 0;
+
+    for (idx = 0; idx < SIZE(soundlib_choices); ++idx) {
+        sp = soundlib_choices[idx].sndprocs;
+        if (!strcmp(sp->soundname, op))
+            return sp->soundlib_id;
+    }
+    return defproc->soundlib_id;
 }
 
 /*

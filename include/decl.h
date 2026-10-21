@@ -181,7 +181,6 @@ struct instance_globals_a {
     struct h2o_ctx acid_ctx;
 
     boolean havestate;
-    unsigned long magic; /* validate that structure layout is preserved */
 };
 
 struct instance_globals_b {
@@ -219,7 +218,6 @@ struct instance_globals_b {
     boolean bot_disabled;
 
     boolean havestate;
-    unsigned long magic; /* validate that structure layout is preserved */
 };
 
 struct instance_globals_c {
@@ -242,6 +240,7 @@ struct instance_globals_c {
     /* decl.c */
     char chosen_windowtype[WINTYPELEN];
     int cmd_key; /* parse() / rhack() */
+    struct Cmd_bind *cmd_bind;
     cmdcount_nht command_count;
     /* some objects need special handling during destruction or placement */
     struct obj *current_wand;  /* wand currently zapped/applied */
@@ -260,7 +259,7 @@ struct instance_globals_c {
     /* symbols.c */
     int currentgraphics;
 
-    /* files.c */
+    /* files.c, cfgfiles.c */
     char *cmdline_rcfile;  /* set in unixmain.c, used in options.c */
     char *config_section_chosen;
     char *config_section_current;
@@ -298,8 +297,10 @@ struct instance_globals_c {
     short corpsenm_digested; /* monster type being digested, set by gulpum */
 
     /* zap.c */
+    /* new */
+    boolean converted_savefile_loaded;
+
     boolean havestate;
-    unsigned long magic; /* validate that structure layout is preserved */
 };
 
 struct instance_globals_d {
@@ -340,8 +341,11 @@ struct instance_globals_d {
     boolean decor_fumble_override;
     boolean decor_levitate_override;
 
+    /* new */
+    boolean deferred_showpaths;
+    char *deferred_showpaths_dir;
+
     boolean havestate;
-    unsigned long magic; /* validate that structure layout is preserved */
 };
 
 struct instance_globals_e {
@@ -362,7 +366,6 @@ struct instance_globals_e {
                                  to gb.beyond_savefile_load */
 
     boolean havestate;
-    unsigned long magic; /* validate that structure layout is preserved */
 };
 
 struct instance_globals_f {
@@ -387,7 +390,6 @@ struct instance_globals_f {
     long int followmsg; /* last time of follow message */
 
     boolean havestate;
-    unsigned long magic; /* validate that structure layout is preserved */
 };
 
 struct instance_globals_g {
@@ -422,6 +424,7 @@ struct instance_globals_g {
     long gmst_moves;
     struct obj *gmst_invent;
     genericptr_t *gmst_ubak, *gmst_disco, *gmst_mvitals;
+    struct spell gmst_spl_book[MAXSPELL + 1];
 
     /* pline.c */
     struct gamelog_line *gamelog;
@@ -435,7 +438,6 @@ struct instance_globals_g {
     long glyphmap_perlevel_flags;
 
     boolean havestate;
-    unsigned long magic; /* validate that structure layout is preserved */
 };
 
 struct instance_globals_h {
@@ -456,7 +458,6 @@ struct instance_globals_h {
     struct attack *hitmsg_prev;
 
     boolean havestate;
-    unsigned long magic; /* validate that structure layout is preserved */
 };
 
 struct instance_globals_i {
@@ -475,6 +476,7 @@ struct instance_globals_i {
     /* invent.c */
     char *invbuf;
     unsigned invbufsiz;
+    boolean item_action_in_progress;
     int in_sync_perminvent;
 
     /* mon.c */
@@ -490,7 +492,6 @@ struct instance_globals_i {
     /* new */
 
     boolean havestate;
-    unsigned long magic; /* validate that structure layout is preserved */
 };
 
 struct instance_globals_j {
@@ -499,7 +500,6 @@ struct instance_globals_j {
     int jumping_is_magic; /* current jump result of magic */
 
     boolean havestate;
-    unsigned long magic; /* validate that structure layout is preserved */
 };
 
 struct instance_globals_k {
@@ -513,7 +513,6 @@ struct instance_globals_k {
     boolean known;
 
     boolean havestate;
-    unsigned long magic; /* validate that structure layout is preserved */
 };
 
 struct instance_globals_l {
@@ -579,7 +578,6 @@ struct instance_globals_l {
     char lua_copyright[LUA_COPYRIGHT_BUFSIZ];
 
     boolean havestate;
-    unsigned long magic; /* validate that structure layout is preserved */
 };
 
 struct instance_globals_m {
@@ -608,6 +606,9 @@ struct instance_globals_m {
     /* dokick.c */
     struct rm *maploc;
 
+    /* mhitm.c */
+    struct monst *mswallower; /* for gas spore explosion when it's swallowed*/
+
     /* mhitu.c */
     int mhitu_dieroll;
 
@@ -615,10 +616,10 @@ struct instance_globals_m {
     boolean made_branch; /* used only during level creation */
 
     /* mkmap.c */
-    int min_rx; /* rectangle bounds for regions */
-    int max_rx;
-    int min_ry;
-    int max_ry;
+    coordxy min_rx; /* rectangle bounds for regions */
+    coordxy max_rx;
+    coordxy min_ry;
+    coordxy max_ry;
 
     /* mkobj.c */
     boolean mkcorpstat_norevive; /* for trolls */
@@ -646,7 +647,6 @@ struct instance_globals_m {
                               * POT_WATER should become discovered */
 
     boolean havestate;
-    unsigned long magic; /* validate that structure layout is preserved */
 };
 
 struct instance_globals_n {
@@ -696,7 +696,6 @@ struct instance_globals_n {
     short nocreate4;
 
     boolean havestate;
-    unsigned long magic; /* validate that structure layout is preserved */
 };
 
 struct instance_globals_o {
@@ -726,7 +725,8 @@ struct instance_globals_o {
 
     /* options.c */
 
-    int opt_phase; /* builtin_opt, syscf_, rc_file_, environ_, play_opt */
+    /* builtin_opt, syscf_, rc_file_, environ_, play_opt */
+    enum option_phases opt_phase;
     boolean opt_initial;
     boolean opt_from_file;
     boolean opt_need_redraw; /* for doset() */
@@ -742,11 +742,9 @@ struct instance_globals_o {
 
     /* restore.c */
     struct fruit *oldfruit;
-    long omoves;
 
     /* rumors.c */
     int oracle_flg; /* -1=>don't use, 0=>need init, 1=>init done */
-    unsigned long *oracle_loc;
 
     /* uhitm.c */
     boolean override_confirmation; /* Used to flag attacks caused by
@@ -755,7 +753,6 @@ struct instance_globals_o {
     boolean obj_zapped;
 
     boolean havestate;
-    unsigned long magic; /* validate that structure layout is preserved */
 };
 
 struct instance_globals_p {
@@ -806,13 +803,11 @@ struct instance_globals_p {
 
     /* new stuff */
     boolean havestate;
-    unsigned long magic; /* validate that structure layout is preserved */
 };
 
 struct instance_globals_q {
 
     boolean havestate;
-    unsigned long magic; /* validate that structure layout is preserved */
 };
 
 struct instance_globals_r {
@@ -841,7 +836,6 @@ struct instance_globals_r {
     struct repo repo;
 
     boolean havestate;
-    unsigned long magic; /* validate that structure layout is preserved */
 };
 
 struct instance_globals_s {
@@ -923,7 +917,6 @@ struct instance_globals_s {
     int seethru; /* 'bubble' debugging: clouds and water don't block light */
 
     boolean havestate;
-    unsigned long magic; /* validate that structure layout is preserved */
 };
 
 struct instance_globals_t {
@@ -949,8 +942,8 @@ struct instance_globals_t {
     const char *this_title; /* title for inventory list of specific type */
 
     /* muse.c */
-    int trapx;
-    int trapy;
+    coordxy trapx;
+    coordxy trapy;
 
     /* rumors.c */
     long true_rumor_size; /* rumor size variables are signed so that value -1
@@ -974,7 +967,6 @@ struct instance_globals_t {
     int twohits; /* 0: single hit; 1: first of 2; 2: second of 2 */
 
     boolean havestate;
-    unsigned long magic; /* validate that structure layout is preserved */
 };
 
 struct instance_globals_u {
@@ -994,7 +986,6 @@ struct instance_globals_u {
 
     /* new stuff */
     boolean havestate;
-    unsigned long magic; /* validate that structure layout is preserved */
 };
 
 struct instance_globals_v {
@@ -1031,7 +1022,6 @@ struct instance_globals_v {
     struct sound_voice voice;
 
     boolean havestate;
-    unsigned long magic; /* validate that structure layout is preserved */
 };
 
 struct instance_globals_w {
@@ -1039,6 +1029,9 @@ struct instance_globals_w {
     /* decl.c */
     int warn_obj_cnt; /* count of monsters meeting criteria */
     long wailmsg;
+
+    /* do_wear.c */
+    uint8 wasinwater;
 
     /* symbols.c */
     nhsym warnsyms[WARNCOUNT]; /* the current warning display symbols */
@@ -1054,9 +1047,9 @@ struct instance_globals_w {
 
     /* new */
     struct win_settings wsettings;      /* wintype.h */
+    long were_changes;                  /* were.c, allmain.c */
 
     boolean havestate;
-    unsigned long magic; /* validate that structure layout is preserved */
 };
 
 struct instance_globals_x {
@@ -1077,7 +1070,6 @@ struct instance_globals_x {
     coordxy xstart, xsize;
 
     boolean havestate;
-    unsigned long magic; /* validate that structure layout is preserved */
 };
 
 struct instance_globals_y {
@@ -1095,7 +1087,6 @@ struct instance_globals_y {
     coordxy ystart, ysize;
 
     boolean havestate;
-    unsigned long magic; /* validate that structure layout is preserved */
 };
 
 struct instance_globals_z {
@@ -1112,7 +1103,6 @@ struct instance_globals_z {
                         * remember who zapped the wand. */
 
     boolean havestate;
-    unsigned long magic; /* validate that structure layout is preserved */
 };
 
 struct instance_globals_saved_b {
@@ -1179,6 +1169,8 @@ struct instance_globals_saved_m {
 struct instance_globals_saved_n {
     /* dungeon.c */
     int n_dgns; /* number of dungeons (also used in mklev.c and do.c) */
+    /* files.c */
+    char nhuuid[NHUUIDSZ];
     /* mkroom.c */
     int nroom;
     /* region.c */
@@ -1188,6 +1180,10 @@ struct instance_globals_saved_n {
 struct instance_globals_saved_o {
     /* rumors.c */
     unsigned oracle_cnt; /* oracles are handled differently from rumors... */
+    unsigned long *oracle_loc;
+
+    /* other */
+    long omoves;  /* level timestamp */
 };
 
 struct instance_globals_saved_p {

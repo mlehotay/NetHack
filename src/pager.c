@@ -1,4 +1,4 @@
-/* NetHack 3.7	pager.c	$NHDT-Date: 1724094301 2024/08/19 19:05:01 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.279 $ */
+/* NetHack 3.7	pager.c	$NHDT-Date: 1774846177 2026/03/29 20:49:37 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.296 $ */
 /* Copyright (c) Stichting Mathematisch Centrum, Amsterdam, 1985. */
 /*-Copyright (c) Robert Patrick Rankin, 2018. */
 /* NetHack may be freely redistributed.  See license for details. */
@@ -50,7 +50,8 @@ staticfn void domenucontrols(void);
 extern void port_help(void);
 #endif
 staticfn char *setopt_cmd(char *) NONNULL NONNULLARG1;
-staticfn boolean add_quoted_engraving(coordxy, coordxy, char *) NONNULLARG3;
+staticfn boolean add_quoted_engraving(coordxy, coordxy, char *, boolean)
+                                                                  NONNULLARG3;
 
 enum checkfileflags {
     chkfilNone     = 0,
@@ -219,13 +220,13 @@ mhidden_description(
             what = (otmp && otmp->otyp != STRANGE_OBJECT)
                    ? simpleonames(otmp)
                    : obj_descr[STRANGE_OBJECT].oc_name;
-            if (incl_article)
+            if (incl_article && (!otmp || otmp->quan == 1L))
                 what = an(what);
             Strcat(outbuf, what);
 
             if (fakeobj && otmp) {
                 otmp->where = OBJ_FREE; /* object_from_map set to OBJ_FLOOR */
-                dealloc_obj(otmp);
+                dealloc_obj(otmp); /* has no contents */
             }
         } else {
             Strcat(outbuf, something);
@@ -280,12 +281,19 @@ mhidden_description(
 
 /* extracted from lookat(); also used by namefloorobj() */
 boolean
-object_from_map(int glyph, coordxy x, coordxy y, struct obj **obj_p)
+object_from_map(
+    int glyph,
+    coordxy x, coordxy y,
+    struct obj **obj_p)
 {
     boolean fakeobj = FALSE, mimic_obj = FALSE;
     struct monst *mtmp;
     struct obj *otmp;
-    int glyphotyp = glyph_to_obj(glyph);
+    int glyphotyp = glyph_is_object(glyph) ? glyph_to_obj(glyph)
+                    /* if not an object, probably a detected chest trap */
+                    : glyph_is_cmap(glyph) /* assume trapped chest|door */
+                      ? (sobj_at(CHEST, x, y) ? CHEST : LARGE_BOX)
+                      : STRANGE_OBJECT;
 
     *obj_p = (struct obj *) 0;
     /* TODO: check inside containers in case glyph came from detection */
@@ -304,9 +312,24 @@ object_from_map(int glyph, coordxy x, coordxy y, struct obj **obj_p)
 
     if (!otmp || otmp->otyp != glyphotyp) {
         /* this used to exclude STRANGE_OBJECT; now caller deals with it */
-        otmp = mksobj(glyphotyp, FALSE, FALSE);
-        if (!otmp)
-            return FALSE;
+        if (OBJ_NAME(objects[glyphotyp])) {
+            /* map shows a regular object, but one that's not actually here */
+            otmp = mksobj(glyphotyp, FALSE, FALSE);
+        } else {
+            /* map shows a non-item that holds an extra object type (shown
+               on map due to hallucination) for a name which might have been
+               shuffled into play but wasn't (or was shuffled out of play);
+               pick another item that is a regular one in same object class */
+            otmp = mkobj(objects[glyphotyp].oc_class, FALSE);
+            /* mkobj() doesn't provide any no-init option; however, there
+               aren't any extra tool items (or statues) so we won't get here
+               for tools and don't need to check for and delete container
+               contents or extinguish lights on the temporary object */
+        }
+        /* even though we pass False for mksobj()'s 'init' arg, corpse-rot,
+           egg-hatch, and figurine-transform timers get initialized */
+        if (otmp->timed)
+            obj_stop_timers(otmp);
         fakeobj = TRUE;
         if (otmp->oclass == COIN_CLASS)
             otmp->quan = 2L; /* to force pluralization */
@@ -343,11 +366,11 @@ object_from_map(int glyph, coordxy x, coordxy y, struct obj **obj_p)
         && (fakeobj || otmp->where == OBJ_FLOOR) /* not buried */
         /* terrain mode views what's already known, doesn't learn new stuff */
         && !iflags.terrainmode) /* so don't set dknown when in terrain mode */
-        otmp->dknown = 1; /* if a pile, clearly see the top item only */
+        observe_object(otmp); /* if a pile, clearly see the top item only */
     if (fakeobj && mtmp && mimic_obj
         && (otmp->dknown || (M_AP_FLAG(mtmp) & M_AP_F_DKNOWN))) {
         mtmp->m_ap_type |= M_AP_F_DKNOWN;
-        otmp->dknown = 1;
+        observe_object(otmp);
     }
     *obj_p = otmp;
     return fakeobj; /* when True, caller needs to dealloc *obj_p */
@@ -369,13 +392,19 @@ look_at_object(
                      : obj_descr[STRANGE_OBJECT].oc_name);
         if (fakeobj) {
             otmp->where = OBJ_FREE; /* object_from_map set it to OBJ_FLOOR */
-            dealloc_obj(otmp), otmp = 0;
+            dealloc_obj(otmp), otmp = NULL; /* has no contents */
         }
-    } else
+    } else {
         Strcpy(buf, something); /* sanity precaution */
+    }
 
     if (otmp && otmp->where == OBJ_BURIED)
         Strcat(buf, " (buried)");
+    /* check TREE before STONE due to level.flags.arboreal */
+    else if (IS_TREE(levl[x][y].typ))
+        /* "dangling": "hanging" could imply that it's growing on this tree */
+        Snprintf(eos(buf), BUFSZ - strlen(buf), " %s in a tree",
+                 (otmp && is_treefruit(otmp)) ? "dangling" : "stuck");
     else if (levl[x][y].typ == STONE || levl[x][y].typ == SCORR)
         Strcat(buf, " embedded in stone");
     else if (IS_WALL(levl[x][y].typ) || levl[x][y].typ == SDOOR)
@@ -760,6 +789,7 @@ lookat(coordxy x, coordxy y, char *buf, char *monbuf)
                 Strcpy(buf, "stone");
                 break;
             }
+            FALLTHROUGH;
             /*FALLTHRU*/
         default:
             Strcpy(buf, defsyms[symidx].explanation);
@@ -1113,7 +1143,8 @@ add_cmap_descr(
     const char **firstmatch, /* output: pointer to 1st matching description */
     char *out_str)      /* input/output: current description gets appended */
 {
-    char *mbuf = NULL, *p;
+    char *mbuf = NULL;
+    const char *p;
     int absidx = abs(idx);
 
     if (glyph == NO_GLYPH) {
@@ -1482,11 +1513,11 @@ do_screen_description(
         x_str = def_warnsyms[i].explanation;
         if (sym == (looked ? gw.warnsyms[i] : def_warnsyms[i].sym)) {
             if (!found) {
-                Sprintf(out_str, "%s%s", prefix, def_warnsyms[i].explanation);
-                *firstmatch = def_warnsyms[i].explanation;
+                Sprintf(out_str, "%s%s", prefix, x_str);
+                *firstmatch = x_str;;
                 found++;
             } else {
-                found += append_str(out_str, def_warnsyms[i].explanation);
+                found += append_str(out_str, x_str);
             }
             /* Kludge: warning trumps boulders on the display.
                Reveal the boulder too or player can get confused */
@@ -1570,12 +1601,15 @@ do_screen_description(
                 *for_supplement = pm;
             if (!strcmp(look_buf, "ice"))
                 (void) ice_descr(cc.x, cc.y, look_buf);
+            if (!strcmp(look_buf, "staircase down")
+                && on_level(&u.uz, &qstart_level) && !ok_to_quest())
+                Strcpy(look_buf, "blocked staircase down");
 
             if (look_buf[0] != '\0')
                 *firstmatch = look_buf;
             if (*(*firstmatch)) {
                 Sprintf(temp_buf, " (%s", *firstmatch);
-                (void) add_quoted_engraving(cc.x, cc.y, temp_buf);
+                (void) add_quoted_engraving(cc.x, cc.y, temp_buf, FALSE);
                 Strcat(temp_buf, ")");
                 (void) strncat(out_str, temp_buf,
                                BUFSZ - strlen(out_str) - 1);
@@ -1594,7 +1628,10 @@ do_screen_description(
 
 /* when farlook is reporting on an engraving, include its text */
 staticfn boolean
-add_quoted_engraving(coordxy x, coordxy y, char *buf)
+add_quoted_engraving(
+    coordxy x, coordxy y,
+    char *buf,
+    boolean force) /* True: '/e' or '/E', False: '//' or ';' */
 {
     char temp_buf[BUFSZ];
     struct engr *ep = engr_at(x, y);
@@ -1611,7 +1648,10 @@ add_quoted_engraving(coordxy x, coordxy y, char *buf)
      * or object) that happens to be on top of an engraving, so we won't
      * append the engraving text.
      */
-    if (!ep || (!floorengr && !headstone))
+    if (!ep)
+        return FALSE;
+
+    if (!floorengr && !headstone && !force)
         return FALSE;
 
     if (ep->eread)
@@ -1661,7 +1701,6 @@ do_look(int mode, coord *click_cc)
 
     if (!clicklook) {
         if (quick) {
-            from_screen = TRUE; /* yes, we want to use the cursor */
             i = 'y';
         } else {
             menu_item *pick_list = (menu_item *) 0;
@@ -1671,61 +1710,93 @@ do_look(int mode, coord *click_cc)
             any = cg.zeroany;
             win = create_nhwindow(NHW_MENU);
             start_menu(win, MENU_BEHAVE_STANDARD);
+
+            /*
+             * Originally this was just a y|n question about whether to
+             * use the cursor or to type a word.  When other choices were
+             * added, it was changed to be a menu.  Using 'y' and 'n' as
+             * unshown accelerators keeps backwards compatibility with
+             * the old y|n behavior.
+             *
+             * Initially the menu included a third choice and always used
+             * 'a', 'b', and 'c'.  Then it was changed to be controlled by
+             * the 'lootabc' option instead, defaulting to '/', 'i', '?'
+             * when that's false.  Eventually additional entries have been
+             * introduced.
+             *
+             * When lootabc is set, abandon the 'y'|'n' compatibility in
+             * favor of newer '/' and '?' compatibility instead.
+             */
+
             any.a_char = '/';
-            /* 'y' and 'n' to keep backwards compatibility with previous
-               versions: "Specify unknown object by cursor?" */
             add_menu(win, &nul_glyphinfo, &any,
-                     flags.lootabc ? 0 : any.a_char, 'y', ATR_NONE,
+                     flags.lootabc ? 0 : any.a_char,
+                     flags.lootabc ? '/' : 'y', ATR_NONE,
                      clr, "something on the map", MENU_ITEMFLAGS_NONE);
             any.a_char = 'i';
             add_menu(win, &nul_glyphinfo, &any,
+                     /* [don't use 'i' as lootabc group accelerator because
+                        it will make the regular 'i' choice inaccessible] */
                      flags.lootabc ? 0 : any.a_char, 0, ATR_NONE,
                      clr, "something you're carrying", MENU_ITEMFLAGS_NONE);
             any.a_char = '?';
             add_menu(win, &nul_glyphinfo, &any,
-                     flags.lootabc ? 0 : any.a_char, 'n', ATR_NONE,
+                     flags.lootabc ? 0 : any.a_char,
+                     flags.lootabc ? '?' : 'n', ATR_NONE,
                      clr, "something else (by symbol or name)",
                      MENU_ITEMFLAGS_NONE);
             if (!u.uswallow && !Hallucination) {
                 any = cg.zeroany;
                 add_menu_str(win, "");
-                /* these options work sensibly for the swallowed case,
-                   but there's no reason for the player to use them then;
+                /* these options work sensibly for swallowed case, but
+                   there's no reason for player to use them then because
+                   the swallowed display hides all applicable targets;
                    objects work fine when hallucinating, but screen
                    symbol/monster class letter doesn't match up with
                    bogus monster type, so suppress when hallucinating */
                 any.a_char = 'm';
                 add_menu(win, &nul_glyphinfo, &any,
-                         flags.lootabc ? 0 : any.a_char, 0, ATR_NONE,
+                         flags.lootabc ? 0 : any.a_char,
+                         flags.lootabc ? any.a_char : 0, ATR_NONE,
                          clr, "nearby monsters", MENU_ITEMFLAGS_NONE);
                 any.a_char = 'M';
                 add_menu(win, &nul_glyphinfo, &any,
-                         flags.lootabc ? 0 : any.a_char, 0, ATR_NONE, clr,
-                         "all monsters shown on map", MENU_ITEMFLAGS_NONE);
+                         flags.lootabc ? 0 : any.a_char,
+                         flags.lootabc ? any.a_char : 0, ATR_NONE,
+                         clr, "all monsters shown on map",
+                         MENU_ITEMFLAGS_NONE);
                 any.a_char = 'o';
                 add_menu(win, &nul_glyphinfo, &any,
-                         flags.lootabc ? 0 : any.a_char, 0, ATR_NONE,
+                         flags.lootabc ? 0 : any.a_char,
+                         flags.lootabc ? any.a_char : 0, ATR_NONE,
                          clr, "nearby objects", MENU_ITEMFLAGS_NONE);
                 any.a_char = 'O';
                 add_menu(win, &nul_glyphinfo, &any,
-                         flags.lootabc ? 0 : any.a_char, 0, ATR_NONE, clr,
-                         "all objects shown on map", MENU_ITEMFLAGS_NONE);
+                         flags.lootabc ? 0 : any.a_char,
+                         flags.lootabc ? any.a_char : 0, ATR_NONE,
+                         clr, "all objects shown on map",
+                         MENU_ITEMFLAGS_NONE);
                 any.a_char = 't';
                 add_menu(win, &nul_glyphinfo, &any,
-                         flags.lootabc ? 0 : any.a_char, '^', ATR_NONE,
+                         flags.lootabc ? 0 : any.a_char,
+                         flags.lootabc ? any.a_char : '^', ATR_NONE,
                          clr, "nearby traps", MENU_ITEMFLAGS_NONE);
                 any.a_char = 'T';
                 add_menu(win, &nul_glyphinfo, &any,
-                         flags.lootabc ? 0 : any.a_char, '\"', ATR_NONE,
+                         flags.lootabc ? 0 : any.a_char,
+                         flags.lootabc ? any.a_char : '\"', ATR_NONE,
                          clr, "all seen or remembered traps",
                          MENU_ITEMFLAGS_NONE);
                 any.a_char = 'e';
                 add_menu(win, &nul_glyphinfo, &any,
-                         flags.lootabc ? 0 : any.a_char, '`', ATR_NONE,
+                         flags.lootabc ? 0 : any.a_char,
+                         /* [don't use 'e' as lootabc group accelerator] */
+                         flags.lootabc ? 0 : '`', ATR_NONE,
                          clr, "nearby engravings", MENU_ITEMFLAGS_NONE);
                 any.a_char = 'E';
                 add_menu(win, &nul_glyphinfo, &any,
-                         flags.lootabc ? 0 : any.a_char, '|', ATR_NONE,
+                         flags.lootabc ? 0 : any.a_char,
+                         flags.lootabc ? any.a_char : '|', ATR_NONE,
                          clr, "all seen or remembered engravings",
                          MENU_ITEMFLAGS_NONE);
             }
@@ -1826,7 +1897,6 @@ do_look(int mode, coord *click_cc)
     do {
         /* Reset some variables. */
         pm = (struct permonst *) 0;
-        found = 0;
         out_str[0] = '\0';
 
         if (from_screen || clicklook) {
@@ -2076,16 +2146,19 @@ look_engrs(boolean nearby)
     winid win;
     struct engr *e;
     char lookbuf[BUFSZ], outbuf[BUFSZ];
-    nhsym sym;
     coordxy x, y, lo_x, lo_y, hi_x, hi_y;
     boolean is_headstone;
+    nhsym sym;
     int glyph, count = 0;
 
     win = create_nhwindow(NHW_TEXT);
     look_region_nearby(&lo_x, &lo_y, &hi_x, &hi_y, nearby);
+    /*assert(lo_x >= 1 && lo_y >= 0 && hi_x < MAXCO && hi_y < MAXLI);*/
     for (y = lo_y; y <= hi_y; y++) {
         for (x = lo_x; x <= hi_x; x++) {
             lookbuf[0] = '\0';
+            if (!levl[x][y].seenv)
+                continue;
             /* this won't find remembered engravings which aren't there
                anymore (in case the hero is unaware that they're gone;
                scuffed away by monster movement or deleted during shop
@@ -2093,14 +2166,9 @@ look_engrs(boolean nearby)
             e = engr_at(x, y);
             if (!e)
                 continue;
-            glyph = glyph_at(x, y);
-            sym = ((levl[x][y].typ == GRAVE || svl.lastseentyp[x][y] == GRAVE)
-                   ? S_grave
-                   : (levl[x][y].typ == CORR) ? S_engrcorr
-                     : S_engroom);
-            is_headstone = (sym == S_grave);
-            Sprintf(lookbuf, "(%s", is_headstone ? "grave" : "engraving");
-            (void) add_quoted_engraving(x, y, lookbuf);
+            is_headstone = IS_GRAVE(svl.lastseentyp[x][y]);
+            Sprintf(lookbuf, " (%s", is_headstone ? "grave" : "engraving");
+            (void) add_quoted_engraving(x, y, lookbuf, TRUE);
             /* the paren is used by farlook and add_quoted_engraving()
                expected to see it; we don't want it here */
             if (is_headstone) {
@@ -2108,21 +2176,21 @@ look_engrs(boolean nearby)
                 (void) strsubst(lookbuf, "(grave whose ", "");
             } else {
                 (void) strsubst(lookbuf, "(engraving with ", "");
-                (void) strsubst(lookbuf, "(engraving that ", "one that ");
+                (void) strsubst(lookbuf, "(engraving ", "engraving ");
             }
 
-            if (glyph_is_cmap(glyph) && !glyph_is_trap(glyph)) {
+            glyph = glyph_at(x, y);
+            sym = glyph_is_cmap(glyph) ? glyph_to_cmap(glyph) : SYM_NOTHING;
+            if (is_cmap_engraving(sym) || sym == S_grave) {
                 /* engraving or grave+headstone shown on the map */
                 ++count;
-            } else if (e->eread || is_headstone) {
+            } else {
                 /* engraving or grave covered by object(s) */
                 Snprintf(eos(lookbuf), sizeof lookbuf - strlen(lookbuf),
                          ", obscured by %s", encglyph(glyph));
                 glyph = is_headstone ? cmap_to_glyph(S_grave)
                                      : engraving_to_glyph(e);
                 ++count;
-            } else {
-                continue;
             }
             if (*lookbuf) { /* (redundant) */
                 char coordbuf[20], cmode;
@@ -2144,7 +2212,7 @@ look_engrs(boolean nearby)
                                   : (cmode == GPCOORDS_MAP) ? "%8s  "
                                       : "%12s  ",
                         coord_desc(x, y, coordbuf, cmode));
-                Sprintf(eos(outbuf), "%s  ", encglyph(glyph));
+                Sprintf(eos(outbuf), "%s ", encglyph(glyph));
                 /* guard against potential overflow */
                 lookbuf[sizeof lookbuf - 1 - strlen(outbuf)] = '\0';
                 Strcat(outbuf, lookbuf);

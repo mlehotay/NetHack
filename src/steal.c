@@ -165,12 +165,13 @@ staticfn int
 stealarm(void)
 {
     struct monst *mtmp;
-    struct obj *otmp;
+    struct obj *otmp, *nextobj;
 
     if (!gs.stealoid || !gs.stealmid)
         goto botm;
 
-    for (otmp = gi.invent; otmp; otmp = otmp->nobj) {
+    for (otmp = gi.invent; otmp; otmp = nextobj) {
+        nextobj = otmp->nobj;
         if (otmp->o_id == gs.stealoid) {
             for (mtmp = fmon; mtmp; mtmp = mtmp->nmon) {
                 if (mtmp->m_id == gs.stealmid) {
@@ -600,7 +601,7 @@ steal(struct monst *mtmp, char *objnambuf)
         && mtmp->data->mlet == S_NYMPH)
         ++named;
     urgent_pline("%s stole %s.", named ? "She" : Monnambuf, doname(otmp));
-    (void) encumber_msg();
+    encumber_msg();
     could_petrify = (otmp->otyp == CORPSE
                      && touch_petrifies(&mons[otmp->corpsenm]));
     otmp->how_lost = LOST_STOLEN;
@@ -642,18 +643,18 @@ mpickobj(struct monst *mtmp, struct obj *otmp)
     }
     /* don't want hidden light source inside the monster; assumes that
        engulfers won't have external inventories; whirly monsters cause
-       the light to be extinguished rather than letting it shine thru */
+       the light to be extinguished rather than letting it shine through */
     if (obj_sheds_light(otmp) && attacktype(mtmp->data, AT_ENGL)) {
         /* this is probably a burning object that you dropped or threw */
         if (engulfing_u(mtmp) && !Blind)
             pline("%s out.", Tobjnam(otmp, "go"));
         snuff_otmp = TRUE;
     }
+    /* for hero owned object on shop floor, mtmp is taking possession
+       and if it's eventually dropped in a shop, shk will claim it */
+    otmp->no_charge = 0;
     /* some object handling is only done if mtmp isn't a pet */
     if (!mtmp->mtame) {
-        /* for hero owned object on shop floor, mtmp is taking possession
-           and if it's eventually dropped in a shop, shk will claim it */
-        otmp->no_charge = 0;
         /* if monst is unseen, some info hero knows about this object becomes
            lost; continual pickup and drop by pets makes this too annoying if
            it is applied to them; when engulfed (where monster can't be seen
@@ -761,7 +762,7 @@ stealamulet(struct monst *mtmp)
         pline("%s steals %s!", Some_Monnam(mtmp), buf);
         if (can_teleport(mtmp->data) && !tele_restrict(mtmp))
             (void) rloc(mtmp, RLOC_MSG);
-        (void) encumber_msg();
+        encumber_msg();
     }
 }
 
@@ -798,7 +799,7 @@ maybe_absorb_item(
                   otense(obj, "are"), hand_s);
         }
         freeinv(obj);
-        (void) encumber_msg();
+        encumber_msg();
     } else {
         /* not carried; presumably thrown or kicked */
         if (canspotmon(mon))

@@ -3,7 +3,6 @@
 /* NetHack may be freely redistributed.  See license for details. */
 
 #include "hack.h"
-#include <ctype.h>
 
 #ifdef ENHANCED_SYMBOLS
 
@@ -208,7 +207,8 @@ add_custom_urep_entry(
 }
 #endif /* ENHANCED_SYMBOLS */
 
-void reset_customsymbols(void)
+void
+reset_customsymbols(void)
 {
 #ifdef ENHANCED_SYMBOLS
     free_all_glyphmap_u();

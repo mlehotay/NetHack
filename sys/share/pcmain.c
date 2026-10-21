@@ -12,8 +12,6 @@
 #include <signal.h>
 #endif
 
-#include <ctype.h>
-
 #if !defined(AMIGA) && !defined(__DJGPP__)
 #include <sys\stat.h>
 #else
@@ -22,12 +20,6 @@
 
 #ifdef __DJGPP__
 #include <unistd.h> /* for getcwd() prototype */
-#endif
-
-#if defined(MICRO) || defined(OS2)
-ATTRNORETURN void nethack_exit(int) NORETURN;
-#else
-#define nethack_exit exit
 #endif
 
 char *exepath(char *);
@@ -136,6 +128,7 @@ _CrtSetReportFile(_CRT_ASSERT, _CRTDBG_FILE_STDERR);*/
 
     choose_windows(DEFAULT_WINDOW_SYS);
 
+
 #if !defined(AMIGA) && !defined(GNUDOS)
     /* Save current directory and make sure it gets restored when
      * the game is exited.
@@ -154,6 +147,10 @@ _CrtSetReportFile(_CRT_ASSERT, _CRTDBG_FILE_STDERR);*/
 #ifdef EXEPATH
     if (dir == (char *) 0)
         dir = exepath(argv[0]);
+#endif
+#if defined(AMIGA) && defined(HACKDIR)
+    if (dir == (char *) 0)
+        dir = HACKDIR;
 #endif
 #ifdef _MSC_VER
     if (IsDebuggerPresent()) {
@@ -437,8 +434,7 @@ _CrtSetReportFile(_CRT_ASSERT, _CRTDBG_FILE_STDERR);*/
         raw_print("Cannot create lock file");
     } else {
         svh.hackpid = 1;
-        if (nhfp->structlevel)
-            write(nhfp->fd, (genericptr_t) &svh.hackpid, sizeof(svh.hackpid));
+        Sfo_int(nhfp, &svh.hackpid, "svh.hackpid");
         close_nhfile(nhfp);
     }
 
@@ -675,7 +671,7 @@ nhusage(void)
 
 #ifdef CHDIR
 void
-chdirx(char *dir, boolean wr)
+chdirx(const char *dir, boolean wr)
 {
 #ifdef AMIGA
     static char thisdir[] = "";
@@ -753,7 +749,34 @@ exepath(char *str)
 }
 #endif /* EXEPATH */
 
-#ifdef CROSS_TO_AMIGA
+#if defined(CROSS_TO_AMIGA) || defined(CROSS_TO_MSDOS)
+
+void
+get_nhuuid(void)
+{
+    unsigned char stmp[] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                             0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                             0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+
+    if (svn.nhuuid[0])
+        return;
+
+    /* FIXME: fill in a useful valid UUID somehow */
+    Snprintf(svn.nhuuid, sizeof svn.nhuuid, "%s", (char *) stmp);
+}
+
+void
+free_nhuuid(void)
+{
+    int i;
+
+    for (i = 0; i < SIZE(svn.nhuuid); i++) {
+        svn.nhuuid[i] = 0;
+    }
+}
+#endif
+
+#if defined(CROSS_TO_AMIGA)
 void msmsg
 VA_DECL(const char *, fmt)
 {

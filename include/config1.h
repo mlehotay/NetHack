@@ -31,6 +31,10 @@
 #ifndef CROSSCOMPILE
 #define SHORT_FILENAMES
 #endif
+/* this is not fully-implemented yet for msdos */
+#ifdef ENHANCED_SYMBOLS
+#undef ENHANCED_SYMBOLS
+#endif
 #endif
 
 /*
@@ -41,23 +45,23 @@
 #endif
 
 #ifdef macintosh /* Auto-defined symbol for MPW compilers (sc and mrc) */
-#define MAC
+#define MACOS9
 #endif
 
 #ifdef THINK_C /* Think C auto-defined symbol */
-#define MAC
+#define MACOS9
 #define NEED_VARARGS
 #endif
 
 #ifdef __MWERKS__ /* defined by Metrowerks' Codewarrior compiler */
 #ifndef __BEOS__  /* BeOS */
-#define MAC
+#define MACOS9
 #endif
 #define NEED_VARARGS
 #define USE_STDARG
 #endif
 
-#if defined(MAC) || defined(__BEOS__)
+#if defined(MACOS9) || defined(__BEOS__)
 #define DLB
 #undef UNIX
 #endif
@@ -91,7 +95,7 @@
 #undef UNIX
 #define DLB
 #define HACKDIR "NetHack:"
-#define NO_MACRO_CPATH
+
 #endif
 
 /*

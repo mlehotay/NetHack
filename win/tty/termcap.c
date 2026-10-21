@@ -39,6 +39,7 @@ struct tc_lcl_data tc_lcl_data = { 0, 0, 0, 0, 0, 0, 0, FALSE };
 static char *nh_VI = (char *) 0; /* cursor_invisible */
 static char *nh_VE = (char *) 0; /* cursor_normal */
 /*static char *nh_VS = (char *) 0;*/ /* cursor_visible (highlighted cursor) */
+static char *nh_Ic = (char *) 0; /* initialize_color */
 
 static char *HO, *CL, *CE, *UP, *XD, *BC, *SO, *SE, *TI, *TE;
 static char *VS, *VE;
@@ -78,7 +79,7 @@ static char tgotobuf[20];
 static char tty_standout_on[16], tty_standout_off[16];
 
 void
-tty_startup(int *wid, int *hgt)
+term_startup(int *wid, int *hgt)
 {
 #ifdef TERMLIB
     const char *term;
@@ -290,6 +291,8 @@ tty_startup(int *wid, int *hgt)
     if (!nh_VI || !nh_VE /*|| !nh_VS*/ )
         nh_VI = nh_VE = /*nh_VS =*/ (char *) 0;
 
+    nh_Ic = Tgetstr(nhStr("Ic"));
+
     /* Get rid of padding numbers for nh_HI and nh_HE.  Hope they
      * aren't really needed!!!  nh_HI and nh_HE are outputted to the
      * pager as a string - so how can you send it NULs???
@@ -336,7 +339,7 @@ tty_startup(int *wid, int *hgt)
  */
 /* deallocate resources prior to final termination */
 void
-tty_shutdown(void)
+term_shutdown(void)
 {
     /* we only attempt to clean up a few individual termcap variables */
 #if defined(TERMLIB) || defined(ANSI_DEFAULT)
@@ -403,8 +406,14 @@ tty_decgraphics_termcap_fixup(void)
      * Do not select NA ASCII as the primary font since people may
      * reasonably be using the UK character set.
      */
-    if (SYMHANDLING(H_DEC))
+    if (SYMHANDLING(H_DEC)) {
         xputs("\033)0"); /* "\e)0" load line drawing chars as secondary set */
+        /* TI doesn't necessarily do this; explicitly switch to primary
+           font in case previous program (either before starting nethack
+           or during a shell escape) left the alternate font active */
+        xputs(AE);
+    }
+
 #ifdef PC9800
     init_hilite();
 #endif
@@ -499,7 +508,7 @@ tty_ascgraphics_hilite_fixup(void)
 #endif /* PC9800 */
 
 void
-tty_start_screen(void)
+term_start_screen(void)
 {
     xputs(TI);
     xputs(VS);
@@ -531,7 +540,7 @@ tty_start_screen(void)
 }
 
 void
-tty_end_screen(void)
+term_end_screen(void)
 {
     term_clear_screen();
     xputs(VE);
@@ -658,7 +667,7 @@ void
 term_clear_screen(void)
 {
     /* note: if CL is null, then termcap initialization failed,
-            so don't attempt screen-oriented I/O during final cleanup.
+     * so don't attempt screen-oriented I/O during final cleanup.
      */
     if (CL) {
         xputs(CL);
@@ -877,7 +886,7 @@ cl_eos(void) /* free after Robert Viduya */
     about reconstructing them after the header file inclusion. */
 #undef TRUE
 #undef FALSE
-#define m_move curses_m_move /* Some curses.h decl m_move(), not used here */
+#define m_move curses_m_move /* some curses.h decl m_move(), not used here */
 
 #include <curses.h>
 
@@ -935,7 +944,7 @@ init_hilite(void)
     iflags.colorcount = colors;
     int md_len = 0;
 
-    if (colors < 8 || (MD == NULL) || (strlen(MD) == 0)
+    if (colors < 8 || !MD || !*MD
         || ((setf = tgetstr(nhStr("AF"), (char **) 0)) == (char *) 0
             && (setf = tgetstr(nhStr("Sf"), (char **) 0)) == (char *) 0)) {
         /* Fallback when colors not available
@@ -963,23 +972,16 @@ init_hilite(void)
 
     if (colors >= 16) {
         for (c = 0; c < SIZE(ti_map); c++) {
-            char *work;
-
             /* system colors */
             scratch = tparm(setf, ti_map[c].nh_color);
-            work = (char *) alloc(strlen(scratch) + 1);
-            Strcpy(work, scratch);
-            hilites[ti_map[c].nh_color] = work;
-
+            hilites[ti_map[c].nh_color] = dupstr(scratch);
             /* bright colors */
             scratch = tparm(setf, ti_map[c].nh_bright_color);
-            work = (char *) alloc(strlen(scratch) + 1);
-            Strcpy(work, scratch);
-            hilites[ti_map[c].nh_bright_color] = work;
+            hilites[ti_map[c].nh_bright_color] = dupstr(scratch);
         }
     } else {
         /* 8 system colors */
-        md_len = strlen(MD);
+        md_len = (int) strlen(MD);
 
         c = 6;
         while (c--) {
@@ -996,9 +998,8 @@ init_hilite(void)
     }
 
     if (colors >= 16) {
-        scratch = tparm(setf, COLOR_WHITE|BRIGHT);
-        hilites[CLR_WHITE] = (char *) alloc(strlen(scratch) + 1);
-        Strcpy(hilites[CLR_WHITE], scratch);
+        scratch = tparm(setf, COLOR_WHITE | BRIGHT);
+        hilites[CLR_WHITE] = dupstr(scratch);
     } else {
         scratch = tparm(setf, COLOR_WHITE);
         hilites[CLR_WHITE] = (char *) alloc(strlen(scratch) + md_len + 1);
@@ -1012,8 +1013,7 @@ init_hilite(void)
     if (iflags.wc2_darkgray) {
         if (colors >= 16) {
             scratch = tparm(setf, COLOR_BLACK|BRIGHT);
-            hilites[CLR_BLACK] = (char *) alloc(strlen(scratch) + 1);
-            Strcpy(hilites[CLR_BLACK], scratch);
+            hilites[CLR_BLACK] = dupstr(scratch);
         } else {
             /* On many terminals, esp. those using classic PC CGA/EGA/VGA
             * textmode, specifying "hilight" and "black" simultaneously
@@ -1043,9 +1043,11 @@ kill_hilite(void)
     if (hilites[CLR_BLACK] == nh_HI)
         return;
 
+    /* hilites[] will be set to NULL below, whether freed here or not */
+
     if (hilites[CLR_BLACK]) {
         if (hilites[CLR_BLACK] != hilites[CLR_BLUE])
-            free(hilites[CLR_BLACK]);
+            free(hilites[CLR_BLACK]), hilites[CLR_BLACK] = NULL;
     }
     if (tgetnum(nhStr("Co")) >= 16) {
         if (hilites[CLR_BLUE])
@@ -1086,7 +1088,7 @@ kill_hilite(void)
         free(hilites[CLR_WHITE]);
 
     for (c = 0; c < CLR_MAX; c++)
-        hilites[c] = 0;
+        hilites[c] = NULL;
 }
 
 #else /* UNIX && TERMINFO */
@@ -1150,7 +1152,7 @@ analyze_seq(char *str, int *fg, int *bg)
 
 /*
  * Sets up highlighting sequences, using ANSI escape sequences (highlight code
- * found in print.c).  The nh_HI and nh_HE sequences (usually from SO) are
+ * found in wintty.c).  The nh_HI and nh_HE sequences (usually from SO) are
  * scanned to find foreground and background colors.
  */
 
@@ -1173,6 +1175,7 @@ init_hilite(void)
     hilites[0] = NOCOL;
     for (c = 1; c < SIZE(hilites); c++) {
         char *foo;
+
         foo = (char *) alloc(sizeof "\033b0");
         if (tos_numcolors > 4)
             Sprintf(foo, "\033b%c", (c & ~BRIGHT) + '0');
@@ -1216,9 +1219,9 @@ init_hilite(void)
             if (c == CLR_BLUE)
                 continue;
 #endif
-            if (c == foreg)
+            if (c == foreg) {
                 hilites[c] = (char *) 0;
-            else if (c != hi_foreg || backg != hi_backg) {
+            } else if (c != hi_foreg || backg != hi_backg) {
                 hilites[c] = (char *) alloc(sizeof "\033[%d;3%d;4%dm");
                 Sprintf(hilites[c], "\033[%d", !!(c & BRIGHT));
                 if ((c | BRIGHT) != (foreg | BRIGHT))
@@ -1341,6 +1344,7 @@ s_atr2str(int n)
         /* if italic isn't available, fall through to underline */
         if (ZH && *ZH)
             return ZH;
+        FALLTHROUGH;
         /*FALLTHRU*/
     case ATR_BLINK:
     case ATR_ULINE:
@@ -1351,6 +1355,7 @@ s_atr2str(int n)
             if (nh_US && *nh_US)
                 return nh_US;
         }
+        FALLTHROUGH;
         /*FALLTHRU*/
     case ATR_BOLD:
         if (MD && *MD)
@@ -1378,15 +1383,18 @@ e_atr2str(int n)
         /* send ZR unless we didn't have ZH and substituted US */
         if (ZR && *ZR && ZH && *ZH)
             return ZR;
+        FALLTHROUGH;
         /*FALLTHRU*/
     case ATR_ULINE:
         if (nh_UE && *nh_UE)
             return nh_UE;
+        FALLTHROUGH;
         /*FALLTHRU*/
     case ATR_BOLD:
     case ATR_BLINK:
         if (nh_HE && *nh_HE)
             return nh_HE;
+        FALLTHROUGH;
         /*FALLTHRU*/
     case ATR_DIM:
     case ATR_INVERSE:
@@ -1489,17 +1497,54 @@ term_start_bgcolor(int color)
 void
 term_curs_set(int visibility)
 {
+    static int vis = -1;
+
+    if (vis == visibility)
+        return;
+
     if (!visibility && nh_VI)
         xputs(nh_VI);
     else if (visibility && nh_VE)
         xputs(nh_VE);
+    vis = visibility;
 }
 
 #ifdef CHANGE_COLOR
 void
-tty_change_color(int color UNUSED, long rgb UNUSED, int reverse UNUSED)
+tty_change_color(int color, long rgb, int reverse UNUSED)
 {
-    return;
+    char buf[BUFSZ];
+    int i;
+    char *c, *fmt;
+
+    /* FIXME: colors are not reset back when exiting NetHack */
+    if (nh_Ic && *nh_Ic) {
+        long clr = color, r, g, b;
+
+        /* color * 3 seems to work correctly? */
+        /* this probably depends on the termcap definition */
+        r = ((rgb >> 16) & 0xFF) * 3;
+        g = ((rgb >> 8) & 0xFF) * 3;
+        b = (rgb & 0xFF) * 3;
+
+
+        fmt = tparm(nh_Ic, clr, r, g, b);
+
+        c = fmt;
+
+        i = 0;
+        while (*c) {
+            if (*c == '\033') {
+                buf[i++] = '\\';
+                buf[i++] = 'E';
+            } else {
+                buf[i++] = *c;
+            }
+            c++;
+        }
+        buf[i++] = '\0';
+        xputs(fmt);
+    }
 }
 #endif /* CHANGE_COLOR */
 

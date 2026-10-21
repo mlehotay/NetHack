@@ -6,8 +6,6 @@
 #ifndef GLOBAL_H
 #define GLOBAL_H
 
-#include <stdio.h>
-
 /*
  * Files expected to exist in the playground directory (possibly inside
  * a dlb container file).
@@ -104,27 +102,19 @@ typedef unsigned readLenType;
 #endif
 #define BOOL_RANDOM (-1)
 
-enum optchoice { opt_in, opt_out};
-
 /*
  * type nhsym: loadable symbols go into this type
  */
 typedef uchar nhsym;
 
 #ifndef STRNCMPI
-#ifndef __SASC_60 /* SAS/C already shifts to stricmp */
+/* SAS/C already shifts to stricmp */
+#if !defined(__SASC_60) && !defined(CROSS_TO_AMIGA)
 #define strcmpi(a, b) strncmpi((a), (b), -1)
 #endif
 #endif
-
-#if 0
-/* comment out to test effects of each #define -- these will probably
- * disappear eventually
- */
-#ifdef INTERNAL_COMP
-#define RLECOMP  /* run-length compression of levl array - JLee */
-#define ZEROCOMP /* zero-run compression of everything - Olaf Seibert */
-#endif
+#ifdef CROSS_TO_AMIGA
+#define strcmpi(a, b) stricmp(a, b)
 #endif
 
 /* #define SPECIALIZATION */ /* do "specialized" version of new topology */
@@ -195,7 +185,7 @@ typedef uchar nhsym;
 #ifdef AMIGA
 #define PORT_ID "Amiga"
 #endif
-#ifdef MAC
+#ifdef MACOS9
 #define PORT_ID "Mac"
 #endif
 #ifdef __APPLE__
@@ -359,24 +349,7 @@ struct version_info {
     unsigned long incarnation;   /* actual version number */
     unsigned long feature_set;   /* bitmask of config settings */
     unsigned long entity_count;  /* # of monsters and objects */
-    unsigned long struct_sizes1; /* size of key structs */
-    unsigned long struct_sizes2; /* size of more key structs */
 };
-
-struct savefile_info {
-    unsigned long sfi1; /* compression etc. */
-    unsigned long sfi2; /* miscellaneous */
-    unsigned long sfi3; /* thirdparty */
-};
-#ifdef NHSTDC
-#define SFI1_EXTERNALCOMP (1UL)
-#define SFI1_RLECOMP (1UL << 1)
-#define SFI1_ZEROCOMP (1UL << 2)
-#else
-#define SFI1_EXTERNALCOMP (1L)
-#define SFI1_RLECOMP (1L << 1)
-#define SFI1_ZEROCOMP (1L << 2)
-#endif
 
 /* This is used to store some build-info data that used
    to be present in makedefs-generated header file date.h */
@@ -393,8 +366,6 @@ struct nomakedefs_s {
     unsigned long version_features;
     unsigned long ignored_features;
     unsigned long version_sanity1;
-    unsigned long version_sanity2;
-    unsigned long version_sanity3;
     unsigned long build_time;
 };
 extern struct nomakedefs_s nomakedefs;
@@ -431,6 +402,8 @@ extern struct nomakedefs_s nomakedefs;
 #define PL_CSIZ 32 /* sizeof pl_character */
 #define PL_FSIZ 32 /* fruit name */
 #define PL_PSIZ 63 /* player-given names for pets, other monsters, objects */
+/* room for "name-role-race-gend-algn" plus 1 character playmode code */
+#define PL_NSIZ_PLUS (PL_NSIZ + 4 * (1 + 3) + 1) /* 49 */
 
 #define MAXDUNGEON 16 /* current maximum number of dungeons */
 #define MAXLEVEL 32   /* max number of levels in one dungeon */
@@ -458,6 +431,7 @@ extern struct nomakedefs_s nomakedefs;
 
 /* PANICTRACE: Always defined for NH_DEVEL_STATUS != NH_STATUS_RELEASED
    but only for supported platforms. */
+#ifndef NOPANICTRACE
 #ifdef UNIX
 #if (NH_DEVEL_STATUS != NH_STATUS_RELEASED)
 /* see end.c */
@@ -468,6 +442,7 @@ extern struct nomakedefs_s nomakedefs;
 #endif  /* CROSS_TO_WASM |  CROSS_TO_MSDOS */
 #endif  /* NH_DEVEL_STATUS != NH_STATUS_RELEASED */
 #endif  /* UNIX */
+#endif  /* !NOPANICTRACE */
 
 /* The following are meaningless if PANICTRACE is not defined: */
 #if defined(__linux__) && defined(__GLIBC__) && (__GLIBC__ >= 2)
@@ -479,6 +454,9 @@ extern struct nomakedefs_s nomakedefs;
 #ifdef UNIX
 #if !defined(CROSS_TO_WASM) && !defined(PANICTRACE_GDB) /* no popen in WASM */
 #define PANICTRACE_GDB
+#endif
+#ifdef CROSS_TO_WASM
+#undef COMPRESS
 #endif
 #endif
 
@@ -509,7 +487,6 @@ extern struct nomakedefs_s nomakedefs;
 #define C(c) (0x1f & (c))
 #endif
 
-#define unctrl(c) ((c) <= C('z') ? (0x60 | (c)) : (c))
 #define unmeta(c) (0x7f & (c))
 
 /* Game log message type flags */
@@ -595,5 +572,46 @@ typedef enum NHL_pcall_action {
     NHLpa_panic,
     NHLpa_impossible
 } NHL_pcall_action;
+
+enum optchoice { opt_in, opt_out};
+/*
+ * option setting restrictions
+ */
+enum optset_restrictions {
+    set_in_sysconf = 0, /* system config file option only */
+    set_in_config = 1,  /* config file option only */
+    set_viaprog = 2,    /* may be set via extern program, not seen in game */
+    set_gameview = 3,   /* may be set via extern program, displayed in game */
+    set_in_game = 4,    /* may be set via extern program or set in the game */
+    set_wizonly = 5,    /* may be set in the game if wizmode */
+    set_wiznofuz = 6,   /* wizard-mode only, but not by fuzzer */
+    set_hidden = 7      /* placeholder for prefixed entries, never show it  */
+};
+
+/* these aren't the same as set_xxx */
+enum option_phases {
+    phase_not_set = 0,
+    builtin_opt = 1, /* compiled-in default value of an option */
+    syscf_opt,       /* sysconf setting of an option, overrides builtin */
+    rc_file_opt, /* player's run-time config file setting, overrides syscf */
+    environ_opt, /* player's environment NETHACKOPTIONS, overrides rc_file */
+    cmdline_opt, /* program invocation command-line, overrides environ */
+    play_opt,    /* 'O' command, interactively set so overrides all */
+    num_opt_phases
+};
+
+#define SET__IS_VALUE_VALID(s) ((s < set_in_sysconf) || (s > set_wiznofuz))
+#include "optlist.h"
+enum opt {
+    opt_prefix_only = -1,
+#define NHOPT_ENUM
+#include "optlist.h"
+#undef NHOPT_ENUM
+    OPTCOUNT
+};
+
+
+
+#define SFCTOOL_BIT (1UL << 30)
 
 #endif /* GLOBAL_H */

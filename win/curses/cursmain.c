@@ -72,7 +72,9 @@ struct window_procs curses_procs = {
 #endif
      | WC2_FLUSH_STATUS | WC2_TERM_SIZE
      | WC2_STATUSLINES | WC2_WINDOWBORDERS | WC2_PETATTR | WC2_GUICOLOR
-     | WC2_SUPPRESS_HIST | WC2_URGENT_MESG | WC2_MENU_SHIFT),
+     | WC2_SUPPRESS_HIST | WC2_URGENT_MESG | WC2_MENU_SHIFT
+     | WC2_EXTRASTATUS
+    ),
     {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1}, /* color availability */
     curses_init_nhwindows,
     curses_player_selection,
@@ -120,14 +122,12 @@ struct window_procs curses_procs = {
     curses_delay_output,
 #ifdef CHANGE_COLOR
     curses_change_color,
-#ifdef MAC /* old OS 9, not OSX */
+#ifdef MACOS9 /* old OS 9, not OSX */
     (void (*)(int)) 0,
     (short (*)(winid, char *)) 0,
 #endif
     curses_get_color_string,
 #endif
-    curses_start_screen,
-    curses_end_screen,
     genl_outrip,
     curses_preference_update,
     curses_getmsghistory,
@@ -269,6 +269,8 @@ curses_init_nhwindows(
 # endif/* DEF_GAME_NAME */
     PDC_set_title(window_title);
     PDC_set_blink(TRUE);        /* Only if the user asks for it! */
+    /* disable the default paste function so control-V works as expected */
+    PDC_set_function_key(FUNCTION_KEY_PASTE, 0);
     timeout(1);
     (void) getch();
     timeout(-1);
@@ -622,7 +624,7 @@ curses_putmixed(winid window, int attr, const char *str)
             /* now send buf to the normal putstr */
             curses_putstr(window, attr, buf);
             done_output = TRUE;
-	}
+        }
     }
 
     if (!done_output) {
@@ -824,11 +826,11 @@ curses_ctrl_nhwindow(
     case request_settings:
         break;
     case set_menu_promptstyle:
-	curses_menu_promptstyle.color = wri->fromcore.menu_promptstyle.color;
+        curses_menu_promptstyle.color = wri->fromcore.menu_promptstyle.color;
         if (curses_menu_promptstyle.color == NO_COLOR)
             curses_menu_promptstyle.color = NONE;
-	attr = wri->fromcore.menu_promptstyle.attr;
-	curses_menu_promptstyle.attr = curses_convert_attr(attr);;
+        attr = wri->fromcore.menu_promptstyle.attr;
+        curses_menu_promptstyle.attr = curses_convert_attr(attr);;
         break;
     default:
         break;
@@ -1205,27 +1207,6 @@ curses_delay_output(void)
         napms(50);
     }
 #endif
-}
-
-/*
-start_screen()  -- Only used on Unix tty ports, but must be declared for
-               completeness.  Sets up the tty to work in full-screen
-               graphics mode.  Look at win/tty/termcap.c for an
-               example.  If your window-port does not need this function
-               just declare an empty function.
-*/
-void
-curses_start_screen(void)
-{
-}
-
-/*
-end_screen()    -- Only used on Unix tty ports, but must be declared for
-               completeness.  The complement of start_screen().
-*/
-void
-curses_end_screen(void)
-{
 }
 
 /*
